@@ -1,0 +1,6 @@
+{
+  "name": "شركة دورتمون للمقاولات",
+  "description": "نظام إدارة أعمال المقاولات المحلي المتكامل مع المساعد الذكي زكي - حضور ويوميات، مستخلصات، إضافي وناش، شيكات، سلف، وتسويات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

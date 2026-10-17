@@ -1,0 +1,666 @@
+<!-- Optional PIN Lock Screen -->
+@if (store.isLockedByPin()) {
+  <div class="fixed inset-0 z-50 bg-slate-950 text-white flex items-center justify-center p-4">
+    <div class="max-w-sm w-full ceramic-card bg-slate-900 border border-slate-800 p-6 text-center space-y-4">
+      <div class="w-14 h-14 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-2xl flex items-center justify-center mx-auto">
+        د
+      </div>
+      <h1 class="text-lg font-extrabold">{{ store.settings().companyName }}</h1>
+      <p class="text-xs text-slate-400">أدخل رمز الحماية (PIN) لفتح التطبيق</p>
+      <input
+        type="password"
+        [value]="pinAttempt()"
+        (input)="pinAttempt.set($any($event.target).value)"
+        placeholder="••••"
+        aria-label="رمز الدخول PIN"
+        class="w-full text-center text-xl tracking-widest px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700"
+      />
+      @if (pinError()) {
+        <p class="text-xs text-rose-400 font-bold">رمز PIN غير صحيح!</p>
+      }
+      <button
+        type="button"
+        (click)="unlockWithPin()"
+        class="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-sm"
+      >
+        فتح التطبيق
+      </button>
+    </div>
+  </div>
+}
+
+<div class="min-h-screen w-full max-w-full overflow-x-hidden flex bg-[#f4f6f9] dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+  <!-- Desktop Right Sidebar Navigation (Ceramic Curved RTL) -->
+  <aside class="hidden lg:flex lg:flex-col lg:w-68 shrink-0 bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/80 dark:border-slate-800/80 no-print">
+    <!-- Brand Header -->
+    <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3.5">
+      <div class="w-11 h-11 rounded-2xl bg-slate-900 dark:bg-amber-500 text-amber-400 dark:text-slate-950 flex items-center justify-center font-extrabold text-lg shrink-0 shadow-sm">
+        د
+      </div>
+      <div class="min-w-0">
+        <div class="font-extrabold text-base text-slate-900 dark:text-white truncate">
+          {{ store.settings().companyName }}
+        </div>
+        <div class="text-[11px] text-slate-500 truncate">نظام سيراميك ذكي · محلي ١٠٠٪</div>
+      </div>
+    </div>
+
+    <!-- Mandatory Daily Headcount Mini Status Card in Sidebar -->
+    @let hc = store.todayHeadcountMatch();
+    <div class="px-3 pt-3">
+      <button
+        type="button"
+        (click)="openHeadcountModal()"
+        class="w-full text-right p-3 rounded-2xl border transition-all flex items-center justify-between gap-2"
+        [class.bg-rose-50]="!hc.hasMandatoryRecord"
+        [class.border-rose-200]="!hc.hasMandatoryRecord"
+        [class.dark:bg-rose-950/30]="!hc.hasMandatoryRecord"
+        [class.dark:border-rose-800]="!hc.hasMandatoryRecord"
+        [class.bg-amber-50]="hc.hasMandatoryRecord && !hc.isExactMatch"
+        [class.border-amber-200]="hc.hasMandatoryRecord && !hc.isExactMatch"
+        [class.dark:bg-amber-950/30]="hc.hasMandatoryRecord && !hc.isExactMatch"
+        [class.dark:border-amber-800]="hc.hasMandatoryRecord && !hc.isExactMatch"
+        [class.bg-emerald-50]="hc.isExactMatch"
+        [class.border-emerald-200]="hc.isExactMatch"
+        [class.dark:bg-emerald-950/30]="hc.isExactMatch"
+        [class.dark:border-emerald-800]="hc.isExactMatch"
+      >
+        <div class="min-w-0">
+          <div class="text-[11px] font-extrabold text-slate-900 dark:text-white flex items-center gap-1">
+            <mat-icon class="!text-sm !w-4 !h-4">fact_check</mat-icon>
+            <span>العدد اليومي الإجباري</span>
+          </div>
+          <div class="text-[10px] font-bold mt-0.5 truncate"
+            [class.text-rose-600]="!hc.hasMandatoryRecord"
+            [class.text-amber-700]="hc.hasMandatoryRecord && !hc.isExactMatch"
+            [class.text-emerald-700]="hc.isExactMatch"
+          >
+            {{ hc.statusLabel }}
+          </div>
+        </div>
+        <span class="px-2 py-1 rounded-xl bg-white dark:bg-slate-800 text-[10px] font-extrabold shadow-xs shrink-0">
+          تسجيل
+        </span>
+      </button>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto" aria-label="القائمة الرئيسية">
+      @for (item of navItems; track item.path) {
+        <a
+          [routerLink]="item.path"
+          routerLinkActive="bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950 font-bold shadow-sm"
+          class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all whitespace-nowrap"
+        >
+          <mat-icon class="!text-lg !w-5 !h-5">{{ item.icon }}</mat-icon>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+
+    <!-- Sidebar Footer: Install PWA & Reset 0 -->
+    <div class="p-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+      <button
+        type="button"
+        (click)="triggerPwaInstall()"
+        class="w-full py-2.5 px-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+      >
+        <mat-icon class="!text-base !w-4 !h-4">install_mobile</mat-icon>
+        <span>تثبيت التطبيق على الموبايل</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <!-- Top App Bar -->
+    <header class="sticky top-0 z-30 h-15 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200/80 dark:border-slate-800/80 px-4 lg:px-6 flex items-center justify-between gap-3 no-print">
+      <!-- Zone 1: Mobile Menu Trigger + Brand Wordmark -->
+      <div class="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          (click)="mobileMenuOpen.set(!mobileMenuOpen())"
+          class="lg:hidden p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800"
+          aria-label="فتح القائمة الجانبية"
+        >
+          <mat-icon>menu</mat-icon>
+        </button>
+        <a routerLink="/dashboard" class="text-base font-extrabold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0">
+          {{ store.settings().companyName }}
+        </a>
+      </div>
+
+      <!-- Zone 2: Global Search across Workers, Extracts, Checks -->
+      <div class="relative flex-1 max-w-md hidden md:block">
+        <label for="global-search" class="sr-only">بحث شامل في العمال والنحاتية والمستخلصات والشيكات</label>
+        <input
+          id="global-search"
+          type="text"
+          [value]="store.globalSearchQuery()"
+          (input)="store.globalSearchQuery.set($any($event.target).value)"
+          placeholder="بحث شامل في العمال والنحاتية والمستخلصات والشيكات..."
+          class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-amber-500 rounded-2xl pr-9 pl-3 py-1.5 text-xs focus:outline-none"
+        />
+        <mat-icon class="absolute right-2.5 top-1.5 text-slate-400 !text-base">search</mat-icon>
+
+        @if (searchResults().length > 0) {
+          <div class="absolute right-0 left-0 top-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 z-50 overflow-hidden">
+            @for (res of searchResults(); track $index) {
+              <button
+                type="button"
+                (click)="navigateFromSearch(res.route)"
+                class="w-full text-right px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between"
+              >
+                <div>
+                  <div class="text-xs font-bold text-slate-900 dark:text-white">{{ res.title }}</div>
+                  <div class="text-[11px] text-slate-500">{{ res.subtitle }}</div>
+                </div>
+                <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 text-[10px] font-bold">تحويل</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Zone 3: Smart Alerts Bell + Undo + Numerals + Dark Mode -->
+      <div class="flex items-center gap-2 shrink-0">
+        <!-- Smart Notifications Bell with Action Buttons ("تنبيهات مع زر التحويل") -->
+        <div class="relative">
+          <button
+            type="button"
+            (click)="notificationsOpen.set(!notificationsOpen())"
+            class="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold whitespace-nowrap"
+            aria-label="مركز التنبيهات الذكية"
+          >
+            <mat-icon class="!text-base !w-4 !h-4 text-amber-500">notifications_active</mat-icon>
+            <span class="hidden sm:inline">التنبيهات</span>
+            <span class="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-extrabold tabular-nums">
+              {{ store.num(store.smartAlerts().length) }}
+            </span>
+          </button>
+
+          @if (notificationsOpen()) {
+            <div class="fixed sm:absolute left-4 sm:left-0 right-4 sm:right-auto top-16 sm:top-11 sm:w-96 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 p-4 z-50 space-y-3">
+              <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                <span class="text-xs font-extrabold text-slate-900 dark:text-white">
+                  التنبيهات الذكية الفورية ({{ store.num(store.smartAlerts().length) }})
+                </span>
+                <button
+                  type="button"
+                  (click)="notificationsOpen.set(false)"
+                  class="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                >
+                  إغلاق
+                </button>
+              </div>
+
+              <div class="max-h-80 overflow-y-auto space-y-2.5">
+                @for (alert of store.smartAlerts(); track alert.id) {
+                  <div
+                    class="p-3 rounded-2xl border flex items-center justify-between gap-3"
+                    [class.bg-rose-50/70]="alert.severity === 'danger'"
+                    [class.border-rose-200]="alert.severity === 'danger'"
+                    [class.dark:bg-rose-950/30]="alert.severity === 'danger'"
+                    [class.bg-amber-50/70]="alert.severity === 'warning'"
+                    [class.border-amber-200]="alert.severity === 'warning'"
+                    [class.dark:bg-amber-950/30]="alert.severity === 'warning'"
+                    [class.bg-slate-50]="alert.severity === 'info'"
+                    [class.border-slate-200]="alert.severity === 'info'"
+                    [class.dark:bg-slate-800/60]="alert.severity === 'info'"
+                    [class.bg-emerald-50/70]="alert.severity === 'success'"
+                    [class.border-emerald-200]="alert.severity === 'success'"
+                    [class.dark:bg-emerald-950/30]="alert.severity === 'success'"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs font-extrabold text-slate-900 dark:text-white">
+                        {{ alert.title }}
+                      </div>
+                      <p class="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5 leading-relaxed">
+                        {{ alert.subtitle }}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      (click)="navigateAndCloseAlert(alert.route)"
+                      class="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-[11px] font-extrabold shrink-0 inline-flex items-center gap-1"
+                    >
+                      <span>{{ alert.actionLabel }}</span>
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">arrow_back</mat-icon>
+                    </button>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+
+        <button
+          type="button"
+          (click)="store.undoLastOperation()"
+          [disabled]="!store.lastUndo()"
+          [title]="store.lastUndo()?.description || 'لا توجد عملية للتراجع'"
+          class="inline-flex items-center gap-1 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+        >
+          <mat-icon class="!text-sm !w-4 !h-4">undo</mat-icon>
+          <span class="hidden sm:inline">تراجع</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="store.toggleNumeralMode()"
+          class="px-2.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold whitespace-nowrap"
+          aria-label="تبديل الأرقام عربي أو إنجليزي"
+        >
+          {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
+        </button>
+
+        <button
+          type="button"
+          (click)="store.toggleDarkMode()"
+          class="p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+          aria-label="تبديل الوضع الليلي"
+        >
+          <mat-icon class="!text-base !w-4 !h-4">
+            {{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}
+          </mat-icon>
+        </button>
+      </div>
+    </header>
+
+    <!-- Ceramic Quick Shortcuts Ribbon ("اختصارات سريعة ذكية في كل مكان") -->
+    <div class="bg-white/75 dark:bg-slate-900/75 border-b border-slate-200/60 dark:border-slate-800/60 px-4 lg:px-6 py-2 flex items-center gap-2 overflow-x-auto no-print">
+      <span class="text-[11px] font-extrabold text-slate-400 shrink-0 flex items-center gap-1">
+        <mat-icon class="!text-sm !w-4 !h-4 text-amber-500">bolt</mat-icon>
+        <span>اختصارات سريعة:</span>
+      </span>
+
+      <button
+        type="button"
+        (click)="openHeadcountModal()"
+        class="px-3 py-1.5 rounded-2xl text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 transition-all shadow-2xs"
+        [class.bg-rose-600]="!store.todayHeadcountMatch().hasMandatoryRecord"
+        [class.text-white]="!store.todayHeadcountMatch().hasMandatoryRecord"
+        [class.bg-amber-500]="store.todayHeadcountMatch().hasMandatoryRecord && !store.todayHeadcountMatch().isExactMatch"
+        [class.text-slate-950]="store.todayHeadcountMatch().hasMandatoryRecord && !store.todayHeadcountMatch().isExactMatch"
+        [class.bg-emerald-600]="store.todayHeadcountMatch().isExactMatch"
+        [class.text-white]="store.todayHeadcountMatch().isExactMatch"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4">fact_check</mat-icon>
+        <span>
+          العدد اليومي الإجباري ({{ store.num(store.todayHeadcountMatch().actualDays) }}/{{ store.num(store.todayHeadcountMatch().expectedDays) }} يومية · {{ store.num(store.todayHeadcountMatch().actualNights) }}/{{ store.num(store.todayHeadcountMatch().expectedNights) }} سهرة)
+        </span>
+      </button>
+
+      <a
+        routerLink="/bulk"
+        class="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1 shrink-0"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4 text-amber-500">playlist_add_check</mat-icon>
+        <span>تسجيل يوميات وسهرات</span>
+      </a>
+
+      <a
+        routerLink="/deductions"
+        class="px-3 py-1.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold inline-flex items-center gap-1 shrink-0"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4">gavel</mat-icon>
+        <span>خصم يوم / نص / فلوس</span>
+      </a>
+
+      <a
+        routerLink="/settlements"
+        class="px-3 py-1.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold inline-flex items-center gap-1 shrink-0"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4">event_repeat</mat-icon>
+        <span>كشف قبض يوم ١٥</span>
+      </a>
+
+      <a
+        routerLink="/workers"
+        class="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1 shrink-0"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4 text-sky-500">person_add</mat-icon>
+        <span>إضافة عامل / نحّات</span>
+      </a>
+
+      <a
+        routerLink="/zaki"
+        class="px-3 py-1.5 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold inline-flex items-center gap-1 shrink-0"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4">smart_toy</mat-icon>
+        <span>اسأل المساعد زكي</span>
+      </a>
+
+      <button
+        type="button"
+        (click)="confirmZeroResetOpen.set(true)"
+        class="px-3 py-1.5 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 text-xs font-bold inline-flex items-center gap-1 shrink-0 mr-auto"
+      >
+        <mat-icon class="!text-sm !w-4 !h-4">restart_alt</mat-icon>
+        <span>تصفير الكل (٠)</span>
+      </button>
+    </div>
+
+    <!-- Mobile Navigation Drawer -->
+    @if (mobileMenuOpen()) {
+      <div class="fixed inset-0 z-50 lg:hidden flex">
+        <div
+          class="fixed inset-0 bg-black/50"
+          role="button"
+          tabindex="0"
+          aria-label="إغلاق القائمة"
+          (click)="mobileMenuOpen.set(false)"
+          (keydown.enter)="mobileMenuOpen.set(false)"
+          (keydown.escape)="mobileMenuOpen.set(false)"
+        ></div>
+        <div class="relative w-72 max-w-[80vw] bg-white dark:bg-slate-900 h-full p-4 flex flex-col z-10 overflow-y-auto">
+          <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+            <span class="font-extrabold text-base">{{ store.settings().companyName }}</span>
+            <button type="button" (click)="mobileMenuOpen.set(false)" aria-label="إغلاق القائمة">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+          <nav class="py-3 space-y-1 flex-1">
+            @for (item of navItems; track item.path) {
+              <a
+                [routerLink]="item.path"
+                (click)="mobileMenuOpen.set(false)"
+                routerLinkActive="bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950 font-bold"
+                class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm"
+              >
+                <mat-icon class="!text-lg !w-5 !h-5">{{ item.icon }}</mat-icon>
+                <span>{{ item.label }}</span>
+              </a>
+            }
+          </nav>
+        </div>
+      </div>
+    }
+
+    <!-- Toast Notification -->
+    @if (store.toastMessage(); as toast) {
+      <div
+        class="fixed bottom-20 lg:bottom-6 left-6 z-50 px-4 py-3 rounded-2xl shadow-lg text-xs font-bold flex items-center gap-2 no-print"
+        [class.bg-emerald-600]="toast.type === 'success'"
+        [class.text-white]="toast.type === 'success' || toast.type === 'error'"
+        [class.bg-amber-500]="toast.type === 'warning'"
+        [class.text-slate-950]="toast.type === 'warning'"
+        [class.bg-rose-600]="toast.type === 'error'"
+      >
+        <mat-icon class="!text-base !w-4 !h-4">
+          {{ toast.type === 'success' ? 'check_circle' : toast.type === 'warning' ? 'warning' : 'error' }}
+        </mat-icon>
+        <span>{{ toast.text }}</span>
+      </div>
+    }
+
+    <!-- Offline Mode Indicator -->
+    @if (!isOnline()) {
+      <div class="bg-amber-500 text-slate-950 text-xs font-bold px-4 py-1.5 text-center no-print">
+        وضع عدم الاتصال (Offline) — يعمل التطبيق بكامل طاقته على بيانات جهازك المحلية
+      </div>
+    }
+
+    <!-- Page Viewport -->
+    <main class="flex-1 p-4 lg:p-6 pb-20 lg:pb-8 max-w-7xl w-full mx-auto">
+      <router-outlet />
+    </main>
+
+    <!-- Mobile Bottom Tab Bar (5 Core Destinations) -->
+    <nav
+      aria-label="شريط التنقل السفلي للموبايل"
+      class="lg:hidden fixed bottom-0 left-0 right-0 z-30 h-15 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 grid grid-cols-5 items-center no-print"
+    >
+      <a routerLink="/dashboard" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
+        <mat-icon class="!text-lg !w-5 !h-5">dashboard</mat-icon>
+        <span>الرئيسية</span>
+      </a>
+      <a routerLink="/attendance" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
+        <mat-icon class="!text-lg !w-5 !h-5">fact_check</mat-icon>
+        <span>العدد والحضور</span>
+      </a>
+      <a routerLink="/deductions" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
+        <mat-icon class="!text-lg !w-5 !h-5">gavel</mat-icon>
+        <span>الخصومات</span>
+      </a>
+      <a routerLink="/settlements" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
+        <mat-icon class="!text-lg !w-5 !h-5">event_repeat</mat-icon>
+        <span>قبض ١٥</span>
+      </a>
+      <a routerLink="/zaki" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
+        <mat-icon class="!text-lg !w-5 !h-5">smart_toy</mat-icon>
+        <span>زكي</span>
+      </a>
+    </nav>
+  </div>
+</div>
+
+<!-- Mandatory Daily Headcount Modal ("تسجيل العدد اليومي الإجباري للعمالة والنحاتية والسهرة") -->
+@if (store.showQuickHeadcountModal()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-lg w-full space-y-5">
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold">
+            <mat-icon>fact_check</mat-icon>
+          </div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
+              دفتر العدد اليومي الإجباري (عمالة · نحاتية · سهرة)
+            </h3>
+            <p class="text-[11px] text-slate-500">
+              سجّل العدد الإجباري اليوم لمطابقته مع اليوميات والسهرات المسجلة بالأسماء
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          (click)="store.showQuickHeadcountModal.set(false)"
+          class="text-slate-400 hover:text-slate-600"
+          aria-label="إغلاق"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="hc-date" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+            تاريخ اليوم *
+          </label>
+          <input
+            id="hc-date"
+            type="date"
+            [value]="hcDate()"
+            (change)="hcDate.set($any($event.target).value)"
+            class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold tabular-nums"
+          />
+        </div>
+
+        <div>
+          <label for="hc-sup" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+            المهندس / المشرف المبلّغ بالعدد
+          </label>
+          <input
+            id="hc-sup"
+            type="text"
+            [value]="hcSupervisor()"
+            (input)="hcSupervisor.set($any($event.target).value)"
+            placeholder="مثلاً: المهندس أحمد"
+            class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+          />
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 space-y-2">
+          <label for="hc-workers" class="block text-xs font-extrabold text-slate-700 dark:text-slate-200">
+            عدد العمال والصنايعية (يومية)
+          </label>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              (click)="hcWorkers.set(Math.max(0, hcWorkers() - 1))"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold"
+            >
+              -
+            </button>
+            <input
+              id="hc-workers"
+              type="number"
+              min="0"
+              [value]="hcWorkers()"
+              (input)="hcWorkers.set(+$any($event.target).value)"
+              class="flex-1 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base tabular-nums"
+            />
+            <button
+              type="button"
+              (click)="hcWorkers.set(hcWorkers() + 1)"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 space-y-2">
+          <label for="hc-sculptors" class="block text-xs font-extrabold text-amber-900 dark:text-amber-300">
+            عدد النحّاتية (يومية نحاتين)
+          </label>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              (click)="hcSculptors.set(Math.max(0, hcSculptors() - 1))"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold"
+            >
+              -
+            </button>
+            <input
+              id="hc-sculptors"
+              type="number"
+              min="0"
+              [value]="hcSculptors()"
+              (input)="hcSculptors.set(+$any($event.target).value)"
+              class="flex-1 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold text-base tabular-nums"
+            />
+            <button
+              type="button"
+              (click)="hcSculptors.set(hcSculptors() + 1)"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <div class="sm:col-span-2 p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <label for="hc-nights" class="block text-xs font-extrabold text-indigo-900 dark:text-indigo-300">
+              عدد السهرة الإجباري الليلة *
+            </label>
+            <p class="text-[11px] text-indigo-600/80 dark:text-indigo-400">
+              إجمالي عدد أفراد السهرة المطلوب مطابقته
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              (click)="hcNights.set(Math.max(0, hcNights() - 1))"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold"
+            >
+              -
+            </button>
+            <input
+              id="hc-nights"
+              type="number"
+              min="0"
+              [value]="hcNights()"
+              (input)="hcNights.set(+$any($event.target).value)"
+              class="w-24 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold text-base tabular-nums"
+            />
+            <button
+              type="button"
+              (click)="hcNights.set(hcNights() + 1)"
+              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary Preview Box -->
+      <div class="p-3.5 rounded-2xl bg-slate-900 text-white flex items-center justify-between text-xs">
+        <span>إجمالي العدد اليومي الإجباري (عمالة + نحاتية):</span>
+        <span class="font-extrabold text-amber-400 text-sm tabular-nums">
+          {{ store.num(hcTotalDayExpected()) }} يومية · {{ store.num(hcNights()) }} سهرة
+        </span>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button
+          type="button"
+          (click)="store.showQuickHeadcountModal.set(false)"
+          class="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold"
+        >
+          إلغاء
+        </button>
+        <button
+          type="button"
+          (click)="saveQuickHeadcount()"
+          class="px-6 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-xs inline-flex items-center gap-1.5"
+        >
+          <mat-icon class="!text-base !w-4 !h-4">check_circle</mat-icon>
+          <span>حفظ العدد اليومي الإجباري</span>
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Zero Reset Confirmation Modal -->
+@if (confirmZeroResetOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-sm w-full space-y-4 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+        <mat-icon>restart_alt</mat-icon>
+      </div>
+      <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
+        تصفير جميع الأرقام والبيانات (٠)
+      </h3>
+      <p class="text-xs text-slate-500 leading-relaxed">
+        هل تريد مسح جميع السجلات وتصفير كل الأرقام بالكامل للبدء بتسجيل بياناتك الحقيقية من الصفر؟
+      </p>
+      <div class="flex items-center gap-2 pt-2">
+        <button
+          type="button"
+          (click)="confirmZeroResetOpen.set(false)"
+          class="flex-1 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold"
+        >
+          تراجع
+        </button>
+        <button
+          type="button"
+          (click)="confirmZeroReset()"
+          class="flex-1 py-2.5 rounded-2xl bg-rose-600 text-white text-xs font-extrabold"
+        >
+          نعم، تصفير الكل الآن
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- PWA Install Instructions Modal -->
+@if (showPwaGuideModal()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-sm w-full space-y-4">
+      <h3 class="text-base font-bold text-slate-900 dark:text-white">تثبيت تطبيق دورتمون على هاتفك</h3>
+      <div class="text-xs text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed">
+        <p><strong>على أندرويد (Chrome):</strong> افتح قائمة المتصفح (⋮) واختر <strong>"تثبيت التطبيق"</strong> أو <strong>"الإضافة إلى الشاشة الرئيسية"</strong>.</p>
+        <p><strong>على آيفون (Safari):</strong> اضغط زر المشاركة (Share) ثم اختر <strong>"إضافة إلى الشاشة الرئيسية (Add to Home Screen)"</strong>.</p>
+      </div>
+      <button type="button" (click)="showPwaGuideModal.set(false)" class="w-full py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs">
+        حسناً، فهمت
+      </button>
+    </div>
+  </div>
+}
