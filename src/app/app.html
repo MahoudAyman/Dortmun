@@ -1,19 +1,19 @@
 <!-- Optional PIN Lock Screen -->
 @if (store.isLockedByPin()) {
-  <div class="fixed inset-0 z-50 bg-slate-950 text-white flex items-center justify-center p-4">
-    <div class="max-w-sm w-full ceramic-card bg-slate-900 border border-slate-800 p-6 text-center space-y-4">
-      <div class="w-14 h-14 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-2xl flex items-center justify-center mx-auto">
+  <div class="fixed inset-0 z-50 bg-[#0E1621] text-[#E6EDF5] flex items-center justify-center p-4">
+    <div class="max-w-sm w-full ceramic-card bg-[#17212B] border border-[#24303F] p-6 text-center space-y-4">
+      <div class="w-14 h-14 rounded-2xl bg-[#3390EC] text-white font-bold text-2xl flex items-center justify-center mx-auto">
         د
       </div>
-      <h1 class="text-lg font-extrabold">{{ store.settings().companyName }}</h1>
-      <p class="text-xs text-slate-400">أدخل رمز الحماية (PIN) لفتح التطبيق</p>
+      <h1 class="text-xl font-bold">{{ store.settings().companyName }}</h1>
+      <p class="text-sm text-[#8A99A8]">أدخل رمز الحماية (PIN) لفتح التطبيق</p>
       <input
         type="password"
         [value]="pinAttempt()"
         (input)="pinAttempt.set($any($event.target).value)"
         placeholder="••••"
         aria-label="رمز الدخول PIN"
-        class="w-full text-center text-xl tracking-widest px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700"
+        class="w-full text-center text-xl tracking-widest px-4 py-3 rounded-2xl bg-[#0E1621] border border-[#24303F]"
       />
       @if (pinError()) {
         <p class="text-xs text-rose-400 font-bold">رمز PIN غير صحيح!</p>
@@ -21,7 +21,7 @@
       <button
         type="button"
         (click)="unlockWithPin()"
-        class="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-sm"
+        class="w-full py-3 rounded-full bg-[#3390EC] text-white font-bold text-sm"
       >
         فتح التطبيق
       </button>
@@ -29,83 +29,175 @@
   </div>
 }
 
-<div class="min-h-screen w-full max-w-full overflow-x-hidden flex bg-[#f4f6f9] dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-  <!-- Desktop Right Sidebar Navigation (Ceramic Curved RTL) -->
-  <aside class="hidden lg:flex lg:flex-col lg:w-68 shrink-0 bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/80 dark:border-slate-800/80 no-print">
+<div class="min-h-screen w-full max-w-full overflow-x-clip flex bg-[var(--bg-app)] text-[var(--text-heading)]">
+  <!-- Desktop Right Sidebar Navigation (Sticky full-height RTL sidebar) -->
+  <aside class="hidden lg:flex lg:flex-col lg:w-70 lg:sticky lg:top-0 lg:h-screen shrink-0 bg-[var(--bg-card)] border-l border-[var(--border-subtle)] no-print">
     <!-- Brand Header -->
-    <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3.5">
-      <div class="w-11 h-11 rounded-2xl bg-slate-900 dark:bg-amber-500 text-amber-400 dark:text-slate-950 flex items-center justify-center font-extrabold text-lg shrink-0 shadow-sm">
+    <div class="p-5 border-b border-[var(--border-subtle)] flex items-center gap-3.5">
+      <div class="w-11 h-11 rounded-2xl bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] flex items-center justify-center font-bold text-lg shrink-0 shadow-xs">
         د
       </div>
       <div class="min-w-0">
-        <div class="font-extrabold text-base text-slate-900 dark:text-white truncate">
+        <div class="font-bold text-base text-[var(--text-heading)] truncate">
           {{ store.settings().companyName }}
         </div>
-        <div class="text-[11px] text-slate-500 truncate">نظام سيراميك ذكي · محلي ١٠٠٪</div>
+        <div class="text-xs text-[var(--text-secondary)] truncate">نظام سيراميك ذكي · محلي ١٠٠٪</div>
       </div>
     </div>
 
     <!-- Mandatory Daily Headcount Mini Status Card in Sidebar -->
     @let hc = store.todayHeadcountMatch();
-    <div class="px-3 pt-3">
+    <div class="px-3.5 pt-3.5">
       <button
         type="button"
         (click)="openHeadcountModal()"
-        class="w-full text-right p-3 rounded-2xl border transition-all flex items-center justify-between gap-2"
-        [class.bg-rose-50]="!hc.hasMandatoryRecord"
-        [class.border-rose-200]="!hc.hasMandatoryRecord"
-        [class.dark:bg-rose-950/30]="!hc.hasMandatoryRecord"
-        [class.dark:border-rose-800]="!hc.hasMandatoryRecord"
-        [class.bg-amber-50]="hc.hasMandatoryRecord && !hc.isExactMatch"
-        [class.border-amber-200]="hc.hasMandatoryRecord && !hc.isExactMatch"
-        [class.dark:bg-amber-950/30]="hc.hasMandatoryRecord && !hc.isExactMatch"
-        [class.dark:border-amber-800]="hc.hasMandatoryRecord && !hc.isExactMatch"
+        class="w-full text-right p-3.5 rounded-[18px] border transition-all flex items-center justify-between gap-2"
+        [class.bg-[#E7C78F]/20]="!hc.hasMandatoryRecord || (hc.hasMandatoryRecord && !hc.isExactMatch)"
+        [class.border-[#E7C78F]]="!hc.hasMandatoryRecord || (hc.hasMandatoryRecord && !hc.isExactMatch)"
         [class.bg-emerald-50]="hc.isExactMatch"
         [class.border-emerald-200]="hc.isExactMatch"
         [class.dark:bg-emerald-950/30]="hc.isExactMatch"
         [class.dark:border-emerald-800]="hc.isExactMatch"
       >
         <div class="min-w-0">
-          <div class="text-[11px] font-extrabold text-slate-900 dark:text-white flex items-center gap-1">
-            <mat-icon class="!text-sm !w-4 !h-4">fact_check</mat-icon>
+          <div class="text-xs font-bold text-[var(--text-heading)] flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+              <path d="m9 16 2 2 4-4"></path>
+            </svg>
             <span>العدد اليومي الإجباري</span>
           </div>
-          <div class="text-[10px] font-bold mt-0.5 truncate"
-            [class.text-rose-600]="!hc.hasMandatoryRecord"
-            [class.text-amber-700]="hc.hasMandatoryRecord && !hc.isExactMatch"
+          <div
+            class="text-[11px] font-semibold mt-0.5 truncate"
+            [class.text-amber-800]="!hc.isExactMatch"
+            [class.dark:text-[#E7C78F]]="!hc.isExactMatch"
             [class.text-emerald-700]="hc.isExactMatch"
           >
             {{ hc.statusLabel }}
           </div>
         </div>
-        <span class="px-2 py-1 rounded-xl bg-white dark:bg-slate-800 text-[10px] font-extrabold shadow-xs shrink-0">
+        <span class="px-3 py-1 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-[11px] font-bold shrink-0">
           تسجيل
         </span>
       </button>
     </div>
 
     <!-- Navigation Links -->
-    <nav class="flex-1 p-3 space-y-1 overflow-y-auto" aria-label="القائمة الرئيسية">
+    <nav class="flex-1 p-3.5 space-y-1 overflow-y-auto" aria-label="القائمة الرئيسية">
       @for (item of navItems; track item.path) {
         <a
           [routerLink]="item.path"
-          routerLinkActive="bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950 font-bold shadow-sm"
-          class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all whitespace-nowrap"
+          routerLinkActive="sidebar-nav-active"
+          class="sidebar-nav-item flex items-center gap-3 px-4 py-2.5 text-sm font-medium whitespace-nowrap"
         >
-          <mat-icon class="!text-lg !w-5 !h-5">{{ item.icon }}</mat-icon>
+          @switch (item.path) {
+            @case ('/dashboard') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="7" height="9" x="3" y="3" rx="1"></rect>
+                <rect width="7" height="5" x="14" y="3" rx="1"></rect>
+                <rect width="7" height="9" x="14" y="12" rx="1"></rect>
+                <rect width="7" height="5" x="3" y="16" rx="1"></rect>
+              </svg>
+            }
+            @case ('/attendance') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                <path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"></path>
+              </svg>
+            }
+            @case ('/bulk') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11 12H3M16 6H3M16 18H3M18 9v6M21 12h-6"></path>
+              </svg>
+            }
+            @case ('/workers') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            }
+            @case ('/deductions') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M8 12h8"></path>
+              </svg>
+            }
+            @case ('/advances') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                <line x1="2" x2="22" y1="10" y2="10"></line>
+              </svg>
+            }
+            @case ('/settlements') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
+            }
+            @case ('/extracts') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+              </svg>
+            }
+            @case ('/extras') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 8v8M8 12h8"></path>
+              </svg>
+            }
+            @case ('/checks') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                <path d="M6 9h4M6 13h8"></path>
+              </svg>
+            }
+            @case ('/expenses') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path>
+                <path d="M14 8H8M16 12H8M13 16H8"></path>
+              </svg>
+            }
+            @case ('/reports') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 3v18h18"></path>
+                <path d="M18 17V9M13 17V5M8 17v-3"></path>
+              </svg>
+            }
+            @case ('/settings') {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            }
+            @default {
+              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 8V4H8"></path>
+                <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+                <path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path>
+              </svg>
+            }
+          }
           <span>{{ item.label }}</span>
         </a>
       }
     </nav>
 
-    <!-- Sidebar Footer: Install PWA & Reset 0 -->
-    <div class="p-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+    <!-- Sidebar Footer: Install PWA -->
+    <div class="p-3.5 border-t border-[var(--border-subtle)] space-y-2">
       <button
         type="button"
         (click)="triggerPwaInstall()"
-        class="w-full py-2.5 px-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+        class="w-full py-2.5 px-4 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] hover:bg-[#3390EC] hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
       >
-        <mat-icon class="!text-base !w-4 !h-4">install_mobile</mat-icon>
+        <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
         <span>تثبيت التطبيق على الموبايل</span>
       </button>
     </div>
@@ -113,232 +205,343 @@
 
   <!-- Main Content Area -->
   <div class="flex-1 flex flex-col min-w-0">
-    <!-- Top App Bar -->
-    <header class="sticky top-0 z-30 h-15 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200/80 dark:border-slate-800/80 px-4 lg:px-6 flex items-center justify-between gap-3 no-print">
-      <!-- Zone 1: Mobile Menu Trigger + Brand Wordmark -->
-      <div class="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          (click)="mobileMenuOpen.set(!mobileMenuOpen())"
-          class="lg:hidden p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800"
-          aria-label="فتح القائمة الجانبية"
-        >
-          <mat-icon>menu</mat-icon>
-        </button>
-        <a routerLink="/dashboard" class="text-base font-extrabold tracking-tight text-slate-900 dark:text-white whitespace-nowrap shrink-0">
-          {{ store.settings().companyName }}
-        </a>
-      </div>
-
-      <!-- Zone 2: Global Search across Workers, Extracts, Checks -->
-      <div class="relative flex-1 max-w-md hidden md:block">
-        <label for="global-search" class="sr-only">بحث شامل في العمال والنحاتية والمستخلصات والشيكات</label>
-        <input
-          id="global-search"
-          type="text"
-          [value]="store.globalSearchQuery()"
-          (input)="store.globalSearchQuery.set($any($event.target).value)"
-          placeholder="بحث شامل في العمال والنحاتية والمستخلصات والشيكات..."
-          class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-amber-500 rounded-2xl pr-9 pl-3 py-1.5 text-xs focus:outline-none"
-        />
-        <mat-icon class="absolute right-2.5 top-1.5 text-slate-400 !text-base">search</mat-icon>
-
-        @if (searchResults().length > 0) {
-          <div class="absolute right-0 left-0 top-10 bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 z-50 overflow-hidden">
-            @for (res of searchResults(); track $index) {
-              <button
-                type="button"
-                (click)="navigateFromSearch(res.route)"
-                class="w-full text-right px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between"
-              >
-                <div>
-                  <div class="text-xs font-bold text-slate-900 dark:text-white">{{ res.title }}</div>
-                  <div class="text-[11px] text-slate-500">{{ res.subtitle }}</div>
-                </div>
-                <span class="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 text-[10px] font-bold">تحويل</span>
-              </button>
-            }
-          </div>
-        }
-      </div>
-
-      <!-- Zone 3: Smart Alerts Bell + Undo + Numerals + Dark Mode -->
-      <div class="flex items-center gap-2 shrink-0">
-        <!-- Smart Notifications Bell with Action Buttons ("تنبيهات مع زر التحويل") -->
-        <div class="relative">
+    <!-- PINNED TWO-TIER TOP BANNER (ثبّت البانر العلوي بالكامل: الشريط الرئيسي + شريط الاختصارات والمؤشرات السريعة) -->
+    <div class="sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] shadow-xs no-print">
+      <!-- Tier 1: Main Top App Bar -->
+      <header class="h-16 px-4 lg:px-6 flex items-center justify-between gap-2.5 border-b border-[var(--border-subtle)]/70">
+        <!-- Zone 1: Mobile Menu Trigger + Brand Wordmark + Quick Action Button -->
+        <div class="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            (click)="notificationsOpen.set(!notificationsOpen())"
-            class="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold whitespace-nowrap"
-            aria-label="مركز التنبيهات الذكية"
+            (click)="mobileMenuOpen.set(!mobileMenuOpen())"
+            class="lg:hidden p-2 rounded-full border border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)]"
+            aria-label="فتح القائمة الجانبية"
           >
-            <mat-icon class="!text-base !w-4 !h-4 text-amber-500">notifications_active</mat-icon>
-            <span class="hidden sm:inline">التنبيهات</span>
-            <span class="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-extrabold tabular-nums">
-              {{ store.num(store.smartAlerts().length) }}
-            </span>
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="4" x2="20" y1="12" y2="12"></line>
+              <line x1="4" x2="20" y1="6" y2="6"></line>
+              <line x1="4" x2="20" y1="18" y2="18"></line>
+            </svg>
           </button>
+          <a routerLink="/dashboard" class="text-base sm:text-lg font-bold tracking-tight text-[var(--text-heading)] whitespace-nowrap shrink-0">
+            {{ store.settings().companyName }}
+          </a>
 
-          @if (notificationsOpen()) {
-            <div class="fixed sm:absolute left-4 sm:left-0 right-4 sm:right-auto top-16 sm:top-11 sm:w-96 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 p-4 z-50 space-y-3">
-              <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                <span class="text-xs font-extrabold text-slate-900 dark:text-white">
-                  التنبيهات الذكية الفورية ({{ store.num(store.smartAlerts().length) }})
-                </span>
+          <!-- New Feature: Instant Quick Action Hub Button (+ تسجيل فوري سريع) -->
+          <button
+            type="button"
+            (click)="openQuickActionModal('deduction')"
+            title="تسجيل خصم أو سلفة أو مصروف أو عامل فوراً (Ctrl+K)"
+            class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs whitespace-nowrap"
+          >
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+            <span>تسجيل فوري</span>
+          </button>
+        </div>
+
+        <!-- Zone 2: Global Search across Workers, Extracts, Checks -->
+        <div class="relative flex-1 max-w-md hidden xl:block">
+          <label for="global-search" class="sr-only">بحث شامل في العمال والنحاتية والمستخلصات والشيكات</label>
+          <input
+            id="global-search"
+            type="text"
+            [value]="store.globalSearchQuery()"
+            (input)="store.globalSearchQuery.set($any($event.target).value)"
+            placeholder="بحث شامل في العمال والنحاتية والمستخلصات والشيكات..."
+            class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] focus:border-[var(--color-primary)] rounded-full pr-10 pl-4 py-2 text-xs text-[var(--text-heading)] placeholder:text-[var(--text-secondary)] focus:outline-none transition-colors"
+          />
+          <svg class="w-4 h-4 absolute right-3.5 top-2.5 text-[var(--text-secondary)] pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+          </svg>
+
+          @if (searchResults().length > 0) {
+            <div class="absolute right-0 left-0 top-11 bg-[var(--bg-card)] rounded-[18px] shadow-lg border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] z-50 overflow-hidden">
+              @for (res of searchResults(); track $index) {
                 <button
                   type="button"
-                  (click)="notificationsOpen.set(false)"
-                  class="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  (click)="navigateFromSearch(res.route)"
+                  class="w-full text-right px-4 py-2.5 hover:bg-[var(--color-primary-soft)] flex items-center justify-between"
                 >
-                  إغلاق
-                </button>
-              </div>
-
-              <div class="max-h-80 overflow-y-auto space-y-2.5">
-                @for (alert of store.smartAlerts(); track alert.id) {
-                  <div
-                    class="p-3 rounded-2xl border flex items-center justify-between gap-3"
-                    [class.bg-rose-50/70]="alert.severity === 'danger'"
-                    [class.border-rose-200]="alert.severity === 'danger'"
-                    [class.dark:bg-rose-950/30]="alert.severity === 'danger'"
-                    [class.bg-amber-50/70]="alert.severity === 'warning'"
-                    [class.border-amber-200]="alert.severity === 'warning'"
-                    [class.dark:bg-amber-950/30]="alert.severity === 'warning'"
-                    [class.bg-slate-50]="alert.severity === 'info'"
-                    [class.border-slate-200]="alert.severity === 'info'"
-                    [class.dark:bg-slate-800/60]="alert.severity === 'info'"
-                    [class.bg-emerald-50/70]="alert.severity === 'success'"
-                    [class.border-emerald-200]="alert.severity === 'success'"
-                    [class.dark:bg-emerald-950/30]="alert.severity === 'success'"
-                  >
-                    <div class="min-w-0 flex-1">
-                      <div class="text-xs font-extrabold text-slate-900 dark:text-white">
-                        {{ alert.title }}
-                      </div>
-                      <p class="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5 leading-relaxed">
-                        {{ alert.subtitle }}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      (click)="navigateAndCloseAlert(alert.route)"
-                      class="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-[11px] font-extrabold shrink-0 inline-flex items-center gap-1"
-                    >
-                      <span>{{ alert.actionLabel }}</span>
-                      <mat-icon class="!text-xs !w-3.5 !h-3.5">arrow_back</mat-icon>
-                    </button>
+                  <div>
+                    <div class="text-xs font-bold text-[var(--text-heading)]">{{ res.title }}</div>
+                    <div class="text-[11px] text-[var(--text-secondary)]">{{ res.subtitle }}</div>
                   </div>
-                }
-              </div>
+                  <span class="px-2.5 py-0.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold">تحويل</span>
+                </button>
+              }
             </div>
           }
         </div>
 
+        <!-- Zone 3: Calculator + Alerts + Undo + Redo + Numerals + Day/Night Mode -->
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <!-- Smart Contractor Calculator Trigger -->
+          <button
+            type="button"
+            (click)="siteCalculatorOpen.set(true)"
+            title="حاسبة المقاول السريعة (حساب اليوميات والسهرات وفارق الشركة)"
+            aria-label="حاسبة الموقع السريعة"
+            class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
+          >
+            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="16" height="20" x="4" y="2" rx="2"></rect>
+              <line x1="8" x2="16" y1="6" y2="6"></line>
+              <line x1="16" x2="16" y1="14" y2="18"></line>
+              <path d="M16 10h.01M12 10h.01M8 10h.01M12 14h.01M8 14h.01M12 18h.01M8 18h.01"></path>
+            </svg>
+            <span>حاسبة الموقع</span>
+          </button>
+
+          <!-- Smart Notifications Bell -->
+          <div class="relative">
+            <button
+              type="button"
+              (click)="notificationsOpen.set(!notificationsOpen())"
+              class="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-semibold whitespace-nowrap"
+              aria-label="مركز التنبيهات الذكية"
+            >
+              <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+              </svg>
+              <span class="hidden sm:inline">التنبيهات</span>
+              <span class="px-1.5 py-0.5 rounded-full bg-[#3390EC] text-white text-[10px] font-bold tabular-nums">
+                {{ store.num(store.smartAlerts().length) }}
+              </span>
+            </button>
+
+            @if (notificationsOpen()) {
+              <div class="fixed sm:absolute left-4 sm:left-0 right-4 sm:right-auto top-16 sm:top-12 sm:w-96 ceramic-card p-4 z-50 space-y-3">
+                <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
+                  <span class="text-xs font-bold text-[var(--text-heading)]">
+                    التنبيهات الذكية الفورية ({{ store.num(store.smartAlerts().length) }})
+                  </span>
+                  <button
+                    type="button"
+                    (click)="notificationsOpen.set(false)"
+                    class="text-[var(--text-secondary)] hover:text-[var(--text-heading)] text-xs font-bold"
+                    aria-label="إغلاق التنبيهات"
+                  >
+                    إغلاق
+                  </button>
+                </div>
+
+                <div class="max-h-80 overflow-y-auto space-y-2.5">
+                  @for (alert of store.smartAlerts(); track alert.id) {
+                    <div
+                      class="p-3 rounded-[16px] border flex items-center justify-between gap-3"
+                      [class.bg-[#E7C78F]/20]="alert.severity === 'danger' || alert.severity === 'warning'"
+                      [class.border-[#E7C78F]]="alert.severity === 'danger' || alert.severity === 'warning'"
+                      [class.bg-[var(--bg-app)]]="alert.severity === 'info' || alert.severity === 'success'"
+                      [class.border-[var(--border-subtle)]]="alert.severity === 'info' || alert.severity === 'success'"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <div class="text-xs font-bold text-[var(--text-heading)]">
+                          {{ alert.title }}
+                        </div>
+                        <p class="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">
+                          {{ alert.subtitle }}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        (click)="navigateAndCloseAlert(alert.route)"
+                        class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-[11px] font-bold shrink-0 inline-flex items-center gap-1"
+                      >
+                        <span>{{ alert.actionLabel }}</span>
+                      </button>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Undo Button (زر التراجع) -->
+          <button
+            type="button"
+            (click)="store.undoLastOperation()"
+            [disabled]="!store.lastUndo()"
+            [title]="store.lastUndo() ? 'تراجع عن: ' + store.lastUndo()!.description : 'لا توجد عملية للتراجع'"
+            aria-label="تراجع عن آخر عملية"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+          >
+            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7v6h6"></path>
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+            </svg>
+            <span>تراجع</span>
+            @if (store.undoStack().length > 0) {
+              <span class="px-1.5 py-0.2 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold tabular-nums">
+                {{ store.num(store.undoStack().length) }}
+              </span>
+            }
+          </button>
+
+          <!-- Redo Button (زر ثاني يرد التراجع) -->
+          <button
+            type="button"
+            (click)="store.redoLastOperation()"
+            [disabled]="!store.lastRedo()"
+            [title]="store.lastRedo() ? 'رد التراجع: ' + store.lastRedo()!.description : 'لا توجد عملية متراجع عنها لردّها'"
+            aria-label="رد التراجع وإعادة العملية"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+          >
+            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 7v6h-6"></path>
+              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path>
+            </svg>
+            <span>رد التراجع</span>
+            @if (store.redoStack().length > 0) {
+              <span class="px-1.5 py-0.2 rounded-full bg-[#E7C78F]/30 text-[var(--text-heading)] text-[10px] font-bold tabular-nums">
+                {{ store.num(store.redoStack().length) }}
+              </span>
+            }
+          </button>
+
+          <button
+            type="button"
+            (click)="store.toggleNumeralMode()"
+            class="px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
+            aria-label="تبديل الأرقام عربي أو إنجليزي"
+          >
+            {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
+          </button>
+
+          <!-- Day / Night Mode Button (زر الوضع الليلي والنهاري) -->
+          <button
+            type="button"
+            (click)="store.toggleDarkMode()"
+            [title]="store.settings().darkMode ? 'التحويل إلى الوضع النهاري (الفاتح)' : 'التحويل إلى الوضع الليلي (الداكن)'"
+            aria-label="تبديل الوضع الليلي والنهاري"
+            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
+          >
+            @if (store.settings().darkMode) {
+              <svg class="w-4 h-4 text-[#E7C78F] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+              </svg>
+              <span>نهاري</span>
+            } @else {
+              <svg class="w-4 h-4 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+              </svg>
+              <span>ليلي</span>
+            }
+          </button>
+        </div>
+      </header>
+
+      <!-- Tier 2: Pinned Quick Shortcuts & Live Status Ribbon (شريط الاختصارات والمؤشرات المثبّت دائماً في الأعلى) -->
+      <div class="px-4 lg:px-6 py-2 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-bold text-[var(--text-secondary)] shrink-0 inline-flex items-center gap-1 whitespace-nowrap">
+          <svg class="w-4 h-4 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span>اختصارات سريعة:</span>
+        </span>
+
         <button
           type="button"
-          (click)="store.undoLastOperation()"
-          [disabled]="!store.lastUndo()"
-          [title]="store.lastUndo()?.description || 'لا توجد عملية للتراجع'"
-          class="inline-flex items-center gap-1 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+          (click)="openHeadcountModal()"
+          class="px-3.5 py-1.5 rounded-full border text-[var(--text-heading)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
+          [class.bg-[var(--color-secondary-soft)]]="!store.todayHeadcountMatch().isExactMatch"
+          [class.border-[#E7C78F]]="!store.todayHeadcountMatch().isExactMatch"
+          [class.bg-emerald-50]="store.todayHeadcountMatch().isExactMatch"
+          [class.dark:bg-emerald-950/40]="store.todayHeadcountMatch().isExactMatch"
+          [class.border-emerald-300]="store.todayHeadcountMatch().isExactMatch"
         >
-          <mat-icon class="!text-sm !w-4 !h-4">undo</mat-icon>
-          <span class="hidden sm:inline">تراجع</span>
+          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+            <path d="m9 16 2 2 4-4"></path>
+          </svg>
+          <span>
+            العدد اليومي الإجباري ({{ store.num(store.todayHeadcountMatch().actualDays) }}/{{ store.num(store.todayHeadcountMatch().expectedDays) }} يومية · {{ store.num(store.todayHeadcountMatch().actualNights) }}/{{ store.num(store.todayHeadcountMatch().expectedNights) }} سهرة)
+          </span>
+        </button>
+
+        <a
+          routerLink="/bulk"
+          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+        >
+          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+          <span>تسجيل يوميات وسهرات</span>
+        </a>
+
+        <button
+          type="button"
+          (click)="openQuickActionModal('deduction')"
+          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+        >
+          <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M8 12h8"></path>
+          </svg>
+          <span>خصم فوري (يوم / نص / فلوس)</span>
         </button>
 
         <button
           type="button"
-          (click)="store.toggleNumeralMode()"
-          class="px-2.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold whitespace-nowrap"
-          aria-label="تبديل الأرقام عربي أو إنجليزي"
+          (click)="openQuickActionModal('advance')"
+          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
         >
-          {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
+          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+            <line x1="2" x2="22" y1="10" y2="10"></line>
+          </svg>
+          <span>سلفة سريعة</span>
         </button>
+
+        <a
+          routerLink="/settlements"
+          class="px-3.5 py-1.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span>كشف قبض يوم ١٥ (باقي {{ store.num(store.payday15Info().daysUntilPayday) }} يوم)</span>
+        </a>
 
         <button
           type="button"
-          (click)="store.toggleDarkMode()"
-          class="p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
-          aria-label="تبديل الوضع الليلي"
+          (click)="copyDailyWhatsAppSummary()"
+          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-emerald-500 text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
         >
-          <mat-icon class="!text-base !w-4 !h-4">
-            {{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}
-          </mat-icon>
+          <svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+          </svg>
+          <span>نسخ ملخص واتساب</span>
+        </button>
+
+        <a
+          routerLink="/zaki"
+          class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 8V4H8"></path>
+            <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+          </svg>
+          <span>اسأل المساعد زكي</span>
+        </a>
+
+        <button
+          type="button"
+          (click)="confirmZeroResetOpen.set(true)"
+          class="px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-rose-600 hover:border-rose-300 text-xs font-semibold inline-flex items-center gap-1 shrink-0 whitespace-nowrap mr-auto"
+        >
+          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+          </svg>
+          <span>تصفير الكل (٠)</span>
         </button>
       </div>
-    </header>
-
-    <!-- Ceramic Quick Shortcuts Ribbon ("اختصارات سريعة ذكية في كل مكان") -->
-    <div class="bg-white/75 dark:bg-slate-900/75 border-b border-slate-200/60 dark:border-slate-800/60 px-4 lg:px-6 py-2 flex items-center gap-2 overflow-x-auto no-print">
-      <span class="text-[11px] font-extrabold text-slate-400 shrink-0 flex items-center gap-1">
-        <mat-icon class="!text-sm !w-4 !h-4 text-amber-500">bolt</mat-icon>
-        <span>اختصارات سريعة:</span>
-      </span>
-
-      <button
-        type="button"
-        (click)="openHeadcountModal()"
-        class="px-3 py-1.5 rounded-2xl text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 transition-all shadow-2xs"
-        [class.bg-rose-600]="!store.todayHeadcountMatch().hasMandatoryRecord"
-        [class.text-white]="!store.todayHeadcountMatch().hasMandatoryRecord"
-        [class.bg-amber-500]="store.todayHeadcountMatch().hasMandatoryRecord && !store.todayHeadcountMatch().isExactMatch"
-        [class.text-slate-950]="store.todayHeadcountMatch().hasMandatoryRecord && !store.todayHeadcountMatch().isExactMatch"
-        [class.bg-emerald-600]="store.todayHeadcountMatch().isExactMatch"
-        [class.text-white]="store.todayHeadcountMatch().isExactMatch"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4">fact_check</mat-icon>
-        <span>
-          العدد اليومي الإجباري ({{ store.num(store.todayHeadcountMatch().actualDays) }}/{{ store.num(store.todayHeadcountMatch().expectedDays) }} يومية · {{ store.num(store.todayHeadcountMatch().actualNights) }}/{{ store.num(store.todayHeadcountMatch().expectedNights) }} سهرة)
-        </span>
-      </button>
-
-      <a
-        routerLink="/bulk"
-        class="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1 shrink-0"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4 text-amber-500">playlist_add_check</mat-icon>
-        <span>تسجيل يوميات وسهرات</span>
-      </a>
-
-      <a
-        routerLink="/deductions"
-        class="px-3 py-1.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold inline-flex items-center gap-1 shrink-0"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4">gavel</mat-icon>
-        <span>خصم يوم / نص / فلوس</span>
-      </a>
-
-      <a
-        routerLink="/settlements"
-        class="px-3 py-1.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold inline-flex items-center gap-1 shrink-0"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4">event_repeat</mat-icon>
-        <span>كشف قبض يوم ١٥</span>
-      </a>
-
-      <a
-        routerLink="/workers"
-        class="px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold inline-flex items-center gap-1 shrink-0"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4 text-sky-500">person_add</mat-icon>
-        <span>إضافة عامل / نحّات</span>
-      </a>
-
-      <a
-        routerLink="/zaki"
-        class="px-3 py-1.5 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold inline-flex items-center gap-1 shrink-0"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4">smart_toy</mat-icon>
-        <span>اسأل المساعد زكي</span>
-      </a>
-
-      <button
-        type="button"
-        (click)="confirmZeroResetOpen.set(true)"
-        class="px-3 py-1.5 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 text-xs font-bold inline-flex items-center gap-1 shrink-0 mr-auto"
-      >
-        <mat-icon class="!text-sm !w-4 !h-4">restart_alt</mat-icon>
-        <span>تصفير الكل (٠)</span>
-      </button>
     </div>
 
     <!-- Mobile Navigation Drawer -->
@@ -353,20 +556,20 @@
           (keydown.enter)="mobileMenuOpen.set(false)"
           (keydown.escape)="mobileMenuOpen.set(false)"
         ></div>
-        <div class="relative w-72 max-w-[80vw] bg-white dark:bg-slate-900 h-full p-4 flex flex-col z-10 overflow-y-auto">
-          <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-            <span class="font-extrabold text-base">{{ store.settings().companyName }}</span>
-            <button type="button" (click)="mobileMenuOpen.set(false)" aria-label="إغلاق القائمة">
+        <div class="relative w-72 max-w-[80vw] bg-[var(--bg-card)] h-full p-4 flex flex-col z-10 overflow-y-auto border-l border-[var(--border-subtle)]">
+          <div class="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
+            <span class="font-bold text-base text-[var(--text-heading)]">{{ store.settings().companyName }}</span>
+            <button type="button" (click)="mobileMenuOpen.set(false)" aria-label="إغلاق القائمة" class="p-1.5 rounded-full">
               <mat-icon>close</mat-icon>
             </button>
           </div>
-          <nav class="py-3 space-y-1 flex-1">
+          <nav class="py-3 space-y-1 flex-1" aria-label="قائمة الموبايل الجانبية">
             @for (item of navItems; track item.path) {
               <a
                 [routerLink]="item.path"
                 (click)="mobileMenuOpen.set(false)"
-                routerLinkActive="bg-slate-900 text-white dark:bg-amber-500 dark:text-slate-950 font-bold"
-                class="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm"
+                routerLinkActive="sidebar-nav-active"
+                class="sidebar-nav-item flex items-center gap-3 px-4 py-2.5 rounded-full text-sm"
               >
                 <mat-icon class="!text-lg !w-5 !h-5">{{ item.icon }}</mat-icon>
                 <span>{{ item.label }}</span>
@@ -380,11 +583,11 @@
     <!-- Toast Notification -->
     @if (store.toastMessage(); as toast) {
       <div
-        class="fixed bottom-20 lg:bottom-6 left-6 z-50 px-4 py-3 rounded-2xl shadow-lg text-xs font-bold flex items-center gap-2 no-print"
-        [class.bg-emerald-600]="toast.type === 'success'"
+        class="fixed bottom-24 lg:bottom-6 left-6 z-50 px-4 py-3 rounded-full shadow-lg text-xs font-bold flex items-center gap-2 no-print"
+        [class.bg-[#3390EC]]="toast.type === 'success'"
         [class.text-white]="toast.type === 'success' || toast.type === 'error'"
-        [class.bg-amber-500]="toast.type === 'warning'"
-        [class.text-slate-950]="toast.type === 'warning'"
+        [class.bg-[#E7C78F]]="toast.type === 'warning'"
+        [class.text-[#1F2A37]]="toast.type === 'warning'"
         [class.bg-rose-600]="toast.type === 'error'"
       >
         <mat-icon class="!text-base !w-4 !h-4">
@@ -396,59 +599,561 @@
 
     <!-- Offline Mode Indicator -->
     @if (!isOnline()) {
-      <div class="bg-amber-500 text-slate-950 text-xs font-bold px-4 py-1.5 text-center no-print">
+      <div class="bg-[#E7C78F] text-[#1F2A37] text-xs font-bold px-4 py-1.5 text-center no-print">
         وضع عدم الاتصال (Offline) — يعمل التطبيق بكامل طاقته على بيانات جهازك المحلية
       </div>
     }
 
-    <!-- Page Viewport -->
-    <main class="flex-1 p-4 lg:p-6 pb-20 lg:pb-8 max-w-7xl w-full mx-auto">
+    <!-- Page Viewport (with extra bottom padding pb-28 so floating mobile nav never covers content) -->
+    <main class="flex-1 p-4 lg:p-6 pb-28 lg:pb-10 max-w-7xl w-full mx-auto">
       <router-outlet />
     </main>
 
-    <!-- Mobile Bottom Tab Bar (5 Core Destinations) -->
+    <!-- Floating Mobile Bottom Navigation Bar -->
     <nav
       aria-label="شريط التنقل السفلي للموبايل"
-      class="lg:hidden fixed bottom-0 left-0 right-0 z-30 h-15 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 grid grid-cols-5 items-center no-print"
+      class="lg:hidden fixed bottom-3.5 left-3.5 right-3.5 z-30 h-16 mobile-floating-nav grid grid-cols-5 items-center px-2 no-print"
     >
-      <a routerLink="/dashboard" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
-        <mat-icon class="!text-lg !w-5 !h-5">dashboard</mat-icon>
+      <a
+        routerLink="/dashboard"
+        routerLinkActive="mobile-nav-active"
+        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="7" height="9" x="3" y="3" rx="1"></rect>
+          <rect width="7" height="5" x="14" y="3" rx="1"></rect>
+          <rect width="7" height="9" x="14" y="12" rx="1"></rect>
+          <rect width="7" height="5" x="3" y="16" rx="1"></rect>
+        </svg>
         <span>الرئيسية</span>
+        <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
-      <a routerLink="/attendance" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
-        <mat-icon class="!text-lg !w-5 !h-5">fact_check</mat-icon>
+
+      <a
+        routerLink="/attendance"
+        routerLinkActive="mobile-nav-active"
+        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+          <path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"></path>
+        </svg>
         <span>العدد والحضور</span>
+        <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
-      <a routerLink="/deductions" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
-        <mat-icon class="!text-lg !w-5 !h-5">gavel</mat-icon>
+
+      <a
+        routerLink="/deductions"
+        routerLinkActive="mobile-nav-active"
+        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M8 12h8"></path>
+        </svg>
         <span>الخصومات</span>
+        <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
-      <a routerLink="/settlements" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
-        <mat-icon class="!text-lg !w-5 !h-5">event_repeat</mat-icon>
+
+      <a
+        routerLink="/settlements"
+        routerLinkActive="mobile-nav-active"
+        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+          <line x1="2" x2="22" y1="10" y2="10"></line>
+        </svg>
         <span>قبض ١٥</span>
+        <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
-      <a routerLink="/zaki" routerLinkActive="text-amber-600 dark:text-amber-400 font-bold" class="flex flex-col items-center justify-center py-1 text-[10px]">
-        <mat-icon class="!text-lg !w-5 !h-5">smart_toy</mat-icon>
+
+      <a
+        routerLink="/zaki"
+        routerLinkActive="mobile-nav-active"
+        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 8V4H8"></path>
+          <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+          <path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path>
+        </svg>
         <span>زكي</span>
+        <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
     </nav>
   </div>
 </div>
 
-<!-- Mandatory Daily Headcount Modal ("تسجيل العدد اليومي الإجباري للعمالة والنحاتية والسهرة") -->
+<!-- NEW FEATURE 1: Instant Quick Action Hub Modal (+ تسجيل فوري سريع من أي شاشة) -->
+@if (quickActionModalOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div class="ceramic-card p-6 max-w-lg w-full space-y-5">
+      <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center font-bold">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-[var(--text-heading)]">
+              مركز التسجيل الفوري السريع (Ctrl+K)
+            </h3>
+            <p class="text-xs text-[var(--text-secondary)]">
+              سجّل خصماً أو سلفة أو مصروفاً أو عاملاً جديداً فوراً دون مغادرة صفحتك
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          (click)="quickActionModalOpen.set(false)"
+          class="text-[var(--text-secondary)] hover:text-[var(--text-heading)]"
+          aria-label="إغلاق"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <!-- 4 Smart Tabs -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <button
+          type="button"
+          (click)="quickActionTab.set('deduction')"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          [class.bg-[#3390EC]]="quickActionTab() === 'deduction'"
+          [class.text-white]="quickActionTab() === 'deduction'"
+          [class.border-[#3390EC]]="quickActionTab() === 'deduction'"
+          [class.bg-[var(--bg-app)]]="quickActionTab() !== 'deduction'"
+          [class.border-[var(--border-subtle)]]="quickActionTab() !== 'deduction'"
+        >
+          خصم (يوم/نص/فلوس)
+        </button>
+        <button
+          type="button"
+          (click)="quickActionTab.set('advance')"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          [class.bg-[#3390EC]]="quickActionTab() === 'advance'"
+          [class.text-white]="quickActionTab() === 'advance'"
+          [class.border-[#3390EC]]="quickActionTab() === 'advance'"
+          [class.bg-[var(--bg-app)]]="quickActionTab() !== 'advance'"
+          [class.border-[var(--border-subtle)]]="quickActionTab() !== 'advance'"
+        >
+          سلفة سريعة
+        </button>
+        <button
+          type="button"
+          (click)="quickActionTab.set('expense')"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          [class.bg-[#3390EC]]="quickActionTab() === 'expense'"
+          [class.text-white]="quickActionTab() === 'expense'"
+          [class.border-[#3390EC]]="quickActionTab() === 'expense'"
+          [class.bg-[var(--bg-app)]]="quickActionTab() !== 'expense'"
+          [class.border-[var(--border-subtle)]]="quickActionTab() !== 'expense'"
+        >
+          مصروف خارجي
+        </button>
+        <button
+          type="button"
+          (click)="quickActionTab.set('worker')"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          [class.bg-[#3390EC]]="quickActionTab() === 'worker'"
+          [class.text-white]="quickActionTab() === 'worker'"
+          [class.border-[#3390EC]]="quickActionTab() === 'worker'"
+          [class.bg-[var(--bg-app)]]="quickActionTab() !== 'worker'"
+          [class.border-[var(--border-subtle)]]="quickActionTab() !== 'worker'"
+        >
+          + عامل / نحّات
+        </button>
+      </div>
+
+      <!-- Tab 1: Quick Deduction -->
+      @if (quickActionTab() === 'deduction') {
+        <div class="space-y-4">
+          <div>
+            <label for="qa-ded-worker" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">العامل أو النحّات *</label>
+            <select
+              id="qa-ded-worker"
+              [value]="qaWorkerId()"
+              (change)="qaWorkerId.set(+$any($event.target).value)"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold"
+            >
+              <option [value]="0">-- اختر العامل أو النحّات --</option>
+              @for (w of store.activeWorkers(); track w.id) {
+                <option [value]="w.id">{{ w.name }} ({{ w.role }} — يومية {{ store.money(w.workerDayRate) }})</option>
+              }
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button
+              type="button"
+              (click)="qaDeductionMode.set('half_day')"
+              class="py-2 px-3 rounded-full text-xs font-bold border"
+              [class.bg-[var(--color-secondary-soft)]]="qaDeductionMode() === 'half_day'"
+              [class.border-[#E7C78F]]="qaDeductionMode() === 'half_day'"
+              [class.border-[var(--border-subtle)]]="qaDeductionMode() !== 'half_day'"
+            >
+              خصم نص يوم
+            </button>
+            <button
+              type="button"
+              (click)="qaDeductionMode.set('day')"
+              class="py-2 px-3 rounded-full text-xs font-bold border"
+              [class.bg-[var(--color-secondary-soft)]]="qaDeductionMode() === 'day'"
+              [class.border-[#E7C78F]]="qaDeductionMode() === 'day'"
+              [class.border-[var(--border-subtle)]]="qaDeductionMode() !== 'day'"
+            >
+              خصم يوم كامل
+            </button>
+            <button
+              type="button"
+              (click)="qaDeductionMode.set('quarter_day')"
+              class="py-2 px-3 rounded-full text-xs font-bold border"
+              [class.bg-[var(--color-secondary-soft)]]="qaDeductionMode() === 'quarter_day'"
+              [class.border-[#E7C78F]]="qaDeductionMode() === 'quarter_day'"
+              [class.border-[var(--border-subtle)]]="qaDeductionMode() !== 'quarter_day'"
+            >
+              خصم ربع يوم
+            </button>
+            <button
+              type="button"
+              (click)="qaDeductionMode.set('money')"
+              class="py-2 px-3 rounded-full text-xs font-bold border"
+              [class.bg-[var(--color-secondary-soft)]]="qaDeductionMode() === 'money'"
+              [class.border-[#E7C78F]]="qaDeductionMode() === 'money'"
+              [class.border-[var(--border-subtle)]]="qaDeductionMode() !== 'money'"
+            >
+              مبلغ فلوس
+            </button>
+          </div>
+
+          @if (qaDeductionMode() === 'money') {
+            <div>
+              <label for="qa-ded-money" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">مبلغ الخصم (ج.م)</label>
+              <input
+                id="qa-ded-money"
+                type="number"
+                min="0"
+                [value]="qaDeductionMoney()"
+                (input)="qaDeductionMoney.set(+$any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
+              />
+            </div>
+          }
+
+          <div>
+            <label for="qa-ded-reason" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">سبب الخصم والملاحظات *</label>
+            <input
+              id="qa-ded-reason"
+              type="text"
+              [value]="qaDeductionReason()"
+              (input)="qaDeductionReason.set($any($event.target).value)"
+              placeholder="مثلاً: تأخير صباحي، غياب بدون إذن، إتلاف خامات..."
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm"
+            />
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              @for (preset of ['تأخير عن الموعد', 'غياب بدون إذن', 'انصراف مبكر', 'سوء مصنعية', 'إتلاف عدة']; track preset) {
+                <button
+                  type="button"
+                  (click)="qaDeductionReason.set(preset)"
+                  class="px-2.5 py-1 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[11px] font-semibold hover:border-[var(--color-primary)]"
+                >
+                  {{ preset }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="p-3.5 rounded-2xl bg-[#1F2A37] text-white flex items-center justify-between text-xs">
+            <span>قيمة الخصم المحسوبة تلقائياً (تُخصم في قبض يوم ١٥):</span>
+            <span class="font-bold text-rose-400 text-sm tabular-nums">
+              {{ store.money(qaCalculatedDeduction().amount) }}
+            </span>
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <button type="button" (click)="quickActionModalOpen.set(false)" class="px-4 py-2 rounded-full border border-[var(--border-subtle)] text-xs font-bold">إلغاء</button>
+            <button type="button" (click)="submitQuickDeduction()" class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold">تأكيد وحفظ الخصم</button>
+          </div>
+        </div>
+      }
+
+      <!-- Tab 2: Quick Advance -->
+      @if (quickActionTab() === 'advance') {
+        <div class="space-y-4">
+          <div>
+            <label for="qa-adv-worker" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">العامل أو النحّات *</label>
+            <select
+              id="qa-adv-worker"
+              [value]="qaWorkerId()"
+              (change)="qaWorkerId.set(+$any($event.target).value)"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold"
+            >
+              <option [value]="0">-- اختر العامل أو النحّات --</option>
+              @for (w of store.activeWorkers(); track w.id) {
+                <option [value]="w.id">{{ w.name }} ({{ w.role }})</option>
+              }
+            </select>
+          </div>
+
+          <div>
+            <label for="qa-adv-amount" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">مبلغ السلفة (ج.م) *</label>
+            <input
+              id="qa-adv-amount"
+              type="number"
+              min="0"
+              [value]="qaAdvanceAmount()"
+              (input)="qaAdvanceAmount.set(+$any($event.target).value)"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
+            />
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              @for (amt of [100, 200, 300, 500, 1000]; track amt) {
+                <button
+                  type="button"
+                  (click)="qaAdvanceAmount.set(amt)"
+                  class="px-3 py-1 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold tabular-nums"
+                >
+                  {{ store.num(amt) }} ج
+                </button>
+              }
+            </div>
+          </div>
+
+          <div>
+            <label for="qa-adv-reason" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">البيان / الملاحظة</label>
+            <input
+              id="qa-adv-reason"
+              type="text"
+              [value]="qaAdvanceReason()"
+              (input)="qaAdvanceReason.set($any($event.target).value)"
+              placeholder="مثلاً: سلفة نقدية تحت حساب قبض يوم ١٥..."
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm"
+            />
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <button type="button" (click)="quickActionModalOpen.set(false)" class="px-4 py-2 rounded-full border border-[var(--border-subtle)] text-xs font-bold">إلغاء</button>
+            <button type="button" (click)="submitQuickAdvance()" class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold">حفظ السلفة فوراً</button>
+          </div>
+        </div>
+      }
+
+      <!-- Tab 3: Quick Expense -->
+      @if (quickActionTab() === 'expense') {
+        <div class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="qa-exp-cat" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">بند المصروف *</label>
+              <select
+                id="qa-exp-cat"
+                [value]="qaExpenseCategory()"
+                (change)="qaExpenseCategory.set($any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold"
+              >
+                <option value="مواصلات">مواصلات وانتقالات</option>
+                <option value="أكل">أكل ومشروبات للموقع</option>
+                <option value="أدوات">أدوات وخامات</option>
+                <option value="صيانة">صيانة معدات</option>
+                <option value="أخرى">مصاريف أخرى</option>
+              </select>
+            </div>
+            <div>
+              <label for="qa-exp-amt" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">المبلغ (ج.م) *</label>
+              <input
+                id="qa-exp-amt"
+                type="number"
+                min="0"
+                [value]="qaExpenseAmount()"
+                (input)="qaExpenseAmount.set(+$any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="qa-exp-note" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">تفاصيل المصروف</label>
+            <input
+              id="qa-exp-note"
+              type="text"
+              [value]="qaExpenseNote()"
+              (input)="qaExpenseNote.set($any($event.target).value)"
+              placeholder="مثلاً: عربية نقل، فطار العمال، أسطوانات صاروخ..."
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm"
+            />
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <button type="button" (click)="quickActionModalOpen.set(false)" class="px-4 py-2 rounded-full border border-[var(--border-subtle)] text-xs font-bold">إلغاء</button>
+            <button type="button" (click)="submitQuickExpense()" class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold">حفظ المصروف</button>
+          </div>
+        </div>
+      }
+
+      <!-- Tab 4: Quick Add Worker / Sculptor -->
+      @if (quickActionTab() === 'worker') {
+        <div class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="qa-wrk-name" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">اسم العامل أو النحّات *</label>
+              <input
+                id="qa-wrk-name"
+                type="text"
+                [value]="qaNewWorkerName()"
+                (input)="qaNewWorkerName.set($any($event.target).value)"
+                placeholder="مثلاً: المعلم إبراهيم النحات"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label for="qa-wrk-role" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">المهنة / التخصص *</label>
+              <select
+                id="qa-wrk-role"
+                [value]="qaNewWorkerRole()"
+                (change)="qaNewWorkerRole.set($any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold"
+              >
+                <option value="نحات">نحّات (نحاتين)</option>
+                <option value="صنايعي">صنايعي</option>
+                <option value="عامل">عامل</option>
+                <option value="نقاش">نقاش</option>
+                <option value="حداد">حداد</option>
+                <option value="نجار">نجار</option>
+                <option value="مشرف">مشرف</option>
+              </select>
+            </div>
+            <div>
+              <label for="qa-wrk-day" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">سعر اليومية (ج.م)</label>
+              <input
+                id="qa-wrk-day"
+                type="number"
+                min="0"
+                [value]="qaNewWorkerDayRate()"
+                (input)="qaNewWorkerDayRate.set(+$any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
+              />
+            </div>
+            <div>
+              <label for="qa-wrk-night" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">سعر السهرة (ج.م)</label>
+              <input
+                id="qa-wrk-night"
+                type="number"
+                min="0"
+                [value]="qaNewWorkerNightRate()"
+                (input)="qaNewWorkerNightRate.set(+$any($event.target).value)"
+                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
+              />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <button type="button" (click)="quickActionModalOpen.set(false)" class="px-4 py-2 rounded-full border border-[var(--border-subtle)] text-xs font-bold">إلغاء</button>
+            <button type="button" (click)="submitQuickWorker()" class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold">إضافة العامل فوراً</button>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<!-- NEW FEATURE 2: Smart Contractor Site Calculator Modal (حاسبة الموقع الذكية للمقاول) -->
+@if (siteCalculatorOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div class="ceramic-card p-6 max-w-lg w-full space-y-4">
+      <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center font-bold">
+            <mat-icon>calculate</mat-icon>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-[var(--text-heading)]">
+              حاسبة المقاول السريعة (يوميات · سهرات · فرق الشركة)
+            </h3>
+            <p class="text-xs text-[var(--text-secondary)]">
+              احسب فوراً صافي قبض العامل ومكسب فرق اليوميات والسهرات من الشركة
+            </p>
+          </div>
+        </div>
+        <button type="button" (click)="siteCalculatorOpen.set(false)" aria-label="إغلاق الحاسبة">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div>
+          <label for="calc-days" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">عدد اليوميات</label>
+          <input id="calc-days" type="number" min="0" [value]="calcDays()" (input)="calcDays.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-nights" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">عدد السهرات</label>
+          <input id="calc-nights" type="number" min="0" [value]="calcNights()" (input)="calcNights.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-w-day" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">يومية العامل (ج.م)</label>
+          <input id="calc-w-day" type="number" min="0" [value]="calcWorkerDayRate()" (input)="calcWorkerDayRate.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-w-night" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">سهرة العامل (ج.م)</label>
+          <input id="calc-w-night" type="number" min="0" [value]="calcWorkerNightRate()" (input)="calcWorkerNightRate.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-c-day" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">يومية الشركة (ج.م)</label>
+          <input id="calc-c-day" type="number" min="0" [value]="calcCompanyDayRate()" (input)="calcCompanyDayRate.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-c-night" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">سهرة الشركة (ج.م)</label>
+          <input id="calc-c-night" type="number" min="0" [value]="calcCompanyNightRate()" (input)="calcCompanyNightRate.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-adv" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">السلف (ج.م)</label>
+          <input id="calc-adv" type="number" min="0" [value]="calcAdvances()" (input)="calcAdvances.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+        <div>
+          <label for="calc-ded" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">الخصومات (ج.م)</label>
+          <input id="calc-ded" type="number" min="0" [value]="calcDeductions()" (input)="calcDeductions.set(+$any($event.target).value)" class="w-full px-3 py-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] font-bold text-sm tabular-nums" />
+        </div>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-[#1F2A37] text-white space-y-2 text-xs">
+        <div class="flex justify-between">
+          <span class="text-slate-300">إجمالي أجر العامل قبل الخصم:</span>
+          <span class="font-bold tabular-nums">{{ store.money(siteCalcResults().workerGross) }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-300">صافي القبض المستحق للعامل (بعد السلف والخصومات):</span>
+          <span class="font-bold text-[#4EA4F6] text-sm tabular-nums">{{ store.money(siteCalcResults().workerNet) }}</span>
+        </div>
+        <div class="pt-2 border-t border-white/10 flex justify-between">
+          <span class="text-slate-300">إجمالي مطالبة الشركة عن هذه الأيام:</span>
+          <span class="font-bold text-[#E7C78F] tabular-nums">{{ store.money(siteCalcResults().companyTotal) }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-300">صافي مكسب فرق اليوميات والسهرات للمقاول:</span>
+          <span class="font-bold text-emerald-400 text-sm tabular-nums">{{ store.money(siteCalcResults().contractorMargin) }}</span>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button type="button" (click)="siteCalculatorOpen.set(false)" class="px-6 py-2 rounded-full bg-[#3390EC] text-white text-xs font-bold">إغلاق الحاسبة</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Mandatory Daily Headcount Modal -->
 @if (store.showQuickHeadcountModal()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-lg w-full space-y-5">
-      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+    <div class="ceramic-card p-6 max-w-lg w-full space-y-5">
+      <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
         <div class="flex items-center gap-2.5">
-          <div class="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold">
+          <div class="w-10 h-10 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center font-bold">
             <mat-icon>fact_check</mat-icon>
           </div>
           <div>
-            <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
+            <h3 class="text-base font-bold text-[var(--text-heading)]">
               دفتر العدد اليومي الإجباري (عمالة · نحاتية · سهرة)
             </h3>
-            <p class="text-[11px] text-slate-500">
+            <p class="text-xs text-[var(--text-secondary)]">
               سجّل العدد الإجباري اليوم لمطابقته مع اليوميات والسهرات المسجلة بالأسماء
             </p>
           </div>
@@ -456,7 +1161,7 @@
         <button
           type="button"
           (click)="store.showQuickHeadcountModal.set(false)"
-          class="text-slate-400 hover:text-slate-600"
+          class="text-[var(--text-secondary)] hover:text-[var(--text-heading)]"
           aria-label="إغلاق"
         >
           <mat-icon>close</mat-icon>
@@ -465,7 +1170,7 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label for="hc-date" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+          <label for="hc-date" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">
             تاريخ اليوم *
           </label>
           <input
@@ -473,12 +1178,12 @@
             type="date"
             [value]="hcDate()"
             (change)="hcDate.set($any($event.target).value)"
-            class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold tabular-nums"
+            class="w-full px-3 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-bold tabular-nums"
           />
         </div>
 
         <div>
-          <label for="hc-sup" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+          <label for="hc-sup" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">
             المهندس / المشرف المبلّغ بالعدد
           </label>
           <input
@@ -487,19 +1192,20 @@
             [value]="hcSupervisor()"
             (input)="hcSupervisor.set($any($event.target).value)"
             placeholder="مثلاً: المهندس أحمد"
-            class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+            class="w-full px-3 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm"
           />
         </div>
 
-        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700 space-y-2">
-          <label for="hc-workers" class="block text-xs font-extrabold text-slate-700 dark:text-slate-200">
+        <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-2">
+          <label for="hc-workers" class="block text-xs font-bold text-[var(--text-heading)]">
             عدد العمال والصنايعية (يومية)
           </label>
           <div class="flex items-center gap-2">
             <button
               type="button"
               (click)="hcWorkers.set(Math.max(0, hcWorkers() - 1))"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold"
+              aria-label="إنقاص عدد العمال"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold"
             >
               -
             </button>
@@ -509,27 +1215,29 @@
               min="0"
               [value]="hcWorkers()"
               (input)="hcWorkers.set(+$any($event.target).value)"
-              class="flex-1 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold text-base tabular-nums"
+              class="flex-1 text-center py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold text-base tabular-nums"
             />
             <button
               type="button"
               (click)="hcWorkers.set(hcWorkers() + 1)"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-extrabold"
+              aria-label="زيادة عدد العمال"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold"
             >
               +
             </button>
           </div>
         </div>
 
-        <div class="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 space-y-2">
-          <label for="hc-sculptors" class="block text-xs font-extrabold text-amber-900 dark:text-amber-300">
+        <div class="p-3.5 rounded-2xl bg-[var(--color-secondary-soft)] border border-[#E7C78F] space-y-2">
+          <label for="hc-sculptors" class="block text-xs font-bold text-[var(--text-heading)]">
             عدد النحّاتية (يومية نحاتين)
           </label>
           <div class="flex items-center gap-2">
             <button
               type="button"
               (click)="hcSculptors.set(Math.max(0, hcSculptors() - 1))"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold"
+              aria-label="إنقاص عدد النحاتية"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[#E7C78F] font-bold"
             >
               -
             </button>
@@ -539,24 +1247,25 @@
               min="0"
               [value]="hcSculptors()"
               (input)="hcSculptors.set(+$any($event.target).value)"
-              class="flex-1 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold text-base tabular-nums"
+              class="flex-1 text-center py-2 rounded-xl bg-[var(--bg-card)] border border-[#E7C78F] font-bold text-base tabular-nums"
             />
             <button
               type="button"
               (click)="hcSculptors.set(hcSculptors() + 1)"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 font-extrabold"
+              aria-label="زيادة عدد النحاتية"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[#E7C78F] font-bold"
             >
               +
             </button>
           </div>
         </div>
 
-        <div class="sm:col-span-2 p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 flex flex-wrap items-center justify-between gap-4">
+        <div class="sm:col-span-2 p-3.5 rounded-2xl bg-[var(--color-primary-soft)] border border-[#3390EC]/40 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <label for="hc-nights" class="block text-xs font-extrabold text-indigo-900 dark:text-indigo-300">
+            <label for="hc-nights" class="block text-xs font-bold text-[var(--text-heading)]">
               عدد السهرة الإجباري الليلة *
             </label>
-            <p class="text-[11px] text-indigo-600/80 dark:text-indigo-400">
+            <p class="text-[11px] text-[var(--text-secondary)]">
               إجمالي عدد أفراد السهرة المطلوب مطابقته
             </p>
           </div>
@@ -564,7 +1273,8 @@
             <button
               type="button"
               (click)="hcNights.set(Math.max(0, hcNights() - 1))"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold"
+              aria-label="إنقاص عدد السهرة"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold"
             >
               -
             </button>
@@ -574,12 +1284,13 @@
               min="0"
               [value]="hcNights()"
               (input)="hcNights.set(+$any($event.target).value)"
-              class="w-24 text-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold text-base tabular-nums"
+              class="w-24 text-center py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold text-base tabular-nums"
             />
             <button
               type="button"
               (click)="hcNights.set(hcNights() + 1)"
-              class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-700 font-extrabold"
+              aria-label="زيادة عدد السهرة"
+              class="w-9 h-9 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold"
             >
               +
             </button>
@@ -588,9 +1299,9 @@
       </div>
 
       <!-- Summary Preview Box -->
-      <div class="p-3.5 rounded-2xl bg-slate-900 text-white flex items-center justify-between text-xs">
+      <div class="p-3.5 rounded-2xl bg-[#1F2A37] text-white flex items-center justify-between text-xs">
         <span>إجمالي العدد اليومي الإجباري (عمالة + نحاتية):</span>
-        <span class="font-extrabold text-amber-400 text-sm tabular-nums">
+        <span class="font-bold text-[#E7C78F] text-sm tabular-nums">
           {{ store.num(hcTotalDayExpected()) }} يومية · {{ store.num(hcNights()) }} سهرة
         </span>
       </div>
@@ -599,14 +1310,14 @@
         <button
           type="button"
           (click)="store.showQuickHeadcountModal.set(false)"
-          class="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold"
+          class="px-4 py-2.5 rounded-full border border-[var(--border-subtle)] text-xs font-bold"
         >
           إلغاء
         </button>
         <button
           type="button"
           (click)="saveQuickHeadcount()"
-          class="px-6 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-extrabold text-xs inline-flex items-center gap-1.5"
+          class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white font-bold text-xs inline-flex items-center gap-1.5"
         >
           <mat-icon class="!text-base !w-4 !h-4">check_circle</mat-icon>
           <span>حفظ العدد اليومي الإجباري</span>
@@ -619,28 +1330,28 @@
 <!-- Zero Reset Confirmation Modal -->
 @if (confirmZeroResetOpen()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-sm w-full space-y-4 text-center">
+    <div class="ceramic-card p-6 max-w-sm w-full space-y-4 text-center">
       <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
         <mat-icon>restart_alt</mat-icon>
       </div>
-      <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
+      <h3 class="text-base font-bold text-[var(--text-heading)]">
         تصفير جميع الأرقام والبيانات (٠)
       </h3>
-      <p class="text-xs text-slate-500 leading-relaxed">
+      <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
         هل تريد مسح جميع السجلات وتصفير كل الأرقام بالكامل للبدء بتسجيل بياناتك الحقيقية من الصفر؟
       </p>
       <div class="flex items-center gap-2 pt-2">
         <button
           type="button"
           (click)="confirmZeroResetOpen.set(false)"
-          class="flex-1 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold"
+          class="flex-1 py-2.5 rounded-full border border-[var(--border-subtle)] text-xs font-bold"
         >
           تراجع
         </button>
         <button
           type="button"
           (click)="confirmZeroReset()"
-          class="flex-1 py-2.5 rounded-2xl bg-rose-600 text-white text-xs font-extrabold"
+          class="flex-1 py-2.5 rounded-full bg-rose-600 text-white text-xs font-bold"
         >
           نعم، تصفير الكل الآن
         </button>
@@ -652,13 +1363,13 @@
 <!-- PWA Install Instructions Modal -->
 @if (showPwaGuideModal()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-    <div class="ceramic-card bg-white dark:bg-slate-900 p-6 max-w-sm w-full space-y-4">
-      <h3 class="text-base font-bold text-slate-900 dark:text-white">تثبيت تطبيق دورتمون على هاتفك</h3>
-      <div class="text-xs text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed">
+    <div class="ceramic-card p-6 max-w-sm w-full space-y-4">
+      <h3 class="text-base font-bold text-[var(--text-heading)]">تثبيت تطبيق دورتمون على هاتفك</h3>
+      <div class="text-xs text-[var(--text-secondary)] space-y-2 leading-relaxed">
         <p><strong>على أندرويد (Chrome):</strong> افتح قائمة المتصفح (⋮) واختر <strong>"تثبيت التطبيق"</strong> أو <strong>"الإضافة إلى الشاشة الرئيسية"</strong>.</p>
         <p><strong>على آيفون (Safari):</strong> اضغط زر المشاركة (Share) ثم اختر <strong>"إضافة إلى الشاشة الرئيسية (Add to Home Screen)"</strong>.</p>
       </div>
-      <button type="button" (click)="showPwaGuideModal.set(false)" class="w-full py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-bold text-xs">
+      <button type="button" (click)="showPwaGuideModal.set(false)" class="w-full py-2.5 rounded-full bg-[#3390EC] text-white font-bold text-xs">
         حسناً، فهمت
       </button>
     </div>

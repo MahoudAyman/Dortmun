@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, PLATFORM_ID, computed, inject, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
 import { ExcelService } from '../../shared/excel-export';
-import { calculateDashboardSummary } from '../../core/calc/calculations';
+import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/calculations';
 
 @Component({
   selector: 'app-dashboard',
@@ -11,38 +12,31 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
   imports: [RouterLink, MatIconModule],
   template: `
     <div class="space-y-6">
-      <!-- Mandatory Daily Headcount & Payday 15 Ceramic Command Banner -->
+      <!-- Mandatory Daily Headcount & Payday 15 Command Banner -->
       @let hc = store.todayHeadcountMatch();
       @let payday = store.payday15Info();
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 reveal-section">
         <!-- Mandatory Daily Headcount Card (7 cols) -->
         <div
-          class="lg:col-span-7 ceramic-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-2"
-          [class.border-rose-300]="!hc.hasMandatoryRecord"
-          [class.dark:border-rose-800]="!hc.hasMandatoryRecord"
-          [class.border-amber-300]="hc.hasMandatoryRecord && !hc.isExactMatch"
-          [class.dark:border-amber-800]="hc.hasMandatoryRecord && !hc.isExactMatch"
-          [class.border-emerald-300]="hc.isExactMatch"
-          [class.dark:border-emerald-800]="hc.isExactMatch"
+          class="lg:col-span-7 ceramic-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
         >
           <div class="space-y-1.5">
             <div class="flex items-center gap-2">
               <span
-                class="px-2.5 py-0.5 rounded-xl text-[11px] font-extrabold"
-                [class.bg-rose-600]="!hc.hasMandatoryRecord"
-                [class.text-white]="!hc.hasMandatoryRecord || hc.isExactMatch"
-                [class.bg-amber-500]="hc.hasMandatoryRecord && !hc.isExactMatch"
-                [class.text-slate-950]="hc.hasMandatoryRecord && !hc.isExactMatch"
+                class="px-3 py-0.5 rounded-full text-[11px] font-bold"
+                [class.bg-[#E7C78F]]="!hc.isExactMatch"
+                [class.text-[#1F2A37]]="!hc.isExactMatch"
                 [class.bg-emerald-600]="hc.isExactMatch"
+                [class.text-white]="hc.isExactMatch"
               >
                 {{ !hc.hasMandatoryRecord ? 'إجباري كل يوم' : hc.isExactMatch ? 'نفس العدد ✓' : 'يوجد فرق في العدد!' }}
               </span>
-              <h2 class="text-sm font-extrabold text-slate-900 dark:text-white">
+              <h2 class="text-lg font-bold text-[var(--text-heading)]">
                 دفتر العدد اليومي الإجباري ({{ store.digits(store.todayIso()) }})
               </h2>
             </div>
 
-            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p class="text-sm text-[var(--text-secondary)] leading-relaxed">
               @if (!hc.hasMandatoryRecord) {
                 سجّل أولاً <strong>عدد العمالة والنحّاتية وعدد السهرة</strong> اليوم، وبناءً عليه طابق اليوميات المسجلة بالأسماء.
               } @else {
@@ -55,17 +49,22 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
             <button
               type="button"
               (click)="store.showQuickHeadcountModal.set(true)"
-              class="px-4 py-2.5 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 font-extrabold text-xs inline-flex items-center justify-center gap-1.5 shadow-sm"
+              class="px-4 py-2.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] font-bold text-xs inline-flex items-center justify-center gap-1.5 shadow-2xs"
             >
-              <mat-icon class="!text-base !w-4 !h-4">fact_check</mat-icon>
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                <path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"></path>
+              </svg>
               <span>{{ hc.hasMandatoryRecord ? 'تعديل العدد اليومي' : 'تسجيل العدد الإجباري الآن' }}</span>
             </button>
             <a
               routerLink="/bulk"
-              class="px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold inline-flex items-center justify-center gap-1"
+              class="px-4 py-2 rounded-full border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center justify-center gap-1.5"
             >
               <span>تحويل لتسجيل الأسماء</span>
-              <mat-icon class="!text-sm !w-4 !h-4">arrow_back</mat-icon>
+              <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"></path>
+              </svg>
             </a>
           </div>
         </div>
@@ -74,15 +73,18 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
         <div class="lg:col-span-5 ceramic-card p-5 flex flex-col justify-between gap-3">
           <div class="flex items-start justify-between gap-2">
             <div>
-              <div class="flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 dark:text-emerald-400">
-                <mat-icon class="!text-base !w-4 !h-4">event_repeat</mat-icon>
+              <div class="flex items-center gap-1.5 text-sm font-bold text-[#3390EC] dark:text-[#4EA4F6]">
+                <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                  <line x1="2" x2="22" y1="10" y2="10"></line>
+                </svg>
                 <span>دورة قبض يوم {{ store.num(store.settings().paydayDayOfMonth || 15) }} في الشهر</span>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">
+              <p class="text-xs text-[var(--text-secondary)] mt-1">
                 {{ payday.label }} · الخصومات المفتوحة: <strong class="text-rose-600">{{ store.money(store.totalOpenDeductions()) }}</strong>
               </p>
             </div>
-            <span class="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-extrabold">
+            <span class="px-3 py-1 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold">
               قبض يوم ١٥
             </span>
           </div>
@@ -90,16 +92,21 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
           <div class="flex flex-wrap items-center gap-2 pt-1">
             <a
               routerLink="/settlements"
-              class="flex-1 py-2.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs inline-flex items-center justify-center gap-1.5"
+              class="flex-1 py-2.5 px-4 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] font-bold text-xs inline-flex items-center justify-center gap-1.5"
             >
-              <mat-icon class="!text-sm !w-4 !h-4">payments</mat-icon>
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
               <span>تحويل لكشف قبض يوم ١٥</span>
             </a>
             <a
               routerLink="/deductions"
-              class="py-2.5 px-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 font-extrabold text-xs inline-flex items-center justify-center gap-1"
+              class="py-2.5 px-4 rounded-full bg-[var(--color-secondary-soft)] text-[var(--text-heading)] border border-[#E7C78F] font-bold text-xs inline-flex items-center justify-center gap-1.5"
             >
-              <mat-icon class="!text-sm !w-4 !h-4">gavel</mat-icon>
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M8 12h8"></path>
+              </svg>
               <span>تسجيل خصم</span>
             </a>
           </div>
@@ -107,15 +114,15 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
       </div>
 
       <!-- Filter & Quick Action Bar -->
-      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 ceramic-card p-4 lg:p-5">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 ceramic-card p-4 lg:p-5 reveal-section">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
           <div>
-            <label for="dash-project-filter" class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">فلترة حسب المشروع</label>
+            <label for="dash-project-filter" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">فلترة حسب المشروع</label>
             <select
               id="dash-project-filter"
               [value]="store.selectedProjectId() ?? ''"
               (change)="onProjectFilterChange($event)"
-              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-2xl px-3 py-2 text-sm font-bold text-[var(--text-heading)] focus:outline-none"
             >
               <option value="">كل المشاريع ({{ store.num(store.projects().length) }})</option>
               @for (proj of store.projects(); track proj.id) {
@@ -125,24 +132,24 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
           </div>
 
           <div>
-            <label for="dash-period-from" class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">من تاريخ</label>
+            <label for="dash-period-from" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">من تاريخ</label>
             <input
               id="dash-period-from"
               type="date"
               [value]="fromDate()"
               (change)="fromDate.set($any($event.target).value)"
-              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm tabular-nums"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-2xl px-3 py-2 text-sm tabular-nums text-[var(--text-heading)]"
             />
           </div>
 
           <div>
-            <label for="dash-period-to" class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">إلى تاريخ</label>
+            <label for="dash-period-to" class="block text-xs font-bold text-[var(--text-secondary)] mb-1">إلى تاريخ</label>
             <input
               id="dash-period-to"
               type="date"
               [value]="toDate()"
               (change)="toDate.set($any($event.target).value)"
-              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm tabular-nums"
+              class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-2xl px-3 py-2 text-sm tabular-nums text-[var(--text-heading)]"
             />
           </div>
         </div>
@@ -150,67 +157,93 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
         <div class="flex flex-wrap items-center gap-2">
           <a
             routerLink="/bulk"
-            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs transition-colors whitespace-nowrap shadow-xs"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] font-bold text-xs transition-colors whitespace-nowrap shadow-2xs"
           >
-            <mat-icon class="!text-lg !w-5 !h-5">playlist_add_check</mat-icon>
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
             <span>إضافة جماعية سريعة</span>
           </a>
           <a
             routerLink="/zaki"
-            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white font-extrabold text-xs transition-colors whitespace-nowrap"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] font-bold text-xs transition-colors whitespace-nowrap"
           >
-            <mat-icon class="!text-lg !w-5 !h-5 text-amber-400">smart_toy</mat-icon>
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 8V4H8"></path>
+              <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+              <path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path>
+            </svg>
             <span>اسأل زكي الذكي</span>
           </a>
           <button
             type="button"
             (click)="excel.exportFullWorkbook()"
-            class="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition-colors whitespace-nowrap"
+            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold transition-colors whitespace-nowrap"
           >
-            <mat-icon class="!text-lg !w-5 !h-5 text-emerald-600">download</mat-icon>
+            <svg class="w-4 h-4 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
             <span>تصدير Excel</span>
           </button>
         </div>
       </div>
 
-      <!-- Primary Financial & Attendance KPIs (All start at 0 until real data is recorded) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Primary Financial & Attendance KPIs (1 col mobile, 2 cols tablet, 4 cols desktop) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 reveal-section">
         <div class="ceramic-card p-5">
-          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold mb-2">
+          <div class="flex items-center justify-between text-[var(--text-secondary)] text-xs font-bold mb-2">
             <span>إجمالي اليوميات والسهرات</span>
-            <mat-icon class="!text-lg text-amber-500">engineering</mat-icon>
+            <span class="w-9 h-9 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] flex items-center justify-center">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </span>
           </div>
-          <div class="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white">
+          <div class="text-2xl font-bold tabular-nums text-[var(--text-heading)]">
             {{ store.num(filteredSummary().totalDays) }} يومية
-            <span class="text-sm font-semibold text-slate-500">· {{ store.num(filteredSummary().totalNights) }} سهرة</span>
+            <span class="text-sm font-medium text-[var(--text-secondary)]">· {{ store.num(filteredSummary().totalNights) }} سهرة</span>
           </div>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">
-            أجور العمال والناش: <strong class="tabular-nums text-slate-700 dark:text-slate-200">{{ store.money(filteredSummary().totalWorkerWages) }}</strong>
+          <p class="text-xs text-[var(--text-secondary)] mt-2">
+            أجور العمال والناش: <strong class="tabular-nums text-[var(--text-heading)]">{{ store.money(filteredSummary().totalWorkerWages) }}</strong>
           </p>
         </div>
 
         <div class="ceramic-card p-5">
-          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold mb-2">
+          <div class="flex items-center justify-between text-[var(--text-secondary)] text-xs font-bold mb-2">
             <span>المطلوب من الشركة (صافي)</span>
-            <mat-icon class="!text-lg text-blue-600">request_quote</mat-icon>
+            <span class="w-9 h-9 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] flex items-center justify-center">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+              </svg>
+            </span>
           </div>
-          <div class="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white">
+          <div class="text-2xl font-bold tabular-nums text-[var(--text-heading)]">
             {{ store.money(filteredSummary().requiredFromCompany) }}
           </div>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">
-            الواصل فعلياً: <strong class="tabular-nums text-emerald-600 dark:text-emerald-400">{{ store.money(filteredSummary().totalCollected) }}</strong>
+          <p class="text-xs text-[var(--text-secondary)] mt-2">
+            الواصل فعلياً: <strong class="tabular-nums text-[#3390EC] dark:text-[#4EA4F6]">{{ store.money(filteredSummary().totalCollected) }}</strong>
           </p>
         </div>
 
         <div class="ceramic-card p-5">
-          <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-bold mb-2">
+          <div class="flex items-center justify-between text-[var(--text-secondary)] text-xs font-bold mb-2">
             <span>المتبقي طرف الشركة</span>
-            <mat-icon class="!text-lg text-amber-600">pending_actions</mat-icon>
+            <span class="w-9 h-9 rounded-full bg-[var(--color-secondary-soft)] text-amber-800 dark:text-[#E7C78F] flex items-center justify-center">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </span>
           </div>
-          <div class="text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400">
+          <div class="text-2xl font-bold tabular-nums text-amber-700 dark:text-[#E7C78F]">
             {{ store.money(filteredSummary().remainingFromCompany) }}
           </div>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">
+          <p class="text-xs text-[var(--text-secondary)] mt-2">
             المصاريف الخارجية: <strong class="tabular-nums text-rose-600 dark:text-rose-400">{{ store.money(filteredSummary().totalExternalExpenses) }}</strong>
           </p>
         </div>
@@ -218,31 +251,39 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
         <div class="ceramic-hero p-5 text-white">
           <div class="flex items-center justify-between text-slate-300 text-xs font-bold mb-2">
             <span>صافي الربح التقريبي</span>
-            <mat-icon class="!text-lg text-emerald-400">trending_up</mat-icon>
+            <span class="w-9 h-9 rounded-full bg-white/10 text-[#4EA4F6] flex items-center justify-center">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                <polyline points="16 7 22 7 22 13"></polyline>
+              </svg>
+            </span>
           </div>
           <div
-            class="text-2xl font-extrabold tabular-nums"
-            [class.text-emerald-400]="filteredSummary().ApproximateNetProfit >= 0"
+            class="text-2xl font-bold tabular-nums"
+            [class.text-[#4EA4F6]]="filteredSummary().ApproximateNetProfit >= 0"
             [class.text-rose-400]="filteredSummary().ApproximateNetProfit < 0"
           >
             {{ store.money(filteredSummary().ApproximateNetProfit) }}
           </div>
-          <p class="text-[11px] text-slate-400 mt-2">
+          <p class="text-xs text-slate-300 mt-2">
             المطلوب − أجور العمال − المصاريف
           </p>
         </div>
       </div>
 
       <!-- Secondary Row: Smart Alerts with Navigation Buttons & Checks/Deductions Breakdown -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Smart Alerts Panel with Direct Navigation Button ("تنبيهات مع زر التحويل") (7 cols) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 reveal-section">
+        <!-- Smart Alerts Panel (7 cols) -->
         <div class="lg:col-span-7 ceramic-card p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <h2 class="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-              <mat-icon class="text-amber-500">notifications_active</mat-icon>
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <h2 class="text-lg font-bold text-[var(--text-heading)] flex items-center gap-2">
+              <svg class="w-5 h-5 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+              </svg>
               <span>مركز التنبيهات الذكية السريعة (مع زر التحويل المباشر)</span>
             </h2>
-            <span class="text-xs px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold">
+            <span class="text-xs px-3 py-1 rounded-full bg-[var(--color-secondary-soft)] text-[var(--text-heading)] font-bold">
               {{ store.num(store.smartAlerts().length) }} تنبيهات
             </span>
           </div>
@@ -250,41 +291,27 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
           <div class="space-y-2.5">
             @for (alert of store.smartAlerts(); track alert.id) {
               <div
-                class="p-3.5 rounded-2xl border flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 transition-all"
-                [class.bg-rose-50/70]="alert.severity === 'danger'"
-                [class.border-rose-200]="alert.severity === 'danger'"
-                [class.dark:bg-rose-950/30]="alert.severity === 'danger'"
-                [class.dark:border-rose-900]="alert.severity === 'danger'"
-                [class.bg-amber-50/70]="alert.severity === 'warning'"
-                [class.border-amber-200]="alert.severity === 'warning'"
-                [class.dark:bg-amber-950/30]="alert.severity === 'warning'"
-                [class.dark:border-amber-900]="alert.severity === 'warning'"
-                [class.bg-slate-50/90]="alert.severity === 'info'"
-                [class.border-slate-200]="alert.severity === 'info'"
-                [class.dark:bg-slate-800/50]="alert.severity === 'info'"
-                [class.dark:border-slate-700]="alert.severity === 'info'"
-                [class.bg-emerald-50/70]="alert.severity === 'success'"
-                [class.border-emerald-200]="alert.severity === 'success'"
-                [class.dark:bg-emerald-950/30]="alert.severity === 'success'"
-                [class.dark:border-emerald-900]="alert.severity === 'success'"
+                class="p-3.5 rounded-[16px] border flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 transition-all"
+                [class.bg-[var(--color-secondary-soft)]]="alert.severity === 'danger' || alert.severity === 'warning'"
+                [class.border-[#E7C78F]]="alert.severity === 'danger' || alert.severity === 'warning'"
+                [class.bg-[var(--bg-app)]]="alert.severity === 'info' || alert.severity === 'success'"
+                [class.border-[var(--border-subtle)]]="alert.severity === 'info' || alert.severity === 'success'"
               >
                 <div class="flex items-start gap-3">
-                  <div class="w-9 h-9 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center shrink-0 shadow-2xs">
+                  <div class="w-9 h-9 rounded-full bg-[var(--bg-card)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
                     <mat-icon
                       class="!text-lg !w-5 !h-5"
-                      [class.text-rose-600]="alert.severity === 'danger'"
-                      [class.text-amber-600]="alert.severity === 'warning'"
-                      [class.text-sky-600]="alert.severity === 'info'"
-                      [class.text-emerald-600]="alert.severity === 'success'"
+                      [class.text-[#3390EC]]="alert.severity === 'info' || alert.severity === 'success'"
+                      [class.text-amber-700]="alert.severity === 'warning' || alert.severity === 'danger'"
                     >
                       {{ alert.icon }}
                     </mat-icon>
                   </div>
                   <div>
-                    <p class="text-xs font-extrabold text-slate-900 dark:text-white">
+                    <p class="text-xs font-bold text-[var(--text-heading)]">
                       {{ alert.title }}
                     </p>
-                    <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                    <p class="text-xs text-[var(--text-secondary)] mt-0.5 leading-relaxed">
                       {{ alert.subtitle }}
                     </p>
                   </div>
@@ -292,10 +319,12 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
 
                 <a
                   [routerLink]="alert.route"
-                  class="px-3.5 py-2 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold whitespace-nowrap inline-flex items-center gap-1.5 shrink-0 shadow-2xs hover:opacity-95"
+                  class="px-4 py-2 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold whitespace-nowrap inline-flex items-center gap-1.5 shrink-0"
                 >
                   <span>{{ alert.actionLabel }}</span>
-                  <mat-icon class="!text-sm !w-4 !h-4">arrow_back</mat-icon>
+                  <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m15 18-6-6 6-6"></path>
+                  </svg>
                 </a>
               </div>
             }
@@ -304,35 +333,35 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
 
         <!-- Checks, Advances & Deductions Summary (5 cols) -->
         <div class="lg:col-span-5 ceramic-card p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <h2 class="text-base font-extrabold text-slate-900 dark:text-white">
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <h2 class="text-lg font-bold text-[var(--text-heading)]">
               موقف الشيكات والسلف والخصومات
             </h2>
-            <a routerLink="/checks" class="text-xs text-amber-600 dark:text-amber-400 font-extrabold hover:underline">
+            <a routerLink="/checks" class="text-xs text-[#3390EC] dark:text-[#4EA4F6] font-bold hover:underline">
               تحويل للشيكات
             </a>
           </div>
 
-          <div class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+          <div class="divide-y divide-[var(--border-subtle)] text-sm">
             <div class="py-2.5 flex items-center justify-between">
-              <span class="text-slate-600 dark:text-slate-400">شيكات واردة معلقة</span>
-              <span class="font-extrabold tabular-nums text-amber-600">{{ store.money(filteredSummary().incomingChecksPending) }}</span>
+              <span class="text-[var(--text-secondary)]">شيكات واردة معلقة</span>
+              <span class="font-bold tabular-nums px-2.5 py-0.5 rounded-full bg-[var(--color-secondary-soft)] text-[var(--text-heading)]">{{ store.money(filteredSummary().incomingChecksPending) }}</span>
             </div>
             <div class="py-2.5 flex items-center justify-between">
-              <span class="text-slate-600 dark:text-slate-400">شيكات واردة اتصرفت</span>
-              <span class="font-extrabold tabular-nums text-emerald-600">{{ store.money(filteredSummary().incomingChecksCashed) }}</span>
+              <span class="text-[var(--text-secondary)]">شيكات واردة اتصرفت</span>
+              <span class="font-bold tabular-nums text-[#3390EC] dark:text-[#4EA4F6]">{{ store.money(filteredSummary().incomingChecksCashed) }}</span>
             </div>
             <div class="py-2.5 flex items-center justify-between">
-              <span class="text-slate-600 dark:text-slate-400">شيكات صادرة معلقة</span>
-              <span class="font-extrabold tabular-nums text-rose-600">{{ store.money(filteredSummary().outgoingChecksPending) }}</span>
+              <span class="text-[var(--text-secondary)]">شيكات صادرة معلقة</span>
+              <span class="font-bold tabular-nums px-2.5 py-0.5 rounded-full bg-[var(--color-secondary-soft)] text-[var(--text-heading)]">{{ store.money(filteredSummary().outgoingChecksPending) }}</span>
             </div>
             <div class="py-2.5 flex items-center justify-between">
-              <span class="text-slate-600 dark:text-slate-400">إجمالي السلف المفتوحة</span>
-              <span class="font-extrabold tabular-nums text-slate-900 dark:text-white">{{ store.money(filteredSummary().totalAdvancesGiven) }}</span>
+              <span class="text-[var(--text-secondary)]">إجمالي السلف المفتوحة</span>
+              <span class="font-bold tabular-nums text-[var(--text-heading)]">{{ store.money(filteredSummary().totalAdvancesGiven) }}</span>
             </div>
             <div class="py-2.5 flex items-center justify-between">
-              <span class="text-slate-600 dark:text-slate-400">إجمالي الخصومات والجزاءات المفتوحة</span>
-              <span class="font-extrabold tabular-nums text-rose-600">{{ store.money(store.totalOpenDeductions()) }}</span>
+              <span class="text-[var(--text-secondary)]">إجمالي الخصومات والجزاءات المفتوحة</span>
+              <span class="font-bold tabular-nums text-rose-600">{{ store.money(store.totalOpenDeductions()) }}</span>
             </div>
           </div>
 
@@ -340,34 +369,154 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
           <div class="grid grid-cols-2 gap-2 pt-2">
             <a
               routerLink="/advances"
-              class="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-xs font-bold flex items-center justify-between"
+              class="p-2.5 px-4 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold flex items-center justify-between"
             >
               <span>تحويل للسلف</span>
-              <mat-icon class="!text-sm !w-4 !h-4 text-slate-400">arrow_back</mat-icon>
+              <svg class="w-3.5 h-3.5 text-[var(--text-secondary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"></path>
+              </svg>
             </a>
             <a
               routerLink="/deductions"
-              class="p-2.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold flex items-center justify-between"
+              class="p-2.5 px-4 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold flex items-center justify-between"
             >
               <span>تحويل للخصومات</span>
-              <mat-icon class="!text-sm !w-4 !h-4">arrow_back</mat-icon>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"></path>
+              </svg>
             </a>
           </div>
         </div>
       </div>
 
+      <!-- NEW SECTION: Live Payday 15th Preview & Activity Stream -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 reveal-section">
+        <!-- Live Payday 15th Payroll Sheet Preview (7 cols) -->
+        <div class="lg:col-span-7 ceramic-card p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
+            <div>
+              <h2 class="text-lg font-bold text-[var(--text-heading)] flex items-center gap-2">
+                <svg class="w-5 h-5 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+                <span>معاينة كشف قبض يوم ١٥ المباشر ({{ store.digits(payday.from) }} ← {{ store.digits(payday.to) }})</span>
+              </h2>
+              <p class="text-xs text-[var(--text-secondary)]">حساب فوري لليوميات والسهرات مخصوماً منه السلف والجزاءات لكل عامل ونحّات</p>
+            </div>
+            <a routerLink="/settlements" class="px-4 py-2 rounded-full bg-[#3390EC] text-white text-xs font-bold">
+              فتح كشف القبض الكامل
+            </a>
+          </div>
+
+          @if (paydayPreviewRows().length > 0) {
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-right">
+                <thead>
+                  <tr class="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                    <th class="py-2 px-2">العامل / النحّات</th>
+                    <th class="py-2 px-2">اليوميات والسهرات</th>
+                    <th class="py-2 px-2">السلف والخصومات</th>
+                    <th class="py-2 px-2">صافي قبض ١٥</th>
+                    <th class="py-2 px-2">كشف واتساب</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--border-subtle)]">
+                  @for (row of paydayPreviewRows(); track row.worker.id) {
+                    <tr>
+                      <td class="py-2.5 px-2 font-bold text-[var(--text-heading)]">
+                        {{ row.worker.name }}
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] mr-1">{{ row.worker.role }}</span>
+                      </td>
+                      <td class="py-2.5 px-2 tabular-nums">
+                        {{ store.num(row.calc.days) }} ي · {{ store.num(row.calc.nights) }} س
+                      </td>
+                      <td class="py-2.5 px-2 tabular-nums text-rose-600">
+                        {{ store.money(row.calc.advancesDeducted + row.calc.deductionsDeducted) }}
+                      </td>
+                      <td class="py-2.5 px-2 font-bold tabular-nums text-[#3390EC] dark:text-[#4EA4F6]">
+                        {{ store.money(row.calc.netPaid) }}
+                      </td>
+                      <td class="py-2.5 px-2">
+                        <button
+                          type="button"
+                          (click)="copyWorkerPaydaySlip(row.worker.name, row.worker.role, row.calc)"
+                          class="px-3 py-1 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-emerald-500 text-[11px] font-bold"
+                        >
+                          نسخ الكشف
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="p-6 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center space-y-2">
+              <p class="text-xs font-bold text-[var(--text-heading)]">لا يوجد عمال أو نحاتية مسجلون حالياً في دورة قبض يوم ١٥</p>
+              <p class="text-xs text-[var(--text-secondary)]">بمجرد إضافة العمال وتسجيل اليوميات أو الخصومات سيظهر كشف قبض يوم ١٥ هنا تلقائياً.</p>
+            </div>
+          }
+        </div>
+
+        <!-- Live Activity Stream with Quick Undo / Redo (5 cols) -->
+        <div class="lg:col-span-5 ceramic-card p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <h2 class="text-lg font-bold text-[var(--text-heading)]">
+              سجل آخر الحركات والتراجع السريع
+            </h2>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                (click)="store.undoLastOperation()"
+                [disabled]="!store.lastUndo()"
+                class="px-3 py-1 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[11px] font-bold disabled:opacity-40"
+              >
+                تراجع
+              </button>
+              <button
+                type="button"
+                (click)="store.redoLastOperation()"
+                [disabled]="!store.lastRedo()"
+                class="px-3 py-1 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[11px] font-bold disabled:opacity-40"
+              >
+                رد التراجع
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-2 max-h-64 overflow-y-auto">
+            @for (log of store.auditLogs().slice(0, 6); track log.id || $index) {
+              <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex items-start justify-between gap-2 text-xs">
+                <div>
+                  <div class="font-bold text-[var(--text-heading)]">{{ log.action }} — <span class="text-[#3390EC]">{{ log.entity }}</span></div>
+                  <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">{{ log.details }}</p>
+                </div>
+                <span class="text-[10px] text-[var(--text-secondary)] tabular-nums shrink-0">{{ store.digits(log.timestamp.slice(11)) }}</span>
+              </div>
+            } @empty {
+              <div class="p-6 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center">
+                <p class="text-xs text-[var(--text-secondary)]">سجل الحركات فارغ حالياً — أي عملية تسجيل أو تراجع أو رد تراجع ستظهر هنا فوراً.</p>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
       <!-- Project Comparison & Quick Setup Section -->
-      <div class="ceramic-card p-5 space-y-4">
+      <div class="ceramic-card p-5 space-y-4 reveal-section">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 class="text-base font-extrabold text-slate-900 dark:text-white">مقارنة المشاريع والأداء المالي</h2>
-            <p class="text-xs text-slate-500">مقارنة اليوميات والمطلوب من الشركة وأجور العمال وصافي الربح لكل مشروع</p>
+            <h2 class="text-lg font-bold text-[var(--text-heading)]">مقارنة المشاريع والأداء المالي</h2>
+            <p class="text-sm text-[var(--text-secondary)]">مقارنة اليوميات والمطلوب من الشركة وأجور العمال وصافي الربح لكل مشروع</p>
           </div>
           <div class="flex items-center gap-2">
-            <a routerLink="/settings" class="px-3.5 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-extrabold hover:bg-amber-500 hover:text-slate-950 transition-colors">
-              + إضافة مشروع جديد
+            <a routerLink="/settings" class="px-4 py-2 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+              <span>+ إضافة مشروع جديد</span>
             </a>
-            <a routerLink="/extracts" class="px-3.5 py-2 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold">
+            <a routerLink="/extracts" class="px-4 py-2 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold">
               تحويل للمستخلصات
             </a>
           </div>
@@ -375,10 +524,10 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           @for (item of projectComparisons(); track item.project.id) {
-            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-800 space-y-3">
+            <div class="p-4 rounded-[18px] bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
               <div class="flex items-center justify-between">
-                <h3 class="font-extrabold text-slate-900 dark:text-white text-sm">{{ item.project.name }}</h3>
-                <span class="text-xs px-2.5 py-0.5 rounded-xl bg-white dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-300 tabular-nums">
+                <h3 class="font-bold text-[var(--text-heading)] text-sm">{{ item.project.name }}</h3>
+                <span class="text-xs px-2.5 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold text-[var(--text-secondary)] tabular-nums">
                   {{ store.num(item.summary.totalDays) }} يومية
                 </span>
               </div>
@@ -386,29 +535,29 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
               <div class="space-y-2 text-xs">
                 <div>
                   <div class="flex justify-between mb-1">
-                    <span class="text-slate-500">المطلوب من الشركة</span>
+                    <span class="text-[var(--text-secondary)]">المطلوب من الشركة</span>
                     <span class="font-bold tabular-nums">{{ store.money(item.summary.requiredFromCompany) }}</span>
                   </div>
-                  <div class="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-600 rounded-full" [style.width.%]="item.reqPercent"></div>
+                  <div class="h-2 w-full bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                    <div class="h-full bg-[#3390EC] rounded-full chart-bar-fill" [style.width.%]="item.reqPercent"></div>
                   </div>
                 </div>
 
                 <div>
                   <div class="flex justify-between mb-1">
-                    <span class="text-slate-500">التكلفة (أجور + مصاريف)</span>
+                    <span class="text-[var(--text-secondary)]">التكلفة (أجور + مصاريف)</span>
                     <span class="font-bold tabular-nums">{{ store.money(item.summary.totalWorkerWages + item.summary.totalExternalExpenses) }}</span>
                   </div>
-                  <div class="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div class="h-full bg-amber-500 rounded-full" [style.width.%]="item.costPercent"></div>
+                  <div class="h-2 w-full bg-[var(--border-subtle)] rounded-full overflow-hidden">
+                    <div class="h-full bg-[#E7C78F] rounded-full chart-bar-fill" [style.width.%]="item.costPercent"></div>
                   </div>
                 </div>
 
-                <div class="pt-2 border-t border-slate-200/60 dark:border-slate-700 flex items-center justify-between">
-                  <span class="text-slate-500">صافي الربح:</span>
+                <div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between">
+                  <span class="text-[var(--text-secondary)]">صافي الربح:</span>
                   <span
-                    class="font-extrabold tabular-nums"
-                    [class.text-emerald-600]="item.summary.ApproximateNetProfit >= 0"
+                    class="font-bold tabular-nums"
+                    [class.text-[#3390EC]]="item.summary.ApproximateNetProfit >= 0"
                     [class.text-rose-600]="item.summary.ApproximateNetProfit < 0"
                   >
                     {{ store.money(item.summary.ApproximateNetProfit) }}
@@ -417,27 +566,29 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
               </div>
             </div>
           } @empty {
-            <div class="md:col-span-3 p-8 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-3">
-              <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto">
-                <mat-icon>rocket_launch</mat-icon>
+            <div class="md:col-span-3 p-8 rounded-[20px] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-app)]/60 text-center space-y-3">
+              <div class="w-12 h-12 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] flex items-center justify-center mx-auto">
+                <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
               </div>
-              <h3 class="text-sm font-extrabold text-slate-900 dark:text-white">
+              <h3 class="text-base font-bold text-[var(--text-heading)]">
                 الأرقام كلها صفر (٠) وجاهزة لتسجيل أعمالك الحقيقية!
               </h3>
-              <p class="text-xs text-slate-500 max-w-xl mx-auto leading-relaxed">
+              <p class="text-sm text-[var(--text-secondary)] max-w-xl mx-auto leading-relaxed">
                 ابدأ بإضافة مشروعك الأول، ثم أضف العمال والنحاتية، وسجّل العدد اليومي الإجباري لمطابقة اليوميات والسهرات وحساب قبض يوم ١٥ تلقائياً.
               </p>
               <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
-                <a routerLink="/settings" class="px-4 py-2 rounded-2xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold">
+                <a routerLink="/settings" class="px-4 py-2 rounded-full bg-[#3390EC] text-white text-xs font-bold">
                   ١. إضافة مشروع جديد
                 </a>
-                <a routerLink="/workers" class="px-4 py-2 rounded-2xl bg-amber-500 text-slate-950 text-xs font-extrabold">
+                <a routerLink="/workers" class="px-4 py-2 rounded-full bg-[var(--color-secondary-soft)] border border-[#E7C78F] text-[var(--text-heading)] text-xs font-bold">
                   ٢. إضافة العمال والنحاتية
                 </a>
                 <button
                   type="button"
                   (click)="store.showQuickHeadcountModal.set(true)"
-                  class="px-4 py-2 rounded-2xl border border-slate-300 dark:border-slate-700 text-xs font-extrabold"
+                  class="px-4 py-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-bold"
                 >
                   ٣. تسجيل العدد اليومي الإجباري
                 </button>
@@ -452,6 +603,7 @@ import { calculateDashboardSummary } from '../../core/calc/calculations';
 export class DashboardPage {
   readonly store = inject(StoreService);
   readonly excel = inject(ExcelService);
+  private readonly platformId = inject(PLATFORM_ID);
 
   readonly fromDate = signal<string>('2026-10-01');
   readonly toDate = signal<string>('2026-10-31');
@@ -470,6 +622,20 @@ export class DashboardPage {
       toDate: this.toDate(),
     })
   );
+
+  readonly paydayPreviewRows = computed(() => {
+    const cycle = this.store.payday15Info();
+    const workers = this.store.activeWorkers();
+    const att = this.store.attendances();
+    const adv = this.store.advances();
+    const ec = this.store.extraCashes();
+    const ext = this.store.extras();
+    const ded = this.store.deductions();
+    return workers.slice(0, 8).map((worker) => ({
+      worker,
+      calc: calculateSettlement(worker, cycle.from, cycle.to, att, adv, ec, ext, ded),
+    }));
+  });
 
   readonly projectComparisons = computed(() => {
     const projects = this.store.projects();
@@ -521,5 +687,30 @@ export class DashboardPage {
   onProjectFilterChange(event: Event): void {
     const val = (event.target as HTMLSelectElement).value;
     this.store.selectedProjectId.set(val ? Number(val) : null);
+  }
+
+  async copyWorkerPaydaySlip(
+    name: string,
+    role: string,
+    calc: { days: number; nights: number; grossWages: number; advancesDeducted: number; deductionsDeducted: number; netPaid: number }
+  ): Promise<void> {
+    const cycle = this.store.payday15Info();
+    const text = [
+      `🧾 *كشف حساب قبض يوم ١٥ — ${name} (${role})*`,
+      `📅 الفترة: من ${this.store.digits(cycle.from)} إلى ${this.store.digits(cycle.to)}`,
+      `━━━━━━━━━━━━━━`,
+      `☀️ اليوميات: ${this.store.num(calc.days)} يومية`,
+      `🌙 السهرات: ${this.store.num(calc.nights)} سهرة`,
+      `💰 إجمالي الاستحقاق: ${this.store.money(calc.grossWages)}`,
+      `💵 السلف المخصومة: ${this.store.money(calc.advancesDeducted)}`,
+      `📉 الخصومات والجزاءات: ${this.store.money(calc.deductionsDeducted)}`,
+      `━━━━━━━━━━━━━━`,
+      `✅ *صافي المبلغ المستحق للقبض:* ${this.store.money(calc.netPaid)}`,
+    ].join('\n');
+
+    if (isPlatformBrowser(this.platformId) && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      this.store.showToast(`تم نسخ كشف قبض "${name}" جاهزاً للواتساب`, 'success');
+    }
   }
 }

@@ -232,4 +232,6 @@ export interface UndoOperation {
   recordId?: number;
   recordIds?: number[];
   previousData?: unknown;
+  newData?: unknown;
 }
+

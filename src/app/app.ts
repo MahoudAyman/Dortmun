@@ -1,6 +1,8 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  OnDestroy,
   PLATFORM_ID,
   computed,
   inject,
@@ -8,13 +10,17 @@ import {
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import {
+  NavigationEnd,
   Router,
   RouterLink,
   RouterLinkActive,
   RouterOutlet,
 } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
+import { filter, Subscription } from 'rxjs';
 import { StoreService } from './core/db/store';
+import type { DeductionMode, ExpenseCategory, WorkerRole } from './core/db/models';
+import { calculateDeductionAmount } from './core/calc/calculations';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -28,11 +34,14 @@ interface BeforeInstallPromptEvent extends Event {
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App {
+export class App implements AfterViewInit, OnDestroy {
   readonly store = inject(StoreService);
   private readonly router = inject(Router);
   private readonly platformId = inject(PLATFORM_ID);
   readonly Math = Math;
+
+  private sectionObserver: IntersectionObserver | null = null;
+  private routerSub: Subscription | null = null;
 
   readonly mobileMenuOpen = signal<boolean>(false);
   readonly notificationsOpen = signal<boolean>(false);
@@ -42,6 +51,75 @@ export class App {
   readonly isOnline = signal<boolean>(true);
   readonly deferredPrompt = signal<BeforeInstallPromptEvent | null>(null);
   readonly showPwaGuideModal = signal<boolean>(false);
+
+  // New Feature 1: Quick Action Command Modal (+ تسجيل فوري سريع)
+  readonly quickActionModalOpen = signal<boolean>(false);
+  readonly quickActionTab = signal<'deduction' | 'advance' | 'expense' | 'worker'>('deduction');
+
+  // Quick Deduction state
+  readonly qaWorkerId = signal<number>(0);
+  readonly qaDeductionMode = signal<DeductionMode>('half_day');
+  readonly qaDeductionMoney = signal<number>(0);
+  readonly qaDeductionReason = signal<string>('');
+
+  // Quick Advance state
+  readonly qaAdvanceAmount = signal<number>(0);
+  readonly qaAdvanceReason = signal<string>('');
+
+  // Quick Expense state
+  readonly qaExpenseCategory = signal<ExpenseCategory>('مواصلات');
+  readonly qaExpenseAmount = signal<number>(0);
+  readonly qaExpenseNote = signal<string>('');
+
+  // Quick Add Worker / Sculptor state
+  readonly qaNewWorkerName = signal<string>('');
+  readonly qaNewWorkerRole = signal<WorkerRole>('نحات');
+  readonly qaNewWorkerDayRate = signal<number>(500);
+  readonly qaNewWorkerNightRate = signal<number>(250);
+
+  readonly qaCalculatedDeduction = computed(() => {
+    const w = this.store.workers().find((x) => x.id === this.qaWorkerId());
+    if (!w) return { daysDeducted: 0, amount: 0 };
+    return calculateDeductionAmount(
+      this.qaDeductionMode(),
+      w.workerDayRate,
+      this.qaDeductionMoney()
+    );
+  });
+
+  // New Feature 2: Smart Contractor Site Calculator Modal (حاسبة الموقع الذكية)
+  readonly siteCalculatorOpen = signal<boolean>(false);
+  readonly calcDays = signal<number>(15);
+  readonly calcNights = signal<number>(5);
+  readonly calcWorkerDayRate = signal<number>(450);
+  readonly calcWorkerNightRate = signal<number>(225);
+  readonly calcCompanyDayRate = signal<number>(600);
+  readonly calcCompanyNightRate = signal<number>(300);
+  readonly calcAdvances = signal<number>(0);
+  readonly calcDeductions = signal<number>(0);
+
+  readonly siteCalcResults = computed(() => {
+    const days = Math.max(0, this.calcDays() || 0);
+    const nights = Math.max(0, this.calcNights() || 0);
+    const wDay = Math.max(0, this.calcWorkerDayRate() || 0);
+    const wNight = Math.max(0, this.calcWorkerNightRate() || 0);
+    const cDay = Math.max(0, this.calcCompanyDayRate() || 0);
+    const cNight = Math.max(0, this.calcCompanyNightRate() || 0);
+    const adv = Math.max(0, this.calcAdvances() || 0);
+    const ded = Math.max(0, this.calcDeductions() || 0);
+
+    const workerGross = days * wDay + nights * wNight;
+    const workerNet = workerGross - adv - ded;
+    const companyTotal = days * cDay + nights * cNight;
+    const contractorMargin = companyTotal - workerGross;
+
+    return {
+      workerGross,
+      workerNet,
+      companyTotal,
+      contractorMargin,
+    };
+  });
 
   // Quick Mandatory Daily Headcount Modal signals
   readonly hcDate = signal<string>(this.store.todayIso());
@@ -134,11 +212,196 @@ export class App {
         this.deferredPrompt.set(e as BeforeInstallPromptEvent);
       });
 
+      window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          this.openQuickActionModal('deduction');
+          return;
+        }
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+            void this.store.redoLastOperation();
+          } else {
+            void this.store.undoLastOperation();
+          }
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+          e.preventDefault();
+          void this.store.redoLastOperation();
+        }
+      });
+
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch((err) => {
           console.warn('SW registration skipped:', err);
         });
       }
+    }
+  }
+
+  ngAfterViewInit(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+
+    this.setupScrollRevealObserver();
+    this.routerSub = this.router.events
+      .pipe(filter((evt) => evt instanceof NavigationEnd))
+      .subscribe(() => {
+        setTimeout(() => this.setupScrollRevealObserver(), 30);
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.sectionObserver?.disconnect();
+    this.routerSub?.unsubscribe();
+  }
+
+  private setupScrollRevealObserver(): void {
+    if (typeof IntersectionObserver === 'undefined') return;
+    this.sectionObserver?.disconnect();
+
+    this.sectionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('reveal-visible');
+            this.sectionObserver?.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.08 }
+    );
+
+    const targets = document.querySelectorAll('.reveal-section, .ceramic-card, .ceramic-hero');
+    targets.forEach((el, index) => {
+      const htmlEl = el as HTMLElement;
+      if (!htmlEl.classList.contains('reveal-section')) {
+        htmlEl.classList.add('reveal-section');
+      }
+      htmlEl.style.setProperty('--stagger-delay', `${Math.min(index, 8) * 60}ms`);
+      this.sectionObserver?.observe(htmlEl);
+    });
+  }
+
+  openQuickActionModal(tab: 'deduction' | 'advance' | 'expense' | 'worker' = 'deduction'): void {
+    const firstWorker = this.store.activeWorkers()[0];
+    if (firstWorker?.id && !this.qaWorkerId()) {
+      this.qaWorkerId.set(firstWorker.id);
+    }
+    this.quickActionTab.set(tab);
+    this.quickActionModalOpen.set(true);
+  }
+
+  async submitQuickDeduction(): Promise<void> {
+    const workerId = this.qaWorkerId();
+    const w = this.store.workers().find((x) => x.id === workerId);
+    if (!w) {
+      this.store.showToast('اختر العامل أو النحّات أولاً', 'warning');
+      return;
+    }
+    const calc = this.qaCalculatedDeduction();
+    if (calc.amount <= 0) {
+      this.store.showToast('حدد قيمة الخصم أولاً', 'warning');
+      return;
+    }
+    await this.store.addDeduction({
+      date: this.store.todayIso(),
+      workerId,
+      projectId: this.store.selectedProjectId(),
+      mode: this.qaDeductionMode(),
+      daysDeducted: calc.daysDeducted,
+      amount: calc.amount,
+      reason: this.qaDeductionReason().trim() || 'خصم إداري مباشر',
+      notes: '',
+      settlementId: null,
+    });
+    this.qaDeductionReason.set('');
+    this.qaDeductionMoney.set(0);
+    this.quickActionModalOpen.set(false);
+  }
+
+  async submitQuickAdvance(): Promise<void> {
+    const workerId = this.qaWorkerId();
+    const amount = this.qaAdvanceAmount();
+    if (!workerId || amount <= 0) {
+      this.store.showToast('اختر العامل وأدخل مبلغ السلفة', 'warning');
+      return;
+    }
+    await this.store.addAdvance({
+      date: this.store.todayIso(),
+      workerId,
+      amount,
+      reason: this.qaAdvanceReason().trim() || 'سلفة سريعة',
+      settlementId: null,
+      notes: '',
+    });
+    this.store.showToast(`تم تسجيل سلفة ${this.store.money(amount)} بنجاح`, 'success');
+    this.qaAdvanceAmount.set(0);
+    this.qaAdvanceReason.set('');
+    this.quickActionModalOpen.set(false);
+  }
+
+  async submitQuickExpense(): Promise<void> {
+    const amount = this.qaExpenseAmount();
+    if (amount <= 0) {
+      this.store.showToast('أدخل مبلغ المصروف أولاً', 'warning');
+      return;
+    }
+    await this.store.saveExpense({
+      date: this.store.todayIso(),
+      category: this.qaExpenseCategory(),
+      amount,
+      projectId: this.store.selectedProjectId(),
+      note: this.qaExpenseNote().trim() || `مصروف ${this.qaExpenseCategory()}`,
+    });
+    this.store.showToast(`تم تسجيل مصروف ${this.qaExpenseCategory()} بنجاح`, 'success');
+    this.qaExpenseAmount.set(0);
+    this.qaExpenseNote.set('');
+    this.quickActionModalOpen.set(false);
+  }
+
+  async submitQuickWorker(): Promise<void> {
+    const name = this.qaNewWorkerName().trim();
+    if (!name) {
+      this.store.showToast('أدخل اسم العامل أو النحّات أولاً', 'warning');
+      return;
+    }
+    const id = await this.store.saveWorker({
+      name,
+      role: this.qaNewWorkerRole(),
+      workerDayRate: Math.max(0, this.qaNewWorkerDayRate() || 0),
+      workerNightRate: Math.max(0, this.qaNewWorkerNightRate() || 0),
+      phone: '',
+      active: true,
+      notes: '',
+    });
+    this.qaWorkerId.set(id);
+    this.store.showToast(`تمت إضافة ${this.qaNewWorkerRole()} "${name}" بنجاح`, 'success');
+    this.qaNewWorkerName.set('');
+    this.quickActionModalOpen.set(false);
+  }
+
+  async copyDailyWhatsAppSummary(): Promise<void> {
+    const hc = this.store.todayHeadcountMatch();
+    const sum = this.store.dashboardSummary();
+    const payday = this.store.payday15Info();
+    const text = [
+      `📊 *تقرير اليوم — ${this.store.settings().companyName}*`,
+      `📅 التاريخ: ${this.store.digits(this.store.todayIso())}`,
+      `━━━━━━━━━━━━━━`,
+      `👷 *العدد اليومي الإجباري:* ${this.store.num(hc.expectedDays)} يومية (${this.store.num(hc.expectedRegularWorkers)} عمال + ${this.store.num(hc.expectedSculptors)} نحات) · ${this.store.num(hc.expectedNights)} سهرة`,
+      `✅ *المسجل بالأسماء:* ${this.store.num(hc.actualDays)} يومية · ${this.store.num(hc.actualNights)} سهرة (${hc.statusLabel})`,
+      `━━━━━━━━━━━━━━`,
+      `💰 *أجور العمال والناش:* ${this.store.money(sum.totalWorkerWages)}`,
+      `📉 *إجمالي الخصومات المفتوحة:* ${this.store.money(this.store.totalOpenDeductions())}`,
+      `💵 *إجمالي السلف المفتوحة:* ${this.store.money(sum.totalAdvancesGiven)}`,
+      `🗓️ *دورة قبض يوم ١٥:* ${payday.label}`,
+    ].join('\n');
+
+    if (isPlatformBrowser(this.platformId) && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      this.store.showToast('تم نسخ ملخص اليوم جاهزاً للإرسال على واتساب!', 'success');
     }
   }
 

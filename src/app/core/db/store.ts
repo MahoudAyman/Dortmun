@@ -88,11 +88,19 @@ export class StoreService {
   // Global UI state
   readonly selectedProjectId = signal<number | null>(null);
   readonly selectedMonth = signal<string>('2026-10');
-  readonly lastUndo = signal<UndoOperation | null>(null);
+  readonly undoStack = signal<UndoOperation[]>([]);
+  readonly redoStack = signal<UndoOperation[]>([]);
+  readonly lastUndo = computed<UndoOperation | null>(() => this.undoStack()[0] || null);
+  readonly lastRedo = computed<UndoOperation | null>(() => this.redoStack()[0] || null);
   readonly toastMessage = signal<{ text: string; type: 'success' | 'warning' | 'error' } | null>(null);
   readonly isLockedByPin = signal<boolean>(false);
   readonly globalSearchQuery = signal<string>('');
   readonly showQuickHeadcountModal = signal<boolean>(false);
+
+  private pushUndo(op: UndoOperation): void {
+    this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
+    this.redoStack.set([]);
+  }
 
   // Derived computations
   readonly activeWorkers = computed(() => this.workers().filter((w) => w.active));
@@ -369,7 +377,8 @@ export class StoreService {
     this.expenses.set([]);
     this.auditLogs.set([]);
     this.selectedProjectId.set(null);
-    this.lastUndo.set(null);
+    this.undoStack.set([]);
+    this.redoStack.set([]);
 
     if (this.db) {
       await Promise.all([
@@ -435,8 +444,10 @@ export class StoreService {
     if (!this.isBrowser) return;
     if (isDark) {
       document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
     }
   }
 
@@ -444,6 +455,10 @@ export class StoreService {
     const nextDark = !this.settings().darkMode;
     this.applyDarkMode(nextDark);
     await this.updateSettings({ darkMode: nextDark });
+    this.showToast(
+      nextDark ? 'تم تفعيل الوضع الليلي (الداكن)' : 'تم تفعيل الوضع النهاري (الفاتح)',
+      'success'
+    );
   }
 
   async toggleNumeralMode(): Promise<void> {
@@ -494,11 +509,20 @@ export class StoreService {
     const recordId = hc.id || existing?.id;
 
     if (recordId) {
+      const prev = this.dailyHeadcounts().find((x) => x.id === recordId);
       const updated: DailyHeadcount = { ...hc, id: recordId };
       if (this.db) await this.db.dailyHeadcounts.put(updated);
       this.dailyHeadcounts.update((list) =>
         list.map((x) => (x.id === recordId ? updated : x))
       );
+      this.pushUndo({
+        description: `تحديث العدد اليومي ليوم ${hc.date}`,
+        table: 'dailyHeadcounts',
+        type: 'update',
+        recordId,
+        previousData: prev,
+        newData: updated,
+      });
       await this.logAudit(
         'تحديث العدد اليومي الإجباري',
         'العدد اليومي',
@@ -515,6 +539,13 @@ export class StoreService {
       }
       const created: DailyHeadcount = { ...hc, id };
       this.dailyHeadcounts.update((list) => [created, ...list]);
+      this.pushUndo({
+        description: `تسجيل العدد اليومي ليوم ${hc.date}`,
+        table: 'dailyHeadcounts',
+        type: 'add',
+        recordId: id,
+        newData: created,
+      });
       await this.logAudit(
         'تسجيل العدد اليومي الإجباري',
         'العدد اليومي',
@@ -526,8 +557,17 @@ export class StoreService {
   }
 
   async deleteDailyHeadcount(id: number): Promise<void> {
+    const prev = this.dailyHeadcounts().find((x) => x.id === id);
+    if (!prev) return;
     if (this.db) await this.db.dailyHeadcounts.delete(id);
     this.dailyHeadcounts.update((list) => list.filter((x) => x.id !== id));
+    this.pushUndo({
+      description: `حذف العدد اليومي ليوم ${prev.date}`,
+      table: 'dailyHeadcounts',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
     this.showToast('تم حذف سجل العدد اليومي', 'warning');
   }
 
@@ -539,11 +579,12 @@ export class StoreService {
     }
     const created: Deduction = { ...deduction, id };
     this.deductions.update((list) => [created, ...list]);
-    this.lastUndo.set({
+    this.pushUndo({
       description: `خصم على ${this.workerName(deduction.workerId)}`,
       table: 'deductions',
       type: 'add',
       recordId: id,
+      newData: created,
     });
     await this.logAudit(
       'تسجيل خصم / جزاء',
@@ -559,7 +600,7 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.deductions.delete(id);
     this.deductions.update((list) => list.filter((d) => d.id !== id));
-    this.lastUndo.set({
+    this.pushUndo({
       description: `حذف خصم ${this.workerName(prev.workerId)}`,
       table: 'deductions',
       type: 'delete',
@@ -580,12 +621,13 @@ export class StoreService {
       const prev = this.workers().find((w) => w.id === worker.id);
       if (this.db) await this.db.workers.put(worker);
       this.workers.update((list) => list.map((w) => (w.id === worker.id ? worker : w)));
-      this.lastUndo.set({
+      this.pushUndo({
         description: `تعديل العامل ${worker.name}`,
         table: 'workers',
         type: 'update',
         recordId: worker.id,
         previousData: prev,
+        newData: worker,
       });
       await this.logAudit('تعديل عامل', 'العمال', `تم تعديل بيانات ${worker.name}`);
       return worker.id;
@@ -598,11 +640,12 @@ export class StoreService {
       }
       const created = { ...worker, id };
       this.workers.update((list) => [...list, created]);
-      this.lastUndo.set({
+      this.pushUndo({
         description: `إضافة العامل ${worker.name}`,
         table: 'workers',
         type: 'add',
         recordId: id,
+        newData: created,
       });
       await this.logAudit('إضافة عامل', 'العمال', `تمت إضافة العامل ${worker.name} (${worker.role})`);
       return id;
@@ -614,7 +657,7 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.workers.delete(id);
     this.workers.update((list) => list.filter((w) => w.id !== id));
-    this.lastUndo.set({
+    this.pushUndo({
       description: `حذف العامل ${prev.name}`,
       table: 'workers',
       type: 'delete',
@@ -628,8 +671,17 @@ export class StoreService {
   // Projects
   async saveProject(project: Project): Promise<number> {
     if (project.id) {
+      const prev = this.projects().find((p) => p.id === project.id);
       if (this.db) await this.db.projects.put(project);
       this.projects.update((list) => list.map((p) => (p.id === project.id ? project : p)));
+      this.pushUndo({
+        description: `تعديل مشروع ${project.name}`,
+        table: 'projects',
+        type: 'update',
+        recordId: project.id,
+        previousData: prev,
+        newData: project,
+      });
       await this.logAudit('تعديل مشروع', 'المشاريع', `تم تعديل مشروع ${project.name}`);
       return project.id;
     } else {
@@ -641,6 +693,13 @@ export class StoreService {
       }
       const created = { ...project, id };
       this.projects.update((list) => [...list, created]);
+      this.pushUndo({
+        description: `إضافة مشروع ${project.name}`,
+        table: 'projects',
+        type: 'add',
+        recordId: id,
+        newData: created,
+      });
       if (this.projects().length === 1) {
         await this.updateSettings({ defaultProjectId: id });
       }
@@ -654,6 +713,13 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.projects.delete(id);
     this.projects.update((list) => list.filter((p) => p.id !== id));
+    this.pushUndo({
+      description: `حذف مشروع ${prev.name}`,
+      table: 'projects',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
     await this.logAudit('حذف مشروع', 'المشاريع', `تم حذف مشروع ${prev.name}`);
     this.showToast(`تم حذف مشروع ${prev.name}`, 'warning');
   }
@@ -707,7 +773,7 @@ export class StoreService {
       if (dayVal === 0 && nightVal === 0) {
         if (this.db) await this.db.attendance.delete(existing.id);
         this.attendances.update((list) => list.filter((a) => a.id !== existing.id));
-        this.lastUndo.set({
+        this.pushUndo({
           description: `مسح حضور ${worker.name} ليوم ${params.date}`,
           table: 'attendance',
           type: 'delete',
@@ -727,12 +793,13 @@ export class StoreService {
       this.attendances.update((list) =>
         list.map((a) => (a.id === existing.id ? updated : a))
       );
-      this.lastUndo.set({
+      this.pushUndo({
         description: `تعديل حضور ${worker.name} ليوم ${params.date}`,
         table: 'attendance',
         type: 'update',
         recordId: existing.id,
         previousData: existing,
+        newData: updated,
       });
       return updated;
     }
@@ -760,11 +827,12 @@ export class StoreService {
     }
     const created = { ...record, id };
     this.attendances.update((list) => [...list, created]);
-    this.lastUndo.set({
+    this.pushUndo({
       description: `تسجيل حضور ${worker.name} ليوم ${params.date}`,
       table: 'attendance',
       type: 'add',
       recordId: id,
+      newData: created,
     });
     return created;
   }
@@ -777,11 +845,12 @@ export class StoreService {
     }
     const created: Advance = { ...advance, id };
     this.advances.update((list) => [created, ...list]);
-    this.lastUndo.set({
+    this.pushUndo({
       description: `تسجيل سلفة ${this.workerName(advance.workerId)}`,
       table: 'advances',
       type: 'add',
       recordId: id,
+      newData: created,
     });
     await this.logAudit(
       'تسجيل سلفة',
@@ -796,7 +865,7 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.advances.delete(id);
     this.advances.update((list) => list.filter((a) => a.id !== id));
-    this.lastUndo.set({
+    this.pushUndo({
       description: `حذف سلفة ${this.workerName(prev.workerId)}`,
       table: 'advances',
       type: 'delete',
@@ -952,11 +1021,12 @@ export class StoreService {
       }
       const created = { ...extra, id: extraId };
       this.extras.update((list) => [created, ...list]);
-      this.lastUndo.set({
+      this.pushUndo({
         description: `إضافة بند إضافي (${extra.type})`,
         table: 'extras',
         type: 'add',
         recordId: extraId,
+        newData: created,
       });
     }
 
@@ -1028,10 +1098,19 @@ export class StoreService {
   // Checks
   async saveCheck(check: CheckItem): Promise<number> {
     if (check.id) {
+      const prev = this.checks().find((c) => c.id === check.id);
       if (this.db) await this.db.checks.put(check);
       this.checks.update((list) =>
         list.map((c) => (c.id === check.id ? check : c))
       );
+      this.pushUndo({
+        description: `تعديل شيك رقم ${check.number}`,
+        table: 'checks',
+        type: 'update',
+        recordId: check.id,
+        previousData: prev,
+        newData: check,
+      });
       await this.logAudit('تعديل شيك', 'الشيكات', `تعديل شيك رقم ${check.number} (${check.status})`);
       return check.id;
     } else {
@@ -1043,11 +1122,12 @@ export class StoreService {
       }
       const created = { ...check, id };
       this.checks.update((list) => [created, ...list]);
-      this.lastUndo.set({
+      this.pushUndo({
         description: `إضافة شيك رقم ${check.number}`,
         table: 'checks',
         type: 'add',
         recordId: id,
+        newData: created,
       });
       await this.logAudit('إضافة شيك', 'الشيكات', `شيك ${check.direction} رقم ${check.number} بمبلغ ${check.amount}`);
       return id;
@@ -1059,6 +1139,13 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.checks.delete(id);
     this.checks.update((list) => list.filter((c) => c.id !== id));
+    this.pushUndo({
+      description: `حذف شيك رقم ${prev.number}`,
+      table: 'checks',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
     await this.logAudit('حذف شيك', 'الشيكات', `تم حذف شيك رقم ${prev.number}`);
     this.showToast('تم حذف الشيك', 'warning');
   }
@@ -1066,10 +1153,19 @@ export class StoreService {
   // Expenses
   async saveExpense(expense: Expense): Promise<number> {
     if (expense.id) {
+      const prev = this.expenses().find((e) => e.id === expense.id);
       if (this.db) await this.db.expenses.put(expense);
       this.expenses.update((list) =>
         list.map((e) => (e.id === expense.id ? expense : e))
       );
+      this.pushUndo({
+        description: `تعديل مصروف ${expense.category}`,
+        table: 'expenses',
+        type: 'update',
+        recordId: expense.id,
+        previousData: prev,
+        newData: expense,
+      });
       return expense.id;
     } else {
       let id = Math.max(0, ...this.expenses().map((e) => e.id || 0)) + 1;
@@ -1080,11 +1176,12 @@ export class StoreService {
       }
       const created = { ...expense, id };
       this.expenses.update((list) => [created, ...list]);
-      this.lastUndo.set({
+      this.pushUndo({
         description: `تسجيل مصروف ${expense.category}`,
         table: 'expenses',
         type: 'add',
         recordId: id,
+        newData: created,
       });
       await this.logAudit('إضافة مصروف', 'المصاريف', `مصروف ${expense.category} بمبلغ ${expense.amount}`);
       return id;
@@ -1096,11 +1193,18 @@ export class StoreService {
     if (!prev) return;
     if (this.db) await this.db.expenses.delete(id);
     this.expenses.update((list) => list.filter((e) => e.id !== id));
+    this.pushUndo({
+      description: `حذف مصروف ${prev.category}`,
+      table: 'expenses',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
     await this.logAudit('حذف مصروف', 'المصاريف', `حذف مصروف ${prev.category} بمبلغ ${prev.amount}`);
     this.showToast('تم حذف المصروف', 'warning');
   }
 
-  // Undo last operation
+  // Undo last operation (زر التراجع)
   async undoLastOperation(): Promise<boolean> {
     const op = this.lastUndo();
     if (!op) {
@@ -1108,16 +1212,23 @@ export class StoreService {
       return false;
     }
 
+    const capturedRedo: UndoOperation = { ...op };
+
     if (op.table === 'attendance') {
       if (op.type === 'add' && op.recordId) {
+        const current = this.attendances().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
         if (this.db) await this.db.attendance.delete(op.recordId);
         this.attendances.update((l) => l.filter((x) => x.id !== op.recordId));
       } else if (op.type === 'batch-add' && op.recordIds) {
-        if (this.db) await this.db.attendance.bulkDelete(op.recordIds);
         const set = new Set(op.recordIds);
+        capturedRedo.newData = op.newData || this.attendances().filter((x) => set.has(x.id!));
+        if (this.db) await this.db.attendance.bulkDelete(op.recordIds);
         this.attendances.update((l) => l.filter((x) => !set.has(x.id!)));
       } else if (op.type === 'update' && op.previousData) {
         const prev = op.previousData as Attendance;
+        const current = this.attendances().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
         if (this.db) await this.db.attendance.put(prev);
         this.attendances.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
       } else if (op.type === 'delete' && op.previousData) {
@@ -1125,8 +1236,27 @@ export class StoreService {
         if (this.db) await this.db.attendance.put(prev);
         this.attendances.update((l) => [...l, prev]);
       }
+    } else if (op.table === 'dailyHeadcounts') {
+      if (op.type === 'add' && op.recordId) {
+        const current = this.dailyHeadcounts().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.dailyHeadcounts.delete(op.recordId);
+        this.dailyHeadcounts.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as DailyHeadcount;
+        const current = this.dailyHeadcounts().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.dailyHeadcounts.put(prev);
+        this.dailyHeadcounts.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
+      } else if (op.type === 'delete' && op.previousData) {
+        const prev = op.previousData as DailyHeadcount;
+        if (this.db) await this.db.dailyHeadcounts.put(prev);
+        this.dailyHeadcounts.update((l) => [prev, ...l]);
+      }
     } else if (op.table === 'advances') {
       if (op.type === 'add' && op.recordId) {
+        const current = this.advances().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
         if (this.db) await this.db.advances.delete(op.recordId);
         this.advances.update((l) => l.filter((x) => x.id !== op.recordId));
       } else if (op.type === 'delete' && op.previousData) {
@@ -1136,6 +1266,8 @@ export class StoreService {
       }
     } else if (op.table === 'deductions') {
       if (op.type === 'add' && op.recordId) {
+        const current = this.deductions().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
         if (this.db) await this.db.deductions.delete(op.recordId);
         this.deductions.update((l) => l.filter((x) => x.id !== op.recordId));
       } else if (op.type === 'delete' && op.previousData) {
@@ -1145,20 +1277,194 @@ export class StoreService {
       }
     } else if (op.table === 'workers') {
       if (op.type === 'add' && op.recordId) {
+        const current = this.workers().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
         if (this.db) await this.db.workers.delete(op.recordId);
         this.workers.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as Worker;
+        const current = this.workers().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.workers.put(prev);
+        this.workers.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
       } else if (op.type === 'delete' && op.previousData) {
         const prev = op.previousData as Worker;
         if (this.db) await this.db.workers.put(prev);
         this.workers.update((l) => [...l, prev]);
       }
+    } else if (op.table === 'projects') {
+      if (op.type === 'add' && op.recordId) {
+        const current = this.projects().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.projects.delete(op.recordId);
+        this.projects.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as Project;
+        const current = this.projects().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.projects.put(prev);
+        this.projects.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
+      } else if (op.type === 'delete' && op.previousData) {
+        const prev = op.previousData as Project;
+        if (this.db) await this.db.projects.put(prev);
+        this.projects.update((l) => [...l, prev]);
+      }
+    } else if (op.table === 'checks') {
+      if (op.type === 'add' && op.recordId) {
+        const current = this.checks().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.checks.delete(op.recordId);
+        this.checks.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as CheckItem;
+        const current = this.checks().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.checks.put(prev);
+        this.checks.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
+      } else if (op.type === 'delete' && op.previousData) {
+        const prev = op.previousData as CheckItem;
+        if (this.db) await this.db.checks.put(prev);
+        this.checks.update((l) => [prev, ...l]);
+      }
+    } else if (op.table === 'expenses') {
+      if (op.type === 'add' && op.recordId) {
+        const current = this.expenses().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.expenses.delete(op.recordId);
+        this.expenses.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as Expense;
+        const current = this.expenses().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.expenses.put(prev);
+        this.expenses.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
+      } else if (op.type === 'delete' && op.previousData) {
+        const prev = op.previousData as Expense;
+        if (this.db) await this.db.expenses.put(prev);
+        this.expenses.update((l) => [prev, ...l]);
+      }
     } else if (op.table === 'extras' && op.type === 'add' && op.recordId) {
+      const current = this.extras().find((x) => x.id === op.recordId);
+      capturedRedo.newData = op.newData || current;
       await this.deleteExtra(op.recordId);
     }
 
+    this.undoStack.update((stack) => stack.slice(1));
+    this.redoStack.update((stack) => [capturedRedo, ...stack.slice(0, 49)]);
+
     await this.logAudit('تراجع', op.table, `تم التراجع عن: ${op.description}`);
     this.showToast(`تم التراجع عن: ${op.description}`, 'success');
-    this.lastUndo.set(null);
+    return true;
+  }
+
+  // Redo last undone operation (زر رد التراجع / الإعادة)
+  async redoLastOperation(): Promise<boolean> {
+    const op = this.lastRedo();
+    if (!op) {
+      this.showToast('لا توجد عملية متراجع عنها لردّها حالياً', 'warning');
+      return false;
+    }
+
+    if (op.table === 'attendance') {
+      if (op.type === 'add' && op.newData) {
+        const item = op.newData as Attendance;
+        if (this.db) await this.db.attendance.put(item);
+        this.attendances.update((l) => [...l.filter((x) => x.id !== item.id), item]);
+      } else if (op.type === 'batch-add' && Array.isArray(op.newData)) {
+        const items = op.newData as Attendance[];
+        if (this.db) await this.db.attendance.bulkPut(items);
+        const ids = new Set(items.map((x) => x.id));
+        this.attendances.update((l) => [...l.filter((x) => !ids.has(x.id)), ...items]);
+      } else if (op.type === 'update' && op.newData) {
+        const item = op.newData as Attendance;
+        if (this.db) await this.db.attendance.put(item);
+        this.attendances.update((l) => l.map((x) => (x.id === item.id ? item : x)));
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.attendance.delete(op.recordId);
+        this.attendances.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'dailyHeadcounts') {
+      if ((op.type === 'add' || op.type === 'update') && op.newData) {
+        const item = op.newData as DailyHeadcount;
+        if (this.db) await this.db.dailyHeadcounts.put(item);
+        this.dailyHeadcounts.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.dailyHeadcounts.delete(op.recordId);
+        this.dailyHeadcounts.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'advances') {
+      if (op.type === 'add' && op.newData) {
+        const item = op.newData as Advance;
+        if (this.db) await this.db.advances.put(item);
+        this.advances.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.advances.delete(op.recordId);
+        this.advances.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'deductions') {
+      if (op.type === 'add' && op.newData) {
+        const item = op.newData as Deduction;
+        if (this.db) await this.db.deductions.put(item);
+        this.deductions.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.deductions.delete(op.recordId);
+        this.deductions.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'workers') {
+      if (op.type === 'add' && op.newData) {
+        const item = op.newData as Worker;
+        if (this.db) await this.db.workers.put(item);
+        this.workers.update((l) => [...l.filter((x) => x.id !== item.id), item]);
+      } else if (op.type === 'update' && op.newData) {
+        const item = op.newData as Worker;
+        if (this.db) await this.db.workers.put(item);
+        this.workers.update((l) => l.map((x) => (x.id === item.id ? item : x)));
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.workers.delete(op.recordId);
+        this.workers.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'projects') {
+      if (op.type === 'add' && op.newData) {
+        const item = op.newData as Project;
+        if (this.db) await this.db.projects.put(item);
+        this.projects.update((l) => [...l.filter((x) => x.id !== item.id), item]);
+      } else if (op.type === 'update' && op.newData) {
+        const item = op.newData as Project;
+        if (this.db) await this.db.projects.put(item);
+        this.projects.update((l) => l.map((x) => (x.id === item.id ? item : x)));
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.projects.delete(op.recordId);
+        this.projects.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'checks') {
+      if ((op.type === 'add' || op.type === 'update') && op.newData) {
+        const item = op.newData as CheckItem;
+        if (this.db) await this.db.checks.put(item);
+        this.checks.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.checks.delete(op.recordId);
+        this.checks.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'expenses') {
+      if ((op.type === 'add' || op.type === 'update') && op.newData) {
+        const item = op.newData as Expense;
+        if (this.db) await this.db.expenses.put(item);
+        this.expenses.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.expenses.delete(op.recordId);
+        this.expenses.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
+    } else if (op.table === 'extras' && op.type === 'add' && op.newData) {
+      const item = op.newData as ExtraItem;
+      if (this.db) await this.db.extras.put(item);
+      this.extras.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+    }
+
+    this.redoStack.update((stack) => stack.slice(1));
+    this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
+
+    await this.logAudit('رد التراجع', op.table, `تم رد التراجع وإعادة: ${op.description}`);
+    this.showToast(`تم رد التراجع وإعادة: ${op.description}`, 'success');
     return true;
   }
 
