@@ -1,0 +1,13 @@
+[build]
+  command = "bun run build"
+  publish = "dist/app/browser"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+  BUN_VERSION = "1.4.2"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
