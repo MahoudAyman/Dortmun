@@ -1,44 +1,142 @@
 {
-  "version": 13,
-  "updatedAt": "2026-10-19 01:08",
-  "updatedByDeviceId": "dev-mvek1u5m-igdd",
-  "updatedByDeviceName": "كمبيوتر محمود (Linux)",
-  "lastOperation": "إضافة عامل (العمال): تمت إضافة العامل المهندس طارق بـ (عامل)",
+  "version": 14,
+  "updatedAt": "2026-10-19 17:57",
+  "updatedByDeviceId": "dev-mvff806f-vg5y",
+  "updatedByDeviceName": "كمبيوتر محمود (Windows)",
+  "lastOperation": "تحديث إعدادات النظام",
   "snapshot": {
-    "version": 13,
-    "updatedAt": "2026-10-19 01:08",
-    "updatedByDeviceId": "dev-mvek1u5m-igdd",
-    "updatedByDeviceName": "كمبيوتر محمود (Linux)",
-    "lastOperation": "إضافة عامل (العمال): تمت إضافة العامل المهندس طارق بـ (عامل)",
+    "version": 14,
+    "updatedAt": "2026-10-19 17:57",
+    "updatedByDeviceId": "dev-mvff806f-vg5y",
+    "updatedByDeviceName": "كمبيوتر محمود (Windows)",
+    "lastOperation": "تحديث إعدادات النظام",
     "workers": [
       {
-        "name": "المهندس طارق بـ",
+        "id": 1,
+        "name": "محمود أيمن",
+        "role": "نحات",
+        "notes": "لنب",
+        "phone": "١٠١٢٩٣٩٤٨",
+        "active": true,
+        "workerDayRate": 270,
+        "workerNightRate": 100
+      },
+      {
+        "id": 2,
+        "name": "عبدالباسط",
         "role": "عامل",
-        "workerDayRate": 500,
-        "workerNightRate": 250,
+        "notes": "",
         "phone": "",
         "active": true,
-        "notes": "أُضيف عبر الأمر الذكي السريع",
-        "id": 1
+        "workerDayRate": 290,
+        "workerNightRate": 100
       }
     ],
-    "projects": [],
-    "attendances": [],
-    "advances": [],
+    "projects": [
+      {
+        "id": 1,
+        "name": "محمود ",
+        "notes": "",
+        "active": true,
+        "companyDayRate": 500,
+        "companyNightRate": 260
+      },
+      {
+        "id": 2,
+        "name": "ميناء هاوس",
+        "notes": "",
+        "active": true,
+        "companyDayRate": 375,
+        "companyNightRate": 187.5
+      }
+    ],
+    "attendances": [
+      {
+        "id": 1,
+        "date": "2026-10-19",
+        "note": "",
+        "workerId": 1,
+        "dayWorked": 1,
+        "projectId": 2,
+        "nightWorked": 1,
+        "workerDayRateSnapshot": 270,
+        "companyDayRateSnapshot": 375,
+        "workerNightRateSnapshot": 100,
+        "companyNightRateSnapshot": 187.5
+      },
+      {
+        "id": 2,
+        "date": "2026-10-19",
+        "note": "",
+        "workerId": 2,
+        "dayWorked": 1,
+        "projectId": 2,
+        "nightWorked": 0,
+        "workerDayRateSnapshot": 290,
+        "companyDayRateSnapshot": 375,
+        "workerNightRateSnapshot": 100,
+        "companyNightRateSnapshot": 187.5
+      }
+    ],
+    "advances": [
+      {
+        "id": 2,
+        "date": "2026-10-19",
+        "notes": "",
+        "amount": 50,
+        "reason": "سلفة من الإضافة الجماعية",
+        "workerId": 2,
+        "settlementId": null
+      },
+      {
+        "id": 1,
+        "date": "2026-10-19",
+        "notes": "",
+        "amount": 100,
+        "reason": "سلفة من الإضافة الجماعية",
+        "workerId": 1,
+        "settlementId": null
+      }
+    ],
     "deductions": [],
-    "dailyHeadcounts": [],
+    "dailyHeadcounts": [
+      {
+        "id": 1,
+        "date": "2026-10-19",
+        "notes": "",
+        "projectId": 1,
+        "workersCount": 1,
+        "sculptorsCount": 1,
+        "supervisorName": "",
+        "expectedDayCount": 2,
+        "expectedNightCount": 1
+      }
+    ],
     "settlements": [],
     "extracts": [],
     "extractLines": [],
     "extras": [],
     "extraCashes": [],
-    "checks": [],
+    "checks": [
+      {
+        "direction": "وارد",
+        "number": "1",
+        "bank": "بنك قناة السويس",
+        "amount": 100000,
+        "dueDate": "2026-10-19",
+        "status": "اتصرف",
+        "projectId": 1,
+        "extractId": null,
+        "notes": "",
+        "id": 1
+      }
+    ],
     "expenses": [],
     "settings": {
       "id": 1,
       "companyName": "شركة دورتمون للمقاولات",
-      "monthlyDayCap": 30,
-      "expectedMonthlyDays": 26,
+      "monthlyDayCap": 15,
+      "expectedMonthlyDays": 200,
       "capMode": "confirm",
       "paydayDayOfMonth": 15,
       "mandatoryDailyHeadcount": true,
@@ -46,12 +144,12 @@
       "defaultWorkerNightRate": 200,
       "defaultCompanyDayRate": 550,
       "defaultCompanyNightRate": 275,
-      "defaultProjectId": null,
+      "defaultProjectId": 1,
       "pinHash": null,
       "lastBackupDate": null,
       "backupReminderDays": 7,
-      "numeralMode": "ar",
-      "darkMode": false,
+      "numeralMode": "en",
+      "darkMode": true,
       "lockedMonths": [],
       "taxRates": [
         {
@@ -60,15 +158,15 @@
         },
         {
           "name": "ضريبة منبع مقاولات (1%)",
-          "rate": 1
+          "rate": 0
         },
         {
           "name": "تأمينات ومصاريف إدارية (3%)",
-          "rate": 3
+          "rate": 0
         },
         {
           "name": "ضريبة مقاولات شاملة (5%)",
-          "rate": 5
+          "rate": 3
         },
         {
           "name": "ضريبة قيمة مضافة (14%)",
@@ -77,29 +175,102 @@
       ],
       "engineers": [],
       "supervisors": [],
-      "notes": "نظام شركة دورتمون الذكي — جاهز لتسجيل بياناتك الحقيقية من الصفر"
+      "notes": "نظام شركة دورتمون الذكي — جاهز لتسجيل بياناتك الحقيقية من الصفر",
+      "localOnlyMode": false
     },
     "auditLogs": [
       {
-        "timestamp": "2026-10-19 01:08",
+        "timestamp": "2026-10-19 17:25",
+        "action": "إضافة شيك",
+        "entity": "الشيكات",
+        "details": "شيك وارد رقم 1 بمبلغ 100000",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "id": 9
+      },
+      {
+        "id": 8,
+        "action": "إضافة جماعية",
+        "entity": "الحضور والسلف والخصومات",
+        "details": "تم تسجيل حضور لـ 2 عمال، و 2 سلف، و 0 خصومات بتاريخ 2026-10-19",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:17",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 7,
+        "action": "تسجيل سلفة",
+        "entity": "السلف",
+        "details": "سلفة بمبلغ 50 ج.م للعامل عبدالباسط",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:17",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 6,
+        "action": "تسجيل سلفة",
+        "entity": "السلف",
+        "details": "سلفة بمبلغ 100 ج.م للعامل محمود أيمن",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:17",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 5,
+        "action": "تسجيل العدد اليومي الإجباري",
+        "entity": "العدد اليومي",
+        "details": "تاريخ 2026-10-19: 2 يومية (منهم 1 نحات) و 1 سهرة",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:17",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 4,
         "action": "إضافة عامل",
         "entity": "العمال",
-        "details": "تمت إضافة العامل المهندس طارق بـ (عامل)",
-        "deviceId": "dev-mvek1u5m-igdd",
-        "deviceName": "كمبيوتر محمود (Linux)",
-        "id": 1
+        "details": "تمت إضافة العامل عبدالباسط (عامل)",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:16",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 3,
+        "action": "إضافة عامل",
+        "entity": "العمال",
+        "details": "تمت إضافة العامل محمود أيمن (نحات)",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:15",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 2,
+        "action": "إضافة مشروع",
+        "entity": "المشاريع",
+        "details": "تمت إضافة مشروع ميناء هاوس",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 17:07",
+        "deviceName": "كمبيوتر محمود (Linux)"
+      },
+      {
+        "id": 1,
+        "action": "إضافة مشروع",
+        "entity": "المشاريع",
+        "details": "تمت إضافة مشروع محمود ",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "timestamp": "2026-10-19 16:59",
+        "deviceName": "كمبيوتر محمود (Linux)"
       }
     ],
     "devices": [
       {
-        "deviceId": "dev-mvek1u5m-igdd",
-        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceId": "dev-mvff806f-vg5y",
+        "deviceName": "كمبيوتر محمود (Windows)",
         "deviceType": "desktop",
-        "browserOs": "Chrome · Linux",
-        "firstLoginAt": "2026-10-19 01:07",
-        "lastActiveAt": "2026-10-19 01:08",
-        "lastAction": "إضافة عامل (العمال): تمت إضافة العامل المهندس طارق بـ (عامل)",
-        "operationsCount": 2,
+        "browserOs": "Chrome · Windows",
+        "firstLoginAt": "2026-10-19 15:40",
+        "lastActiveAt": "2026-10-19 17:57",
+        "lastAction": "تحديث إعدادات النظام",
+        "operationsCount": 1,
         "isOnline": true,
         "syncMode": "cloud"
       },
@@ -109,14 +280,150 @@
         "deviceType": "mobile",
         "browserOs": "Chrome · Android",
         "firstLoginAt": "2026-10-18 23:40",
-        "lastActiveAt": "2026-10-19 01:02",
-        "lastAction": "رفع يدوي كامل من الجهاز إلى الخادم",
-        "operationsCount": 13,
+        "lastActiveAt": "2026-10-19 17:45",
+        "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+        "operationsCount": 10,
+        "syncMode": "cloud",
+        "isOnline": false,
+        "presence_ref": "GN__V4TK6Y5i9J-B"
+      },
+      {
+        "browserOs": "Chrome · Android",
+        "deviceId": "dev-mvfi14rb-9msl",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "mobile",
+        "firstLoginAt": "2026-10-19 16:59",
+        "isOnline": false,
+        "lastAction": "إضافة شيك (الشيكات): شيك وارد رقم 1 بمبلغ 100000",
+        "lastActiveAt": "2026-10-19 17:25",
+        "operationsCount": 26,
+        "syncMode": "cloud",
+        "presence_ref": "GN_-Rex5h-nZuuVD"
+      },
+      {
+        "deviceId": "dev-mvfi9uji-ewog",
+        "deviceName": "موبايل محمود (Android)",
+        "deviceType": "mobile",
+        "browserOs": "Chrome · Android",
+        "firstLoginAt": "2026-10-19 17:05",
+        "lastActiveAt": "2026-10-19 17:05",
+        "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+        "operationsCount": 0,
         "syncMode": "cloud",
         "isOnline": false
+      },
+      {
+        "browserOs": "Chrome · Android",
+        "deviceId": "dev-mvfi306v-fklt",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "mobile",
+        "firstLoginAt": "2026-10-19 17:00",
+        "isOnline": false,
+        "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+        "lastActiveAt": "2026-10-19 17:00",
+        "operationsCount": 0,
+        "syncMode": "cloud",
+        "presence_ref": "GN_851zpbxbPZSUC"
+      },
+      {
+        "deviceId": "dev-mvfi16p1-hwgq",
+        "deviceName": "موبايل محمود (Android)",
+        "deviceType": "mobile",
+        "browserOs": "Chrome · Android",
+        "firstLoginAt": "2026-10-19 16:59",
+        "lastActiveAt": "2026-10-19 16:59",
+        "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+        "operationsCount": 0,
+        "syncMode": "cloud",
+        "isOnline": false
+      },
+      {
+        "deviceId": "dev-mvff9m4j-hoin",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-19 15:41",
+        "lastActiveAt": "2026-10-19 15:41",
+        "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+        "operationsCount": 0,
+        "syncMode": "cloud",
+        "isOnline": false
+      },
+      {
+        "deviceId": "dev-mvek1u5m-igdd",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-19 01:07",
+        "lastActiveAt": "2026-10-19 01:08",
+        "lastAction": "إضافة عامل (العمال): تمت إضافة العامل المهندس طارق بـ (عامل)",
+        "operationsCount": 2,
+        "syncMode": "cloud",
+        "isOnline": false
+      },
+      {
+        "browserOs": "Chrome · Linux",
+        "deviceId": "dev-mvehq5hv-ymri",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "firstLoginAt": "2026-10-19 00:02",
+        "isOnline": false,
+        "lastAction": "تسجيل دخول متصل بالخادم ١٠٠٪",
+        "lastActiveAt": "2026-10-19 00:02",
+        "operationsCount": 0,
+        "syncMode": "cloud",
+        "presence_ref": "GN_FWTVsgVZI4TUB"
+      },
+      {
+        "deviceId": "dev-mvehp15s-4rhq",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-19 00:01",
+        "lastActiveAt": "2026-10-19 00:01",
+        "lastAction": "تسجيل دخول متصل بالخادم ١٠٠٪",
+        "operationsCount": 0,
+        "isOnline": false,
+        "syncMode": "cloud"
+      },
+      {
+        "deviceId": "dev-mvehmxfk-btw3",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-19 00:00",
+        "lastActiveAt": "2026-10-19 00:00",
+        "lastAction": "تسجيل دخول متصل بالخادم ١٠٠٪",
+        "operationsCount": 0,
+        "isOnline": false,
+        "syncMode": "cloud"
+      },
+      {
+        "deviceId": "dev-mvegepiq-vcb4",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-18 23:25",
+        "lastActiveAt": "2026-10-18T23:30:26.977Z",
+        "lastAction": "تسجيل دخول متصل بالخادم ١٠٠٪",
+        "operationsCount": 0,
+        "isOnline": false,
+        "syncMode": "cloud"
+      },
+      {
+        "deviceId": "dev-mvehmdog-oonq",
+        "deviceName": "كمبيوتر محمود (Linux)",
+        "deviceType": "desktop",
+        "browserOs": "Chrome · Linux",
+        "firstLoginAt": "2026-10-18 23:59",
+        "lastActiveAt": "2026-10-18 23:59",
+        "lastAction": "تسجيل دخول متصل بالخادم ١٠٠٪",
+        "operationsCount": 0,
+        "isOnline": false,
+        "syncMode": "cloud"
       }
     ],
-    "updatedAtIso": "2026-10-19T01:08:49.814Z"
+    "updatedAtIso": "2026-10-19T17:57:36.693Z"
   },
   "devices": {
     "dev-mvegepiq-vcb4": {
@@ -137,9 +444,9 @@
       "deviceType": "mobile",
       "browserOs": "Chrome · Android",
       "firstLoginAt": "2026-10-18 23:40",
-      "lastActiveAt": "2026-10-19 01:02",
-      "lastAction": "رفع يدوي كامل من الجهاز إلى الخادم",
-      "operationsCount": 13,
+      "lastActiveAt": "2026-10-19 17:04",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 10,
       "isOnline": true,
       "syncMode": "cloud"
     },
@@ -200,6 +507,66 @@
       "lastActiveAt": "2026-10-19 01:08",
       "lastAction": "إضافة عامل (العمال): تمت إضافة العامل المهندس طارق بـ (عامل)",
       "operationsCount": 1,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvff806f-vg5y": {
+      "deviceId": "dev-mvff806f-vg5y",
+      "deviceName": "كمبيوتر محمود (Windows)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Windows",
+      "firstLoginAt": "2026-10-19 15:40",
+      "lastActiveAt": "2026-10-19 18:10",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 1,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvfl4v8c-gplo": {
+      "deviceId": "dev-mvfl4v8c-gplo",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-19 18:25",
+      "lastActiveAt": "2026-10-19 18:26",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvfl9fjb-xn2v": {
+      "deviceId": "dev-mvfl9fjb-xn2v",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-19 18:29",
+      "lastActiveAt": "2026-10-19 18:29",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvfp4g4f-o6ez": {
+      "deviceId": "dev-mvfp4g4f-o6ez",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-19 20:17",
+      "lastActiveAt": "2026-10-19 20:18",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvfp698v-mnn0": {
+      "deviceId": "dev-mvfp698v-mnn0",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-19 20:18",
+      "lastActiveAt": "2026-10-19 20:18",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
       "isOnline": true,
       "syncMode": "cloud"
     }

@@ -24,6 +24,7 @@ export const SUPABASE_TABLES_LIST = [
   { name: 'dortmun_extra_cash', label: 'توزيع نقدية الإضافي والناش للعمال' },
   { name: 'dortmun_checks', label: 'دفتر الشيكات الواردة والصادرة' },
   { name: 'dortmun_expenses', label: 'المصاريف الخارجية للموقع' },
+  { name: 'dortmun_incoming_payments', label: 'المقبوضات والدفعات الواردة المباشرة (شركة · شخص · شيك)' },
   { name: 'dortmun_audit_logs', label: 'سجل الرقابة والحركات التفصيلي بالأجهزة' },
 ] as const;
 
@@ -294,7 +295,21 @@ CREATE TABLE IF NOT EXISTS public.dortmun_expenses (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 19. جدول سجل الرقابة والحركات التفصيلي مع اسم الجهاز (Audit Logs with Device Tracking)
+-- 19. جدول المقبوضات والدفعات الواردة المباشرة (Incoming Direct Payments from Company/Person/Check)
+CREATE TABLE IF NOT EXISTS public.dortmun_incoming_payments (
+  id BIGINT PRIMARY KEY,
+  date TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'شركة',
+  source_name TEXT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  method TEXT NOT NULL DEFAULT 'نقدي',
+  project_id BIGINT NULL,
+  check_number TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 20. جدول سجل الرقابة والحركات التفصيلي مع اسم الجهاز (Audit Logs with Device Tracking)
 CREATE TABLE IF NOT EXISTS public.dortmun_audit_logs (
   id BIGINT PRIMARY KEY,
   timestamp TEXT NOT NULL,
@@ -317,6 +332,7 @@ CREATE INDEX IF NOT EXISTS idx_dortmun_adv_worker ON public.dortmun_advances(wor
 CREATE INDEX IF NOT EXISTS idx_dortmun_ded_worker ON public.dortmun_deductions(worker_id);
 CREATE INDEX IF NOT EXISTS idx_dortmun_chk_status ON public.dortmun_checks(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_dortmun_exp_date ON public.dortmun_expenses(date);
+CREATE INDEX IF NOT EXISTS idx_dortmun_inc_date ON public.dortmun_incoming_payments(date);
 CREATE INDEX IF NOT EXISTS idx_dortmun_audit_ts ON public.dortmun_audit_logs(timestamp DESC);
 
 -- =========================================================================================
@@ -349,14 +365,15 @@ SELECT
   COALESCE(SUM(a.night_worked), 0) AS total_nights,
   COALESCE(SUM(a.day_worked * a.worker_day_rate_snapshot + a.night_worked * a.worker_night_rate_snapshot), 0) AS total_worker_wages,
   COALESCE(SUM(a.day_worked * a.company_day_rate_snapshot + a.night_worked * a.company_night_rate_snapshot), 0) AS total_company_entitlement,
-  COALESCE((SELECT SUM(ex.amount) FROM public.dortmun_expenses ex WHERE ex.project_id = p.id), 0) AS total_external_expenses
+  COALESCE((SELECT SUM(ex.amount) FROM public.dortmun_expenses ex WHERE ex.project_id = p.id), 0) AS total_external_expenses,
+  COALESCE((SELECT SUM(inc.amount) FROM public.dortmun_incoming_payments inc WHERE inc.project_id = p.id), 0) AS total_incoming_payments
 FROM public.dortmun_projects p
 LEFT JOIN public.dortmun_attendance a ON a.project_id = p.id
 GROUP BY p.id, p.name;
 
 -- =========================================================================================
--- الدالة الذكية للمزامنة الشاملة (Atomic Full Snapshot -> All 18 Relational Tables RPC)
--- تزامن جميع الجداول الـ 18 تلقائياً في عملية واحدة (Transaction) عند كل حركة في الموقع
+-- الدالة الذكية للمزامنة الشاملة (Atomic Full Snapshot -> All 19 Relational Tables RPC)
+-- تزامن جميع الجداول الـ 19 تلقائياً في عملية واحدة (Transaction) عند كل حركة في الموقع
 -- =========================================================================================
 CREATE OR REPLACE FUNCTION public.sync_dortmun_full_snapshot(
   p_version BIGINT,
@@ -659,7 +676,28 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
   END IF;
 
-  -- 15. مزامنة سجل الرقابة والحركات (dortmun_audit_logs)
+  -- 15. مزامنة جدول المقبوضات والدفعات الواردة المباشرة (dortmun_incoming_payments)
+  DELETE FROM public.dortmun_incoming_payments;
+  IF jsonb_typeof(p_payload->'incomingPayments') = 'array' AND jsonb_array_length(p_payload->'incomingPayments') > 0 THEN
+    INSERT INTO public.dortmun_incoming_payments (
+      id, date, source_type, source_name, amount, method, project_id, check_number, notes
+    )
+    SELECT
+      COALESCE((item->>'id')::BIGINT, 0),
+      COALESCE(item->>'date', ''),
+      COALESCE(item->>'sourceType', 'شركة'),
+      COALESCE(item->>'sourceName', ''),
+      COALESCE((item->>'amount')::NUMERIC, 0),
+      COALESCE(item->>'method', 'نقدي'),
+      NULLIF(item->>'projectId', '')::BIGINT,
+      COALESCE(item->>'checkNumber', ''),
+      COALESCE(item->>'notes', '')
+    FROM jsonb_array_elements(p_payload->'incomingPayments') AS item
+    WHERE (item->>'id') IS NOT NULL
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- 16. مزامنة سجل الرقابة والحركات (dortmun_audit_logs)
   DELETE FROM public.dortmun_audit_logs;
   IF jsonb_typeof(p_payload->'auditLogs') = 'array' AND jsonb_array_length(p_payload->'auditLogs') > 0 THEN
     INSERT INTO public.dortmun_audit_logs (id, timestamp, action, entity, details, device_id, device_name)
@@ -695,7 +733,7 @@ BEGIN
     'dortmun_projects', 'dortmun_workers', 'dortmun_daily_headcounts', 'dortmun_attendance',
     'dortmun_advances', 'dortmun_deductions', 'dortmun_settlements', 'dortmun_extracts',
     'dortmun_extract_lines', 'dortmun_extras', 'dortmun_extra_cash', 'dortmun_checks',
-    'dortmun_expenses', 'dortmun_audit_logs'
+    'dortmun_expenses', 'dortmun_incoming_payments', 'dortmun_audit_logs'
   ]
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);

@@ -186,32 +186,99 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                     <td class="py-3 px-3 tabular-nums font-extrabold text-emerald-600 dark:text-emerald-400">
                       {{ store.money(item.netBalance) }}
                     </td>
-                    <td class="py-3 px-4" (click)="$event.stopPropagation()">
+                    <td class="py-3 px-4 relative" (click)="$event.stopPropagation()">
                       <div class="flex items-center gap-1">
                         <button
                           type="button"
                           (click)="selectedWorkerId.set(item.worker.id!)"
-                          class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+                          class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
                           [attr.aria-label]="'عرض ملف ' + item.worker.name"
+                          title="عرض كشف الحساب"
                         >
                           <mat-icon class="!text-base !w-4 !h-4">visibility</mat-icon>
                         </button>
                         <button
                           type="button"
                           (click)="openWorkerForm(item.worker)"
-                          class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-600"
+                          class="hidden sm:inline-flex p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-600 cursor-pointer"
                           [attr.aria-label]="'تعديل ' + item.worker.name"
+                          title="تعديل"
                         >
                           <mat-icon class="!text-base !w-4 !h-4">edit</mat-icon>
                         </button>
+                        <!-- Three-Dots (⋮) Comprehensive Worker Actions Menu -->
                         <button
                           type="button"
-                          (click)="confirmDelete(item.worker)"
-                          class="p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600"
-                          [attr.aria-label]="'حذف ' + item.worker.name"
+                          (click)="toggleWorkerMenu(item.worker.id!)"
+                          class="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500/20 text-slate-700 dark:text-amber-300 cursor-pointer"
+                          [attr.aria-label]="'المزيد من الإجراءات لـ ' + item.worker.name"
+                          title="المزيد من التفاصيل والإجراءات (⋮)"
                         >
-                          <mat-icon class="!text-base !w-4 !h-4">delete</mat-icon>
+                          <mat-icon class="!text-base !w-4 !h-4">more_vert</mat-icon>
                         </button>
+
+                        @if (openWorkerMenuId() === item.worker.id) {
+                          <div
+                            class="fixed inset-0 z-40"
+                            (click)="openWorkerMenuId.set(null)"
+                          ></div>
+                          <div
+                            class="absolute left-4 top-11 w-56 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2 z-50 space-y-1 text-right"
+                            (click)="$event.stopPropagation()"
+                          >
+                            <div class="px-2.5 py-1 text-[10px] font-extrabold text-amber-400 border-b border-slate-800 truncate">
+                              إجراءات: {{ item.worker.name }}
+                            </div>
+                            <button
+                              type="button"
+                              (click)="selectedWorkerId.set(item.worker.id!); openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-400">receipt_long</mat-icon>
+                              <span>عرض كشف الحساب المفصل</span>
+                            </button>
+                            <button
+                              type="button"
+                              (click)="copyWorkerStatementToWhatsApp(item); openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">share</mat-icon>
+                              <span>نسخ كشف الحساب للواتساب</span>
+                            </button>
+                            <button
+                              type="button"
+                              (click)="openWorkerForm(item.worker); openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-blue-400">edit</mat-icon>
+                              <span>تعديل اليومية والبيانات</span>
+                            </button>
+                            <a
+                              routerLink="/deductions"
+                              (click)="openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">gavel</mat-icon>
+                              <span>تسجيل خصم أو جزاء</span>
+                            </a>
+                            <a
+                              routerLink="/settlements"
+                              (click)="openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">payments</mat-icon>
+                              <span>تصفية وقبض يوم ١٥</span>
+                            </a>
+                            <button
+                              type="button"
+                              (click)="confirmDelete(item.worker); openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-rose-950/60 text-rose-300 text-xs font-bold cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">delete</mat-icon>
+                              <span>حذف العامل</span>
+                            </button>
+                          </div>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -534,6 +601,36 @@ export class WorkersPage {
     });
     this.showForm.set(false);
     this.store.showToast('تم حفظ بيانات العامل بنجاح', 'success');
+  }
+
+  readonly openWorkerMenuId = signal<number | null>(null);
+
+  toggleWorkerMenu(workerId: number): void {
+    this.openWorkerMenuId.update((curr) => (curr === workerId ? null : workerId));
+  }
+
+  copyWorkerStatementToWhatsApp(item: {
+    worker: Worker;
+    monthDays: number;
+    monthNights: number;
+    grossWages: number;
+    unsettledAdvances: number;
+    unsettledDeductions: number;
+    netBalance: number;
+  }): void {
+    const lines = [
+      `👷 *كشف حساب العامل: ${item.worker.name} (${item.worker.role})*`,
+      `• اليومية: ${this.store.money(item.worker.workerDayRate)} | السهرة: ${this.store.money(item.worker.workerNightRate)}`,
+      `• إجمالي أيام الشهر: ${this.store.num(item.monthDays)} يوم و ${this.store.num(item.monthNights)} سهرة`,
+      `• إجمالي الأجور المستحقة: ${this.store.money(item.grossWages)}`,
+      `• السلف المسحوبة: ${this.store.money(item.unsettledAdvances)}`,
+      `• الخصومات والجزاءات: ${this.store.money(item.unsettledDeductions)}`,
+      `• الصافي المتبقي: ${this.store.money(item.netBalance)}`,
+    ];
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(lines.join('\n'));
+    }
+    this.store.showToast(`تم نسخ كشف حساب ${item.worker.name} للواتساب`, 'success');
   }
 
   confirmDelete(worker: Worker): void {

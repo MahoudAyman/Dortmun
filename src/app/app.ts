@@ -19,9 +19,16 @@ import {
 import { MatIconModule } from '@angular/material/icon';
 import { filter, Subscription } from 'rxjs';
 import { StoreService } from './core/db/store';
-import type { DeductionMode, ExpenseCategory, WorkerRole } from './core/db/models';
+import type {
+  DeductionMode,
+  ExpenseCategory,
+  PaymentMethodType,
+  PaymentSourceType,
+  WorkerRole,
+} from './core/db/models';
 import { calculateDeductionAmount } from './core/calc/calculations';
 import { parseSmartSiteCommand } from './core/db/supabase-sql-schema';
+import { ZAKI_CAPABILITIES_GUIDE } from './core/chat/zaki-engine';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -45,8 +52,11 @@ export class App implements AfterViewInit, OnDestroy {
   private routerSub: Subscription | null = null;
 
   readonly mobileMenuOpen = signal<boolean>(false);
+  readonly topBarMoreMenuOpen = signal<boolean>(false);
   readonly notificationsOpen = signal<boolean>(false);
   readonly confirmZeroResetOpen = signal<boolean>(false);
+  readonly currentRoutePath = signal<string>('/dashboard');
+  readonly routeHistory = signal<string[]>(['/dashboard']);
   readonly pinAttempt = signal<string>('');
   readonly pinError = signal<boolean>(false);
   readonly isOnline = signal<boolean>(true);
@@ -66,9 +76,21 @@ export class App implements AfterViewInit, OnDestroy {
     parseSmartSiteCommand(this.smartCommandInput())
   );
 
+  readonly zakiCapabilities = ZAKI_CAPABILITIES_GUIDE;
+
   // New Feature 1: Quick Action Command Modal (+ تسجيل فوري سريع)
   readonly quickActionModalOpen = signal<boolean>(false);
-  readonly quickActionTab = signal<'smart' | 'deduction' | 'advance' | 'expense' | 'worker'>('deduction');
+  readonly quickActionTab = signal<
+    'smart' | 'incoming' | 'deduction' | 'advance' | 'expense' | 'worker'
+  >('incoming');
+
+  // Quick Incoming Payment state
+  readonly qaIncomingSourceType = signal<PaymentSourceType>('شركة');
+  readonly qaIncomingSourceName = signal<string>('');
+  readonly qaIncomingAmount = signal<number>(0);
+  readonly qaIncomingMethod = signal<PaymentMethodType>('نقدي');
+  readonly qaIncomingProjectId = signal<number | null>(null);
+  readonly qaIncomingNotes = signal<string>('');
 
   // Quick Deduction state
   readonly qaWorkerId = signal<number>(0);
@@ -149,6 +171,7 @@ export class App implements AfterViewInit, OnDestroy {
 
   readonly navItems = [
     { path: '/dashboard', label: 'الرئيسية', icon: 'dashboard' },
+    { path: '/my-ledger', label: 'حسابي الشامل والخزنة', icon: 'account_balance_wallet' },
     { path: '/attendance', label: 'العدد والحضور', icon: 'fact_check' },
     { path: '/bulk', label: 'الإضافة الجماعية', icon: 'playlist_add_check' },
     { path: '/workers', label: 'العمال والنحاتية', icon: 'groups' },
@@ -255,13 +278,45 @@ export class App implements AfterViewInit, OnDestroy {
     }
   }
 
+  readonly currentPageTitle = computed(() => {
+    const path = this.currentRoutePath();
+    const found = this.navItems.find((i) => path.startsWith(i.path));
+    return found ? found.label : 'الرئيسية';
+  });
+
+  goBackPage(): void {
+    this.topBarMoreMenuOpen.set(false);
+    const hist = this.routeHistory();
+    if (hist.length > 1) {
+      const prev = hist[hist.length - 2];
+      this.routeHistory.set(hist.slice(0, -1));
+      void this.router.navigateByUrl(prev);
+      return;
+    }
+    if (this.currentRoutePath() !== '/dashboard') {
+      void this.router.navigateByUrl('/dashboard');
+      return;
+    }
+    if (isPlatformBrowser(this.platformId) && window.history.length > 1) {
+      window.history.back();
+    }
+  }
+
   ngAfterViewInit(): void {
     if (!isPlatformBrowser(this.platformId)) return;
 
+    this.currentRoutePath.set(this.router.url || '/dashboard');
     this.setupScrollRevealObserver();
     this.routerSub = this.router.events
       .pipe(filter((evt) => evt instanceof NavigationEnd))
-      .subscribe(() => {
+      .subscribe((evt) => {
+        const navEvt = evt as NavigationEnd;
+        const url = navEvt.urlAfterRedirects || navEvt.url || '/dashboard';
+        this.currentRoutePath.set(url);
+        this.routeHistory.update((arr) =>
+          arr[arr.length - 1] === url ? arr : [...arr.slice(-15), url]
+        );
+        this.topBarMoreMenuOpen.set(false);
         setTimeout(() => this.setupScrollRevealObserver(), 30);
       });
   }
@@ -384,14 +439,46 @@ export class App implements AfterViewInit, OnDestroy {
   }
 
   openQuickActionModal(
-    tab: 'smart' | 'deduction' | 'advance' | 'expense' | 'worker' = 'deduction'
+    tab: 'smart' | 'incoming' | 'deduction' | 'advance' | 'expense' | 'worker' = 'incoming'
   ): void {
     const firstWorker = this.store.activeWorkers()[0];
     if (firstWorker?.id && !this.qaWorkerId()) {
       this.qaWorkerId.set(firstWorker.id);
     }
+    this.qaIncomingProjectId.set(this.store.selectedProjectId());
     this.quickActionTab.set(tab);
     this.quickActionModalOpen.set(true);
+  }
+
+  async submitQuickIncomingPayment(): Promise<void> {
+    const amount = this.qaIncomingAmount();
+    const sourceName = this.qaIncomingSourceName().trim();
+    if (amount <= 0 || !sourceName) {
+      this.store.showToast('أدخل اسم الجهة (شركة / شخص / شيك) والمبلغ المستلم', 'warning');
+      return;
+    }
+    await this.store.saveIncomingPayment({
+      date: this.store.todayIso(),
+      sourceType: this.qaIncomingSourceType(),
+      sourceName,
+      amount,
+      method: this.qaIncomingMethod(),
+      projectId: this.qaIncomingProjectId(),
+      notes: this.qaIncomingNotes().trim() || 'مسجل من الإضافة السريعة',
+    });
+    this.store.showToast(
+      `تم تسجيل دفعة واردة (${this.store.money(amount)}) من ${sourceName} في الخزنة والمشروع`,
+      'success'
+    );
+    this.qaIncomingAmount.set(0);
+    this.qaIncomingSourceName.set('');
+    this.qaIncomingNotes.set('');
+    this.quickActionModalOpen.set(false);
+  }
+
+  openZakiAndCloseCapabilities(): void {
+    this.store.showZakiCapabilitiesModal.set(false);
+    void this.router.navigateByUrl('/zaki');
   }
 
   async submitQuickDeduction(): Promise<void> {

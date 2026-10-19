@@ -31,7 +31,7 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
               [value]="dashSmartCommand()"
               (input)="dashSmartCommand.set($any($event.target).value)"
               (keydown.enter)="runDashSmartCommand()"
-              placeholder="اكتب أمراً سريعاً (مثال: سلفة 300 محمد)..."
+              placeholder="اكتب بالعامية (مثال: وصلني 25000 شيك من طلعت مصطفى لمشروع مدينتي)..."
               class="flex-1 sm:w-64 min-w-0 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-indigo-500"
             />
             <button
@@ -41,6 +41,63 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">send</mat-icon>
               <span>تنفيذ</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Comprehensive Ledger & Zaki Capabilities Quick Banner -->
+      @let ledger = store.comprehensiveLedger();
+      <div class="ceramic-card p-4 sm:p-5 bg-gradient-to-l from-emerald-500/12 via-[var(--bg-card)] to-violet-500/10 border border-emerald-500/30 reveal-section">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                حسابي الشامل والخزنة
+              </span>
+              <h2 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
+                ملخصك المالي الكامل (واصلك · صرفت · ليك · عليك · صافي ربحك)
+              </h2>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+              <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">إجمالي اللي وصلك</div>
+                <div class="text-xs sm:text-sm font-black text-emerald-600 tabular-nums mt-0.5">{{ store.money(ledger.totalReceivedAllSources) }}</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">اتصرف (سلف وقبض ومصاريف)</div>
+                <div class="text-xs sm:text-sm font-black text-rose-600 tabular-nums mt-0.5">{{ store.money(ledger.totalSpentAllProjects) }}</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">فلوس ليا (مستحقات)</div>
+                <div class="text-xs sm:text-sm font-black text-[#3390EC] tabular-nums mt-0.5">{{ store.money(ledger.totalOwedToMe) }}</div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">فلوس عليا (باقي عمال)</div>
+                <div class="text-xs sm:text-sm font-black text-amber-600 tabular-nums mt-0.5">{{ store.money(ledger.totalOwedByMe) }}</div>
+              </div>
+              <div class="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">صافي ربحك العام</div>
+                <div class="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums mt-0.5">{{ store.money(ledger.overallNetProfit) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap sm:flex-nowrap lg:flex-col gap-2 shrink-0">
+            <a
+              routerLink="/my-ledger"
+              class="flex-1 sm:flex-initial px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs inline-flex items-center justify-center gap-1.5 shadow-xs"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">account_balance_wallet</mat-icon>
+              <span>فتح صفحة حسابي وتفاصيل المشاريع</span>
+            </a>
+            <button
+              type="button"
+              (click)="store.showZakiCapabilitiesModal.set(true)"
+              class="flex-1 sm:flex-initial px-4 py-2 rounded-full bg-violet-600 hover:bg-violet-700 text-white font-black text-xs inline-flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">auto_awesome</mat-icon>
+              <span>ماذا يمكن للبوت (زكي) فعله؟</span>
             </button>
           </div>
         </div>

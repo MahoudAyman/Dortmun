@@ -9,9 +9,13 @@ import type {
   Expense,
   ExtraCash,
   ExtraItem,
+  Extract,
   ExtractLine,
   ExtractLineStatus,
+  IncomingPayment,
   NumeralMode,
+  Project,
+  Settlement,
   Worker,
 } from '../db/models';
 
@@ -842,4 +846,667 @@ export function getPayday15CycleInfo(todayIso: string, paydayDay = 15): Payday15
     label: `دورة قبض يوم ${paydayDay} (${from} إلى ${to})`,
   };
 }
+
+export interface ProjectLedgerBreakdown {
+  projectId: number | null;
+  projectName: string;
+  companyDayRate: number;
+  companyNightRate: number;
+  daysCount: number;
+  daysWorked: number;
+  nightsCount: number;
+  nightsWorked: number;
+  workersCount: number;
+  receivedFromChecks: number;
+  receivedFromPersons: number;
+  receivedFromCompany: number;
+  receivedFromCompanies: number;
+  receivedFromExtracts: number;
+  totalReceived: number;
+  totalReceivedForProject: number;
+  pendingIncomingChecks: number;
+  companyEntitlement: number;
+  owedToMeInProject: number; // ليّا كام في المشروع
+  workerGrossWages: number;
+  advancesSpent: number; // اتصرف سلف كام في المشروع
+  deductionsApplied: number; // خصومات وجزاءات المشروع
+  settlementsPaid: number; // قبض العمال المنصرف في المشروع
+  nashPaid: number; // ناش مدفوع في المشروع
+  expensesSpent: number; // مصاريف المشروع الخارجية
+  outgoingChecksCashed: number;
+  pendingOutgoingChecks: number;
+  totalSpentInProject: number; // إجمالي المنصرف الفعلي في المشروع
+  owedByMeInProject: number; // عليّا كام في المشروع (متبقي للعمال + شيكات صادرة معلقة)
+  netProfit: number; // صافي ربح المشروع الكلي
+  cashBalance: number; // السيولة النقدية الصافية للمشروع (الواصل − المنصرف)
+  cashFlowBalance: number;
+  collectionPercent: number;
+}
+
+export interface LedgerMovementItem {
+  id: string;
+  rawId?: number;
+  isCustomIncoming?: boolean;
+  date: string;
+  direction: 'in' | 'out';
+  title: string;
+  category: string;
+  subtitle: string;
+  categoryLabel: string;
+  sourceType: 'شيك' | 'شخص' | 'شركة' | 'مستخلص' | 'سلفة' | 'قبض ١٥' | 'ناش' | 'مصروف' | 'أخرى';
+  partyName: string;
+  projectId: number | null;
+  projectName: string;
+  method: string;
+  amount: number;
+  notes: string;
+}
+
+export interface ComprehensiveLedgerSummary {
+  // الواصل فعلياً (مقبوضات)
+  receivedFromChecks: number;
+  receivedFromPersons: number;
+  receivedFromCompaniesAndExtracts: number;
+  receivedFromCompanies: number;
+  totalReceivedAll: number;
+  totalReceivedAllSources: number;
+
+  // المنصرف فعلياً (مدفوعات)
+  totalAdvancesSpent: number;
+  totalAdvancesPaid: number;
+  totalSettlementsPaid: number;
+  totalNashPaid: number;
+  totalNashCashPaid: number;
+  totalExpensesSpent: number;
+  totalExternalExpenses: number;
+  totalOutgoingChecksCashed: number;
+  totalSpentAll: number;
+  totalSpentAllProjects: number;
+
+  // ليّا وعليّا والربح والخزنة
+  totalCompanyEntitlement: number;
+  totalWorkerGrossWages: number;
+  totalDeductionsApplied: number;
+  owedToMeFromCompanies: number;
+  pendingIncomingChecks: number;
+  pendingIncomingChecksTotal: number;
+  pendingOutgoingChecks: number;
+  pendingOutgoingChecksTotal: number;
+  remainingOwedToWorkers: number;
+  owedByMeToWorkers: number;
+  totalOwedToMe: number; // إجمالي اللي ليّا بره (عند الشركات + شيكات واردة معلقة)
+  totalOwedByMe: number; // إجمالي اللي عليّا للناس (متبقي أجور العمال + شيكات صادرة معلقة)
+  totalNetProfit: number; // صافي الربح الكلي لكل المشاريع
+  overallNetProfit: number;
+  netCashInHand: number; // صافي الخزنة / الفلوس اللي في إيدي فعلياً (إجمالي الواصل − إجمالي المنصرف)
+
+  projectBreakdowns: ProjectLedgerBreakdown[];
+  movements: LedgerMovementItem[];
+}
+
+export function calculateComprehensiveLedger(params: {
+  projects: Project[];
+  workers: Worker[];
+  attendances: Attendance[];
+  advances: Advance[];
+  deductions: Deduction[];
+  settlements: Settlement[];
+  extracts: Extract[];
+  extractLines: ExtractLine[];
+  extras: ExtraItem[];
+  extraCashes: ExtraCash[];
+  checks: CheckItem[];
+  expenses: Expense[];
+  incomingPayments: IncomingPayment[];
+  filterProjectId?: number | null;
+  selectedProjectId?: number | null;
+}): ComprehensiveLedgerSummary {
+  const {
+    projects,
+    workers,
+    attendances,
+    advances,
+    deductions,
+    settlements,
+    extracts,
+    extractLines,
+    extras,
+    extraCashes,
+    checks,
+    expenses,
+    incomingPayments = [],
+  } = params;
+  const filterProjectId = params.filterProjectId ?? params.selectedProjectId ?? null;
+
+  const projectMap = new Map<number, Project>();
+  for (const p of projects) {
+    if (p.id !== undefined) projectMap.set(p.id, p);
+  }
+  const workerMap = new Map<number, Worker>();
+  for (const w of workers) {
+    if (w.id !== undefined) workerMap.set(w.id, w);
+  }
+
+  // Determine each worker's primary project based on attendance (fallback to first active project)
+  const defaultProjId = projects[0]?.id ?? null;
+  const workerPrimaryProject = new Map<number, number | null>();
+  for (const w of workers) {
+    if (w.id === undefined) continue;
+    const wAtt = attendances.filter((a) => a.workerId === w.id);
+    if (wAtt.length > 0) {
+      const counts = new Map<number, number>();
+      for (const a of wAtt) {
+        counts.set(a.projectId, (counts.get(a.projectId) || 0) + 1);
+      }
+      let bestProj = wAtt[0].projectId;
+      let bestCnt = 0;
+      for (const [pid, cnt] of counts.entries()) {
+        if (cnt > bestCnt) {
+          bestCnt = cnt;
+          bestProj = pid;
+        }
+      }
+      workerPrimaryProject.set(w.id, bestProj);
+    } else {
+      workerPrimaryProject.set(w.id, defaultProjId);
+    }
+  }
+
+  const getProjName = (pid: number | null | undefined): string => {
+    if (!pid) return 'الخزنة العامة / مشترك';
+    return projectMap.get(pid)?.name || `مشروع #${pid}`;
+  };
+
+  // Track linked checks so we don't double count if an IncomingPayment references a CheckItem
+  const linkedCheckIds = new Set<number>(
+    incomingPayments.map((ip) => ip.checkId).filter((id): id is number => typeof id === 'number')
+  );
+
+  const movements: LedgerMovementItem[] = [];
+
+  // 1. Custom Incoming Payments (واصلني من شخص أو شركة أو شيك)
+  for (const ip of incomingPayments) {
+    if (filterProjectId && ip.projectId !== filterProjectId) continue;
+    const catLabel =
+      ip.sourceType === 'شخص'
+        ? 'دفعة واصلة من شخص / مهندس'
+        : ip.sourceType === 'شيك'
+          ? 'تحصيل شيك لحساب مشروع'
+          : ip.sourceType === 'شركة'
+            ? 'دفعة واصلة من الشركة'
+            : ip.sourceType === 'مستخلص'
+              ? 'دفعة مستخلص واصلة'
+              : 'مبلغ واصل للخزنة';
+    const party = ip.sourceName || ip.senderName || 'جهة الدفع';
+    movements.push({
+      id: `ip-${ip.id}`,
+      rawId: ip.id,
+      isCustomIncoming: true,
+      date: ip.date,
+      direction: 'in',
+      title: `${catLabel} (${party})`,
+      category: ip.sourceType,
+      subtitle: ip.notes || (ip.checkNumber ? `شيك #${ip.checkNumber}` : ''),
+      categoryLabel: catLabel,
+      sourceType:
+        ip.sourceType === 'شخص'
+          ? 'شخص'
+          : ip.sourceType === 'شيك'
+            ? 'شيك'
+            : ip.sourceType === 'شركة'
+              ? 'شركة'
+              : ip.sourceType === 'مستخلص'
+                ? 'مستخلص'
+                : 'أخرى',
+      partyName: party,
+      projectId: ip.projectId ?? null,
+      projectName: getProjName(ip.projectId),
+      method: ip.method || 'نقدي',
+      amount: Number(ip.amount) || 0,
+      notes: ip.notes || '',
+    });
+  }
+
+  // 2. Cashed Checks (Incoming & Outgoing)
+  for (const chk of checks) {
+    if (chk.status !== 'اتصرف') continue;
+    if (chk.direction === 'وارد' && chk.id && linkedCheckIds.has(chk.id)) continue;
+    if (filterProjectId && chk.projectId !== filterProjectId) continue;
+    const catLabel =
+      chk.direction === 'وارد' ? `صرف شيك وارد #${chk.number}` : `صرف شيك صادر #${chk.number}`;
+    const party = `${chk.bank} (شيك #${chk.number})`;
+
+    movements.push({
+      id: `chk-${chk.id}`,
+      date: chk.dueDate,
+      direction: chk.direction === 'وارد' ? 'in' : 'out',
+      title: `${catLabel} · ${chk.bank}`,
+      category: chk.direction === 'وارد' ? 'شيك وارد' : 'شيك صادر',
+      subtitle: chk.notes || '',
+      categoryLabel: catLabel,
+      sourceType: 'شيك',
+      partyName: party,
+      projectId: chk.projectId ?? null,
+      projectName: getProjName(chk.projectId),
+      method: 'شيك بنكي',
+      amount: Number(chk.amount) || 0,
+      notes: chk.notes || '',
+    });
+  }
+
+  // 3. Collected Extract Lines
+  const extractMap = new Map<number, Extract>();
+  for (const ex of extracts) {
+    if (ex.id !== undefined) extractMap.set(ex.id, ex);
+  }
+  for (const line of extractLines) {
+    const collected = Number(line.collected) || 0;
+    if (collected <= 0) continue;
+    if (line.checkId && linkedCheckIds.has(line.checkId)) continue;
+    const parentExt = extractMap.get(line.extractId);
+    const pid = parentExt?.projectId ?? defaultProjId;
+    if (filterProjectId && pid !== filterProjectId) continue;
+    const wName = workerMap.get(line.workerId)?.name || `عامل #${line.workerId}`;
+    const catLabel = `تحصيل مستخلص #${parentExt?.number || 1}`;
+    const party = `مستخلص #${parentExt?.number || 1} (${wName})`;
+
+    movements.push({
+      id: `extline-${line.id}`,
+      date: line.collectedDate || parentExt?.to || '2026-10-18',
+      direction: 'in',
+      title: `${catLabel} · ${wName}`,
+      category: 'مستخلصات',
+      subtitle: line.notes || '',
+      categoryLabel: catLabel,
+      sourceType: 'مستخلص',
+      partyName: party,
+      projectId: pid,
+      projectName: getProjName(pid),
+      method: line.method || 'نقدي',
+      amount: collected,
+      notes: line.notes || '',
+    });
+  }
+
+  // 4. Outgoing Worker Advances
+  for (const adv of advances) {
+    const pid = workerPrimaryProject.get(adv.workerId) ?? defaultProjId;
+    if (filterProjectId && pid !== filterProjectId) continue;
+    const wName = workerMap.get(adv.workerId)?.name || `عامل #${adv.workerId}`;
+    movements.push({
+      id: `adv-${adv.id}`,
+      date: adv.date,
+      direction: 'out',
+      title: `سلفة: ${wName}`,
+      category: 'سلفة عامل',
+      subtitle: adv.reason || adv.notes || '',
+      categoryLabel: 'سلفة عامل / نحّات',
+      sourceType: 'سلفة',
+      partyName: wName,
+      projectId: pid,
+      projectName: getProjName(pid),
+      method: 'نقدي',
+      amount: Number(adv.amount) || 0,
+      notes: adv.reason || adv.notes || '',
+    });
+  }
+
+  // 5. Outgoing Settlements (قبض يوم ١٥)
+  for (const st of settlements) {
+    if ((st.netPaid || 0) <= 0) continue;
+    const pid = workerPrimaryProject.get(st.workerId) ?? defaultProjId;
+    if (filterProjectId && pid !== filterProjectId) continue;
+    const wName = workerMap.get(st.workerId)?.name || `عامل #${st.workerId}`;
+    movements.push({
+      id: `stl-${st.id}`,
+      date: st.date,
+      direction: 'out',
+      title: `صرف قبض يوم ١٥: ${wName}`,
+      category: 'قبض العمال',
+      subtitle: `تقفيل من ${st.from} إلى ${st.to}`,
+      categoryLabel: 'صرف قبض يوم ١٥ (صافي)',
+      sourceType: 'قبض ١٥',
+      partyName: wName,
+      projectId: pid,
+      projectName: getProjName(pid),
+      method: 'نقدي',
+      amount: Number(st.netPaid) || 0,
+      notes: `تقفيل من ${st.from} إلى ${st.to}`,
+    });
+  }
+
+  // 6. Outgoing Extra Nash Cash Paid
+  const extraMap = new Map<number, ExtraItem>();
+  for (const ex of extras) {
+    if (ex.id !== undefined) extraMap.set(ex.id, ex);
+  }
+  for (const ec of extraCashes) {
+    const paid = Number(ec.paidCash) || 0;
+    if (paid <= 0) continue;
+    const parentExtra = extraMap.get(ec.extraId);
+    const pid = parentExtra?.projectId ?? workerPrimaryProject.get(ec.workerId) ?? defaultProjId;
+    if (filterProjectId && pid !== filterProjectId) continue;
+    const wName = workerMap.get(ec.workerId)?.name || `عامل #${ec.workerId}`;
+    const catLabel = `صرف ناش إضافي (${parentExtra?.type || 'إضافي'})`;
+    movements.push({
+      id: `nash-${ec.id}`,
+      date: parentExtra?.date || '2026-10-18',
+      direction: 'out',
+      title: `${catLabel} · ${wName}`,
+      category: 'ناش وإضافي',
+      subtitle: ec.notes || '',
+      categoryLabel: catLabel,
+      sourceType: 'ناش',
+      partyName: wName,
+      projectId: pid,
+      projectName: getProjName(pid),
+      method: 'نقدي',
+      amount: paid,
+      notes: ec.notes || '',
+    });
+  }
+
+  // 7. Outgoing External Expenses
+  for (const exp of expenses) {
+    const pid = exp.projectId ?? defaultProjId;
+    if (filterProjectId && pid !== filterProjectId) continue;
+    const catLabel = `مصروف خارجي (${exp.category})`;
+    movements.push({
+      id: `exp-${exp.id}`,
+      date: exp.date,
+      direction: 'out',
+      title: catLabel,
+      category: `مصروف (${exp.category})`,
+      subtitle: exp.note || '',
+      categoryLabel: catLabel,
+      sourceType: 'مصروف',
+      partyName: exp.category,
+      projectId: pid,
+      projectName: getProjName(pid),
+      method: 'نقدي',
+      amount: Number(exp.amount) || 0,
+      notes: exp.note || '',
+    });
+  }
+
+  movements.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Build Project-by-Project Breakdowns
+  const targetProjects: { id: number | null; name: string; cDay: number; cNight: number }[] =
+    projects.map((p) => ({
+      id: p.id!,
+      name: p.name,
+      cDay: p.companyDayRate || 0,
+      cNight: p.companyNightRate || 0,
+    }));
+
+  // If there are unallocated items or no projects yet, include General Treasury bucket if needed
+  const hasUnallocated =
+    incomingPayments.some((ip) => !ip.projectId) ||
+    checks.some((c) => !c.projectId) ||
+    expenses.some((e) => !e.projectId && !defaultProjId);
+
+  if (hasUnallocated || targetProjects.length === 0) {
+    targetProjects.push({
+      id: null,
+      name: 'الخزنة العامة / غير مخصص لمشروع',
+      cDay: 0,
+      cNight: 0,
+    });
+  }
+
+  const projectBreakdowns: ProjectLedgerBreakdown[] = [];
+
+  for (const tp of targetProjects) {
+    if (filterProjectId && tp.id !== filterProjectId) continue;
+
+    const pid = tp.id;
+    const projAtt = attendances.filter((a) => (pid === null ? !a.projectId : a.projectId === pid));
+    let daysCount = 0;
+    let nightsCount = 0;
+    let attCompanyVal = 0;
+    let attWorkerWages = 0;
+    const workerIdsInProj = new Set<number>();
+
+    for (const a of projAtt) {
+      workerIdsInProj.add(a.workerId);
+      const dWorked = Number(a.dayWorked) || 0;
+      const nWorked = Number(a.nightWorked) || 0;
+      if (dWorked > 0) {
+        daysCount += dWorked;
+        attCompanyVal += dWorked * (a.companyDayRateSnapshot || tp.cDay);
+        attWorkerWages += dWorked * (a.workerDayRateSnapshot || 0);
+      }
+      if (nWorked > 0) {
+        nightsCount += nWorked;
+        attCompanyVal += nWorked * (a.companyNightRateSnapshot || tp.cNight);
+        attWorkerWages += nWorked * (a.workerNightRateSnapshot || 0);
+      }
+    }
+
+    const projExtras = extras.filter((e) => (pid === null ? !e.projectId : e.projectId === pid));
+    const projExtraIds = new Set(projExtras.map((e) => e.id!));
+    let extraCompanyVal = 0;
+    for (const e of projExtras) {
+      if (e.valueMode !== 'note') {
+        extraCompanyVal += e.amount > 0 ? e.amount : (e.days || 0) * tp.cDay;
+      }
+    }
+
+    let extraWorkerWages = 0;
+    let nashPaid = 0;
+    for (const ec of extraCashes) {
+      if (projExtraIds.has(ec.extraId)) {
+        workerIdsInProj.add(ec.workerId);
+        const wRate = workerMap.get(ec.workerId)?.workerDayRate || 0;
+        const val = ec.amount > 0 ? ec.amount : (ec.days || 0) * wRate;
+        extraWorkerWages += val;
+        nashPaid += ec.paidCash || 0;
+      }
+    }
+
+    const projExtractIds = new Set(
+      extracts.filter((ex) => (pid === null ? !ex.projectId : ex.projectId === pid)).map((ex) => ex.id!)
+    );
+    const projExtractLines = extractLines.filter((l) => projExtractIds.has(l.extractId));
+    const extTotals = calculateExtractTotals(projExtractLines);
+
+    const companyEntitlement = Math.max(extTotals.netDue, attCompanyVal + extraCompanyVal);
+    const workerGrossWages = attWorkerWages + extraWorkerWages;
+
+    // Received breakdown for this project
+    const projCustomIn = incomingPayments.filter((ip) => (ip.projectId ?? null) === pid);
+    const customChecksIn = projCustomIn
+      .filter((ip) => ip.sourceType === 'شيك' || ip.method === 'شيك')
+      .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+    const customPersonsIn = projCustomIn
+      .filter((ip) => ip.sourceType === 'شخص' && ip.method !== 'شيك')
+      .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+    const customCompanyIn = projCustomIn
+      .filter(
+        (ip) =>
+          (ip.sourceType === 'شركة' || ip.sourceType === 'مستخلص' || ip.sourceType === 'أخرى') &&
+          ip.method !== 'شيك'
+      )
+      .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+
+    const projChecks = checks.filter((c) => (c.projectId ?? null) === pid);
+    const cashedInChecks = projChecks
+      .filter((c) => c.direction === 'وارد' && c.status === 'اتصرف' && (!c.id || !linkedCheckIds.has(c.id)))
+      .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const pendingIncomingChecks = projChecks
+      .filter((c) => c.direction === 'وارد' && c.status === 'معلق')
+      .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+
+    const outgoingChecksCashed = projChecks
+      .filter((c) => c.direction === 'صادر' && c.status === 'اتصرف')
+      .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const pendingOutgoingChecks = projChecks
+      .filter((c) => c.direction === 'صادر' && c.status === 'معلق')
+      .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+
+    const receivedFromChecks = customChecksIn + cashedInChecks;
+    const receivedFromPersons = customPersonsIn;
+    const receivedFromCompanies = customCompanyIn;
+    const receivedFromExtracts = extTotals.collected;
+    const receivedFromCompany = customCompanyIn + extTotals.collected;
+    const totalReceived = receivedFromChecks + receivedFromPersons + receivedFromCompany;
+
+    // Advances, deductions, settlements for workers whose primary project is pid
+    const advancesSpent = advances
+      .filter((adv) => (workerPrimaryProject.get(adv.workerId) ?? null) === pid)
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+
+    const deductionsApplied = deductions
+      .filter((d) => {
+        const dProj = d.projectId ?? workerPrimaryProject.get(d.workerId) ?? null;
+        return dProj === pid;
+      })
+      .reduce((s, d) => s + (Number(d.amount) || 0), 0);
+
+    const settlementsPaid = settlements
+      .filter((st) => (workerPrimaryProject.get(st.workerId) ?? null) === pid)
+      .reduce((s, st) => s + Math.max(0, Number(st.netPaid) || 0), 0);
+
+    const expensesSpent = expenses
+      .filter((ex) => (ex.projectId ?? defaultProjId) === pid)
+      .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+
+    const totalSpentInProject =
+      advancesSpent + settlementsPaid + nashPaid + expensesSpent + outgoingChecksCashed;
+
+    const remainingWorkersInProj = Math.max(
+      0,
+      workerGrossWages - deductionsApplied - advancesSpent - settlementsPaid - nashPaid
+    );
+    const owedByMeInProject = remainingWorkersInProj + pendingOutgoingChecks;
+
+    const remainingFromCompanyInProj = Math.max(0, companyEntitlement - totalReceived);
+    const owedToMeInProject = remainingFromCompanyInProj + pendingIncomingChecks;
+
+    const netWorkerCost = Math.max(0, workerGrossWages - deductionsApplied);
+    const netProfit = companyEntitlement - netWorkerCost - expensesSpent;
+    const cashBalance = totalReceived - totalSpentInProject;
+    const collectionPercent =
+      companyEntitlement > 0 ? Math.min(100, Math.round((totalReceived / companyEntitlement) * 100)) : 0;
+
+    projectBreakdowns.push({
+      projectId: pid,
+      projectName: tp.name,
+      companyDayRate: tp.cDay,
+      companyNightRate: tp.cNight,
+      daysCount,
+      daysWorked: daysCount,
+      nightsCount,
+      nightsWorked: nightsCount,
+      workersCount: workerIdsInProj.size,
+      receivedFromChecks,
+      receivedFromPersons,
+      receivedFromCompany,
+      receivedFromCompanies,
+      receivedFromExtracts,
+      totalReceived,
+      totalReceivedForProject: totalReceived,
+      pendingIncomingChecks,
+      companyEntitlement,
+      owedToMeInProject,
+      workerGrossWages,
+      advancesSpent,
+      deductionsApplied,
+      settlementsPaid,
+      nashPaid,
+      expensesSpent,
+      outgoingChecksCashed,
+      pendingOutgoingChecks,
+      totalSpentInProject,
+      owedByMeInProject,
+      netProfit,
+      cashBalance,
+      cashFlowBalance: cashBalance,
+      collectionPercent,
+    });
+  }
+
+  // Aggregate overall metrics across breakdowns
+  const receivedFromChecks = projectBreakdowns.reduce((s, b) => s + b.receivedFromChecks, 0);
+  const receivedFromPersons = projectBreakdowns.reduce((s, b) => s + b.receivedFromPersons, 0);
+  const receivedFromCompaniesAndExtracts = projectBreakdowns.reduce(
+    (s, b) => s + b.receivedFromCompany,
+    0
+  );
+  const totalReceivedAll =
+    receivedFromChecks + receivedFromPersons + receivedFromCompaniesAndExtracts;
+
+  const totalAdvancesSpent = projectBreakdowns.reduce((s, b) => s + b.advancesSpent, 0);
+  const totalSettlementsPaid = projectBreakdowns.reduce((s, b) => s + b.settlementsPaid, 0);
+  const totalNashPaid = projectBreakdowns.reduce((s, b) => s + b.nashPaid, 0);
+  const totalExpensesSpent = projectBreakdowns.reduce((s, b) => s + b.expensesSpent, 0);
+  const totalOutgoingChecksCashed = projectBreakdowns.reduce(
+    (s, b) => s + b.outgoingChecksCashed,
+    0
+  );
+  const totalSpentAll =
+    totalAdvancesSpent +
+    totalSettlementsPaid +
+    totalNashPaid +
+    totalExpensesSpent +
+    totalOutgoingChecksCashed;
+
+  const totalCompanyEntitlement = projectBreakdowns.reduce((s, b) => s + b.companyEntitlement, 0);
+  const totalWorkerGrossWages = projectBreakdowns.reduce((s, b) => s + b.workerGrossWages, 0);
+  const totalDeductionsApplied = projectBreakdowns.reduce((s, b) => s + b.deductionsApplied, 0);
+  const pendingIncomingChecks = projectBreakdowns.reduce((s, b) => s + b.pendingIncomingChecks, 0);
+  const pendingOutgoingChecks = projectBreakdowns.reduce((s, b) => s + b.pendingOutgoingChecks, 0);
+  const remainingOwedToWorkers = Math.max(
+    0,
+    totalWorkerGrossWages -
+      totalDeductionsApplied -
+      totalAdvancesSpent -
+      totalSettlementsPaid -
+      totalNashPaid
+  );
+  const owedToMeFromCompanies = Math.max(0, totalCompanyEntitlement - totalReceivedAll);
+  const totalOwedToMe = projectBreakdowns.reduce((s, b) => s + b.owedToMeInProject, 0);
+  const totalOwedByMe = projectBreakdowns.reduce((s, b) => s + b.owedByMeInProject, 0);
+  const totalNetProfit = projectBreakdowns.reduce((s, b) => s + b.netProfit, 0);
+  const netCashInHand = totalReceivedAll - totalSpentAll;
+
+  return {
+    receivedFromChecks,
+    receivedFromPersons,
+    receivedFromCompaniesAndExtracts,
+    receivedFromCompanies: receivedFromCompaniesAndExtracts,
+    totalReceivedAll,
+    totalReceivedAllSources: totalReceivedAll,
+    totalAdvancesSpent,
+    totalAdvancesPaid: totalAdvancesSpent,
+    totalSettlementsPaid,
+    totalNashPaid,
+    totalNashCashPaid: totalNashPaid,
+    totalExpensesSpent,
+    totalExternalExpenses: totalExpensesSpent,
+    totalOutgoingChecksCashed,
+    totalSpentAll,
+    totalSpentAllProjects: totalSpentAll,
+    totalCompanyEntitlement,
+    totalWorkerGrossWages,
+    totalDeductionsApplied,
+    owedToMeFromCompanies,
+    pendingIncomingChecks,
+    pendingIncomingChecksTotal: pendingIncomingChecks,
+    pendingOutgoingChecks,
+    pendingOutgoingChecksTotal: pendingOutgoingChecks,
+    remainingOwedToWorkers,
+    owedByMeToWorkers: remainingOwedToWorkers,
+    totalOwedToMe,
+    totalOwedByMe,
+    totalNetProfit,
+    overallNetProfit: totalNetProfit,
+    netCashInHand,
+    projectBreakdowns,
+    movements,
+  };
+}
+
+
 

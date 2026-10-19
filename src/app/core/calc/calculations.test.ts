@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calculateComprehensiveLedger,
   calculateDeductionAmount,
   calculateExtractLineMetrics,
   calculateExtractTotals,
@@ -379,3 +380,164 @@ test('compareDailyHeadcount detects exact match and mismatch between mandatory h
   assert.equal(cycle.from, '2026-09-16');
   assert.equal(cycle.to, '2026-10-15');
 });
+
+test('calculateComprehensiveLedger computes incoming from checks, persons, companies, project breakdowns, owed to/by me, and net profit', () => {
+  const ledger = calculateComprehensiveLedger({
+    projects: [
+      {
+        id: 1,
+        name: 'مشروع مدينتي',
+        companyDayRate: 600,
+        companyNightRate: 300,
+        active: true,
+        notes: '',
+      },
+    ],
+    workers: [
+      {
+        id: 1,
+        name: 'محمد السيد',
+        role: 'نحات',
+        workerDayRate: 400,
+        workerNightRate: 200,
+        phone: '',
+        active: true,
+        notes: '',
+      },
+    ],
+    attendances: [
+      {
+        id: 1,
+        date: '2026-10-10',
+        workerId: 1,
+        projectId: 1,
+        dayWorked: 10,
+        nightWorked: 0,
+        workerDayRateSnapshot: 400, // 4000 worker wages
+        workerNightRateSnapshot: 200,
+        companyDayRateSnapshot: 600, // 6000 company entitlement
+        companyNightRateSnapshot: 300,
+        note: '',
+      },
+    ],
+    advances: [
+      {
+        id: 1,
+        date: '2026-10-12',
+        workerId: 1,
+        amount: 1000,
+        reason: 'سلفة',
+        settlementId: null,
+        notes: '',
+      },
+    ],
+    deductions: [
+      {
+        id: 1,
+        date: '2026-10-13',
+        workerId: 1,
+        projectId: 1,
+        mode: 'money',
+        daysDeducted: 0,
+        amount: 200,
+        reason: 'تأخير',
+        settlementId: null,
+        notes: '',
+      },
+    ],
+    settlements: [
+      {
+        id: 1,
+        date: '2026-10-15',
+        from: '2026-10-01',
+        to: '2026-10-15',
+        workerId: 1,
+        days: 10,
+        nights: 0,
+        grossWages: 4000,
+        advancesDeducted: 1000,
+        deductionsDeducted: 200,
+        netPaid: 1500, // paid 1500 so far out of 2800 net due
+        notes: '',
+      },
+    ],
+    extracts: [],
+    extractLines: [],
+    extras: [],
+    extraCashes: [],
+    checks: [
+      {
+        id: 1,
+        direction: 'وارد',
+        number: 'CHK-500',
+        bank: 'البنك الأهلي',
+        amount: 2000,
+        dueDate: '2026-10-14',
+        status: 'اتصرف',
+        projectId: 1,
+        extractId: null,
+        notes: '',
+      },
+    ],
+    expenses: [
+      {
+        id: 1,
+        date: '2026-10-14',
+        category: 'مواصلات',
+        amount: 300,
+        projectId: 1,
+        notes: '',
+      },
+    ],
+    incomingPayments: [
+      {
+        id: 1,
+        date: '2026-10-15',
+        sourceType: 'شخص',
+        sourceName: 'المهندس طارق',
+        method: 'نقدي',
+        amount: 1500,
+        projectId: 1,
+        notes: 'دفعة عهدة',
+      },
+      {
+        id: 2,
+        date: '2026-10-16',
+        sourceType: 'شركة',
+        sourceName: 'طلعت مصطفى',
+        method: 'تحويل بنكي',
+        amount: 1000,
+        projectId: 1,
+        notes: 'دفعة حساب مشروع',
+      },
+    ],
+  });
+
+  // Received: 2000 (check) + 1500 (person) + 1000 (company) = 4500
+  assert.equal(ledger.receivedFromChecks, 2000);
+  assert.equal(ledger.receivedFromPersons, 1500);
+  assert.equal(ledger.receivedFromCompaniesAndExtracts, 1000);
+  assert.equal(ledger.totalReceivedAll, 4500);
+
+  // Spent: 1000 (advances) + 1500 (settlements) + 300 (expenses) = 2800
+  assert.equal(ledger.totalAdvancesSpent, 1000);
+  assert.equal(ledger.totalSettlementsPaid, 1500);
+  assert.equal(ledger.totalExpensesSpent, 300);
+  assert.equal(ledger.totalSpentAll, 2800);
+
+  // Net cash in hand: 4500 - 2800 = 1700
+  assert.equal(ledger.netCashInHand, 1700);
+
+  // Owed to me: company entitlement (6000) - received (4500) = 1500
+  assert.equal(ledger.totalOwedToMe, 1500);
+
+  // Remaining owed to workers: 4000 gross - 200 deduction - 1000 advance - 1500 settlement = 1300
+  assert.equal(ledger.remainingOwedToWorkers, 1300);
+  assert.equal(ledger.totalOwedByMe, 1300);
+
+  // Net profit: 6000 - (4000 - 200) - 300 = 1900
+  assert.equal(ledger.totalNetProfit, 1900);
+  assert.equal(ledger.projectBreakdowns.length, 1);
+  assert.equal(ledger.projectBreakdowns[0].projectName, 'مشروع مدينتي');
+});
+

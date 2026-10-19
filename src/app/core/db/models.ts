@@ -184,6 +184,29 @@ export interface Expense {
   note: string;
 }
 
+export type PaymentSourceType = 'شركة' | 'شخص' | 'شيك' | 'مستخلص' | 'أخرى';
+export type PaymentMethodType =
+  | 'نقدي'
+  | 'تحويل بنكي'
+  | 'إنستا باي / محفظة'
+  | 'محفظة إلكترونية'
+  | 'شيك';
+
+export interface IncomingPayment {
+  id?: number;
+  date: string; // YYYY-MM-DD
+  sourceType: PaymentSourceType;
+  sourceName: string; // اسم الشخص أو الشركة أو رقم الشيك
+  senderName?: string;
+  checkNumber?: string;
+  method: PaymentMethodType;
+  amount: number;
+  projectId: number | null; // راح لحساب مشروع إيه
+  checkId?: number | null;
+  extractId?: number | null;
+  notes: string;
+}
+
 export interface TaxRateItem {
   name: string;
   rate: number; // percentage e.g. 5 for 5%
@@ -270,6 +293,7 @@ export interface CloudSyncSnapshot {
   extraCashes: ExtraCash[];
   checks: CheckItem[];
   expenses: Expense[];
+  incomingPayments?: IncomingPayment[];
   settings: AppSettings;
   auditLogs: AuditLogEntry[];
   devices: RegisteredDevice[];

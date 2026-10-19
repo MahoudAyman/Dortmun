@@ -325,10 +325,31 @@ a:active {
   scrollbar-width: none;
 }
 
+/* Smooth Modal & Card Entrance Animations */
+@keyframes smoothFadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ceramic-card {
+  animation: smoothFadeSlideUp 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* Mobile ergonomics: smooth touch scrolling and prevent iOS auto-zoom on focus */
 @media (max-width: 768px) {
   input, select, textarea {
     font-size: 16px !important;
   }
+
+  .ceramic-card {
+    border-radius: 16px;
+  }
 }
+
 

@@ -12,6 +12,11 @@ export const routes: Routes = [
       import('./features/dashboard/dashboard').then((m) => m.DashboardPage),
   },
   {
+    path: 'my-ledger',
+    loadComponent: () =>
+      import('./features/my-ledger/my-ledger').then((m) => m.MyLedger),
+  },
+  {
     path: 'workers',
     loadComponent: () =>
       import('./features/workers/workers').then((m) => m.WorkersPage),

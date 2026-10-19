@@ -17,6 +17,7 @@ import type {
   ExtraItem,
   Extract,
   ExtractLine,
+  IncomingPayment,
   Project,
   RegisteredDevice,
   Settlement,
@@ -41,12 +42,14 @@ import {
   INITIAL_EXTRA_CASH,
   INITIAL_EXTRACTS,
   INITIAL_EXTRACT_LINES,
+  INITIAL_INCOMING_PAYMENTS,
   INITIAL_PROJECTS,
   INITIAL_SETTINGS,
   INITIAL_SETTLEMENTS,
   INITIAL_WORKERS,
 } from './seed-data';
 import {
+  calculateComprehensiveLedger,
   calculateDashboardSummary,
   compareDailyHeadcount,
   formatCurrency,
@@ -107,6 +110,7 @@ export class StoreService {
   readonly extraCashes = signal<ExtraCash[]>([...INITIAL_EXTRA_CASH]);
   readonly checks = signal<CheckItem[]>([...INITIAL_CHECKS]);
   readonly expenses = signal<Expense[]>([...INITIAL_EXPENSES]);
+  readonly incomingPayments = signal<IncomingPayment[]>([...INITIAL_INCOMING_PAYMENTS]);
   readonly auditLogs = signal<AuditLogEntry[]>([...INITIAL_AUDIT_LOGS]);
 
   // Cloud Sync & Device Registry State
@@ -168,6 +172,7 @@ export class StoreService {
   readonly isLockedByPin = signal<boolean>(false);
   readonly globalSearchQuery = signal<string>('');
   readonly showQuickHeadcountModal = signal<boolean>(false);
+  readonly showZakiCapabilitiesModal = signal<boolean>(false);
 
   private pushUndo(op: UndoOperation): void {
     this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
@@ -195,6 +200,25 @@ export class StoreService {
       extras: this.extras(),
       extraCashes: this.extraCashes(),
       projectId: this.selectedProjectId(),
+    })
+  );
+
+  readonly comprehensiveLedger = computed(() =>
+    calculateComprehensiveLedger({
+      projects: this.projects(),
+      workers: this.workers(),
+      attendances: this.attendances(),
+      advances: this.advances(),
+      deductions: this.deductions(),
+      settlements: this.settlements(),
+      extracts: this.extracts(),
+      extractLines: this.extractLines(),
+      extras: this.extras(),
+      extraCashes: this.extraCashes(),
+      checks: this.checks(),
+      expenses: this.expenses(),
+      incomingPayments: this.incomingPayments(),
+      selectedProjectId: null,
     })
   );
 
@@ -713,7 +737,8 @@ export class StoreService {
       this.advances().length > 0 ||
       this.deductions().length > 0 ||
       this.checks().length > 0 ||
-      this.expenses().length > 0
+      this.expenses().length > 0 ||
+      this.incomingPayments().length > 0
     );
   }
 
@@ -740,6 +765,7 @@ export class StoreService {
       extraCashes: this.extraCashes(),
       checks: this.checks(),
       expenses: this.expenses(),
+      incomingPayments: this.incomingPayments(),
       settings: this.settings(),
       auditLogs: this.auditLogs().slice(0, 100),
       devices: this.registeredDevices(),
@@ -1194,6 +1220,25 @@ export class StoreService {
           }))
         );
       }
+
+      // Incoming Payments
+      await sb.from('dortmun_incoming_payments').delete().gte('id', 0);
+      if (snapshot.incomingPayments && snapshot.incomingPayments.length > 0) {
+        await sb.from('dortmun_incoming_payments').upsert(
+          snapshot.incomingPayments.map((inc, idx) => ({
+            id: inc.id ?? idx + 1,
+            date: inc.date,
+            source_type: inc.sourceType || 'شركة',
+            source_name: inc.sourceName || '',
+            amount: inc.amount || 0,
+            method: inc.method || 'نقدي',
+            project_id: inc.projectId ?? null,
+            check_number: inc.checkNumber || '',
+            notes: inc.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
     } catch {
       // Relational table mirror is non-blocking
     }
@@ -1317,6 +1362,8 @@ export class StoreService {
       if (Array.isArray(snapshot.extraCashes)) this.extraCashes.set(snapshot.extraCashes);
       if (Array.isArray(snapshot.checks)) this.checks.set(snapshot.checks);
       if (Array.isArray(snapshot.expenses)) this.expenses.set(snapshot.expenses);
+      if (Array.isArray(snapshot.incomingPayments))
+        this.incomingPayments.set(snapshot.incomingPayments);
       if (Array.isArray(snapshot.auditLogs)) this.auditLogs.set(snapshot.auditLogs);
       if (Array.isArray(snapshot.devices)) this.mergeDeviceList(snapshot.devices);
 
@@ -1338,6 +1385,7 @@ export class StoreService {
             this.db.extraCash,
             this.db.checks,
             this.db.expenses,
+            this.db.incomingPayments,
             this.db.auditLog,
           ],
           async () => {
@@ -1356,6 +1404,7 @@ export class StoreService {
               this.db!.extraCash.clear(),
               this.db!.checks.clear(),
               this.db!.expenses.clear(),
+              this.db!.incomingPayments.clear(),
               this.db!.auditLog.clear(),
             ]);
 
@@ -1375,6 +1424,8 @@ export class StoreService {
             if (this.extraCashes().length) await this.db!.extraCash.bulkPut(this.extraCashes());
             if (this.checks().length) await this.db!.checks.bulkPut(this.checks());
             if (this.expenses().length) await this.db!.expenses.bulkPut(this.expenses());
+            if (this.incomingPayments().length)
+              await this.db!.incomingPayments.bulkPut(this.incomingPayments());
             if (this.auditLogs().length) await this.db!.auditLog.bulkPut(this.auditLogs());
           }
         );
@@ -1775,6 +1826,7 @@ export class StoreService {
       extraCashes,
       checks,
       expenses,
+      incomingPayments,
       auditLogs,
     ] = await Promise.all([
       this.db.settings.toArray(),
@@ -1791,6 +1843,7 @@ export class StoreService {
       this.db.extraCash.toArray(),
       this.db.checks.toArray(),
       this.db.expenses.toArray(),
+      this.db.incomingPayments.toArray(),
       this.db.auditLog.orderBy('id').reverse().limit(100).toArray(),
     ]);
 
@@ -1813,6 +1866,7 @@ export class StoreService {
     this.extraCashes.set(extraCashes);
     this.checks.set(checks);
     this.expenses.set(expenses);
+    this.incomingPayments.set(incomingPayments);
     this.auditLogs.set(auditLogs);
   }
 
@@ -1830,6 +1884,7 @@ export class StoreService {
     this.extraCashes.set([]);
     this.checks.set([]);
     this.expenses.set([]);
+    this.incomingPayments.set([]);
     this.auditLogs.set([]);
     this.selectedProjectId.set(null);
     this.undoStack.set([]);
@@ -1850,6 +1905,7 @@ export class StoreService {
         this.db.extraCash.clear(),
         this.db.checks.clear(),
         this.db.expenses.clear(),
+        this.db.incomingPayments.clear(),
         this.db.auditLog.clear(),
       ]);
     }
@@ -2699,6 +2755,73 @@ export class StoreService {
     this.showToast('تم حذف المصروف', 'warning');
   }
 
+  // Incoming Payments (دفعات ومقبوضات واردة مباشرة من شركة أو شخص أو شيك)
+  async saveIncomingPayment(payment: IncomingPayment): Promise<number> {
+    if (payment.id) {
+      const prev = this.incomingPayments().find((p) => p.id === payment.id);
+      if (this.db) await this.db.incomingPayments.put(payment);
+      this.incomingPayments.update((list) =>
+        list.map((p) => (p.id === payment.id ? payment : p))
+      );
+      this.pushUndo({
+        description: `تعديل دفعة واردة من ${payment.sourceName}`,
+        table: 'incomingPayments',
+        type: 'update',
+        recordId: payment.id,
+        previousData: prev,
+        newData: payment,
+      });
+      await this.logAudit(
+        'تعديل دفعة واردة',
+        'حسابي الشامل',
+        `تعديل دفعة من (${payment.sourceType}: ${payment.sourceName}) بمبلغ ${payment.amount}`
+      );
+      return payment.id;
+    } else {
+      let id = Math.max(0, ...this.incomingPayments().map((p) => p.id || 0)) + 1;
+      if (this.db) {
+        const data = { ...payment };
+        delete data.id;
+        id = await this.db.incomingPayments.add(data);
+      }
+      const created = { ...payment, id };
+      this.incomingPayments.update((list) => [created, ...list]);
+      this.pushUndo({
+        description: `تسجيل دفعة واردة من ${payment.sourceName}`,
+        table: 'incomingPayments',
+        type: 'add',
+        recordId: id,
+        newData: created,
+      });
+      await this.logAudit(
+        'إضافة دفعة واردة',
+        'حسابي الشامل',
+        `وصلني مبلغ ${payment.amount} من (${payment.sourceType}: ${payment.sourceName}) لحساب ${this.projectName(payment.projectId)}`
+      );
+      return id;
+    }
+  }
+
+  async deleteIncomingPayment(id: number): Promise<void> {
+    const prev = this.incomingPayments().find((p) => p.id === id);
+    if (!prev) return;
+    if (this.db) await this.db.incomingPayments.delete(id);
+    this.incomingPayments.update((list) => list.filter((p) => p.id !== id));
+    this.pushUndo({
+      description: `حذف دفعة واردة من ${prev.sourceName}`,
+      table: 'incomingPayments',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
+    await this.logAudit(
+      'حذف دفعة واردة',
+      'حسابي الشامل',
+      `حذف دفعة من ${prev.sourceName} بمبلغ ${prev.amount}`
+    );
+    this.showToast('تم حذف الدفعة الواردة', 'warning');
+  }
+
   // Undo last operation (زر التراجع)
   async undoLastOperation(): Promise<boolean> {
     const op = this.lastUndo();
@@ -2838,6 +2961,23 @@ export class StoreService {
         if (this.db) await this.db.expenses.put(prev);
         this.expenses.update((l) => [prev, ...l]);
       }
+    } else if (op.table === 'incomingPayments') {
+      if (op.type === 'add' && op.recordId) {
+        const current = this.incomingPayments().find((x) => x.id === op.recordId);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.incomingPayments.delete(op.recordId);
+        this.incomingPayments.update((l) => l.filter((x) => x.id !== op.recordId));
+      } else if (op.type === 'update' && op.previousData) {
+        const prev = op.previousData as IncomingPayment;
+        const current = this.incomingPayments().find((x) => x.id === prev.id);
+        capturedRedo.newData = op.newData || current;
+        if (this.db) await this.db.incomingPayments.put(prev);
+        this.incomingPayments.update((l) => l.map((x) => (x.id === prev.id ? prev : x)));
+      } else if (op.type === 'delete' && op.previousData) {
+        const prev = op.previousData as IncomingPayment;
+        if (this.db) await this.db.incomingPayments.put(prev);
+        this.incomingPayments.update((l) => [prev, ...l]);
+      }
     } else if (op.table === 'extras' && op.type === 'add' && op.recordId) {
       const current = this.extras().find((x) => x.id === op.recordId);
       capturedRedo.newData = op.newData || current;
@@ -2949,6 +3089,15 @@ export class StoreService {
         if (this.db) await this.db.expenses.delete(op.recordId);
         this.expenses.update((l) => l.filter((x) => x.id !== op.recordId));
       }
+    } else if (op.table === 'incomingPayments') {
+      if ((op.type === 'add' || op.type === 'update') && op.newData) {
+        const item = op.newData as IncomingPayment;
+        if (this.db) await this.db.incomingPayments.put(item);
+        this.incomingPayments.update((l) => [item, ...l.filter((x) => x.id !== item.id)]);
+      } else if (op.type === 'delete' && op.recordId) {
+        if (this.db) await this.db.incomingPayments.delete(op.recordId);
+        this.incomingPayments.update((l) => l.filter((x) => x.id !== op.recordId));
+      }
     } else if (op.table === 'extras' && op.type === 'add' && op.newData) {
       const item = op.newData as ExtraItem;
       if (this.db) await this.db.extras.put(item);
@@ -2983,6 +3132,7 @@ export class StoreService {
       extraCashes: this.extraCashes(),
       checks: this.checks(),
       expenses: this.expenses(),
+      incomingPayments: this.incomingPayments(),
       auditLogs: this.auditLogs(),
       devices: this.registeredDevices(),
     };
@@ -3011,6 +3161,7 @@ export class StoreService {
       this.extraCashes.set(data.extraCashes || []);
       this.checks.set(data.checks || []);
       this.expenses.set(data.expenses || []);
+      this.incomingPayments.set(data.incomingPayments || []);
 
       if (this.db) {
         await this.db.transaction(
@@ -3030,6 +3181,7 @@ export class StoreService {
             this.db.extraCash,
             this.db.checks,
             this.db.expenses,
+            this.db.incomingPayments,
           ],
           async () => {
             await this.db!.settings.clear();
@@ -3046,6 +3198,7 @@ export class StoreService {
             await this.db!.extraCash.clear();
             await this.db!.checks.clear();
             await this.db!.expenses.clear();
+            await this.db!.incomingPayments.clear();
 
             if (data.settings)
               await this.db!.settings.put({ ...INITIAL_SETTINGS, ...data.settings });
@@ -3062,6 +3215,7 @@ export class StoreService {
             await this.db!.extraCash.bulkPut(data.extraCashes || []);
             await this.db!.checks.bulkPut(data.checks || []);
             await this.db!.expenses.bulkPut(data.expenses || []);
+            await this.db!.incomingPayments.bulkPut(data.incomingPayments || []);
           }
         );
       }

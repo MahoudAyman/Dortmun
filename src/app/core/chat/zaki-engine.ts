@@ -6,14 +6,208 @@ import type {
   DailyHeadcount,
   Deduction,
   DeductionMode,
+  Expense,
+  ExpenseCategory,
   ExtraCash,
   ExtraItem,
   ExtraType,
   Extract,
   ExtractLine,
+  IncomingPayment,
+  PaymentMethodType,
+  PaymentSourceType,
   Project,
+  Settlement,
   Worker,
 } from '../db/models';
+
+function calculateComprehensiveLedger(params: {
+  projects: Project[];
+  workers: Worker[];
+  attendances: Attendance[];
+  advances: Advance[];
+  deductions: Deduction[];
+  settlements: Settlement[];
+  extracts: Extract[];
+  extractLines: ExtractLine[];
+  extras: ExtraItem[];
+  extraCashes: ExtraCash[];
+  checks: CheckItem[];
+  expenses: Expense[];
+  incomingPayments: IncomingPayment[];
+  selectedProjectId?: number | null;
+}) {
+  const {
+    projects,
+    workers,
+    attendances,
+    advances,
+    deductions,
+    settlements,
+    extracts,
+    extractLines,
+    extras,
+    extraCashes,
+    checks,
+    expenses,
+    incomingPayments = [],
+    selectedProjectId = null,
+  } = params;
+  const defaultProjId = projects[0]?.id ?? null;
+  const workerMap = new Map(workers.filter((w) => w.id !== undefined).map((w) => [w.id!, w]));
+  const workerPrimaryProject = new Map<number, number | null>();
+  for (const w of workers) {
+    if (w.id === undefined) continue;
+    const wAtt = attendances.filter((a) => a.workerId === w.id);
+    workerPrimaryProject.set(w.id, wAtt[0]?.projectId ?? defaultProjId);
+  }
+  const linkedCheckIds = new Set<number>(
+    incomingPayments.map((ip) => ip.checkId).filter((id): id is number => typeof id === 'number')
+  );
+  const targetProjects = projects.map((p) => ({
+    id: p.id!,
+    name: p.name,
+    cDay: p.companyDayRate || 0,
+    cNight: p.companyNightRate || 0,
+  }));
+  if (targetProjects.length === 0 || incomingPayments.some((ip) => !ip.projectId)) {
+    targetProjects.push({ id: null as unknown as number, name: 'الخزنة العامة', cDay: 0, cNight: 0 });
+  }
+  const projectBreakdowns = targetProjects
+    .filter((tp) => !selectedProjectId || tp.id === selectedProjectId)
+    .map((tp) => {
+      const pid = tp.id ?? null;
+      const projAtt = attendances.filter((a) => (pid === null ? !a.projectId : a.projectId === pid));
+      let attCompanyVal = 0;
+      let attWorkerWages = 0;
+      for (const a of projAtt) {
+        const d = Number(a.dayWorked) || 0;
+        const n = Number(a.nightWorked) || 0;
+        attCompanyVal += d * (a.companyDayRateSnapshot || tp.cDay) + n * (a.companyNightRateSnapshot || tp.cNight);
+        attWorkerWages += d * (a.workerDayRateSnapshot || 0) + n * (a.workerNightRateSnapshot || 0);
+      }
+      const projExtras = extras.filter((e) => (pid === null ? !e.projectId : e.projectId === pid));
+      const projExtraIds = new Set(projExtras.map((e) => e.id!));
+      let extraCompanyVal = 0;
+      for (const e of projExtras) {
+        if (e.valueMode !== 'note') {
+          extraCompanyVal += e.amount > 0 ? e.amount : (e.days || 0) * tp.cDay;
+        }
+      }
+      let extraWorkerWages = 0;
+      let nashPaid = 0;
+      for (const ec of extraCashes) {
+        if (projExtraIds.has(ec.extraId)) {
+          const wRate = workerMap.get(ec.workerId)?.workerDayRate || 0;
+          extraWorkerWages += ec.amount > 0 ? ec.amount : (ec.days || 0) * wRate;
+          nashPaid += ec.paidCash || 0;
+        }
+      }
+      const projExtractIds = new Set(
+        extracts.filter((ex) => (pid === null ? !ex.projectId : ex.projectId === pid)).map((ex) => ex.id!)
+      );
+      const projExtractLines = extractLines.filter((l) => projExtractIds.has(l.extractId));
+      const extNetDue = projExtractLines.reduce((s, l) => {
+        const claimed = Number(l.claimed) || 0;
+        const tax = Number(l.taxRate) > 0 ? Math.round((claimed * Number(l.taxRate)) / 100) : Number(l.taxAmount) || 0;
+        return s + Math.max(0, claimed - tax);
+      }, 0);
+      const extCollected = projExtractLines.reduce((s, l) => s + (Number(l.collected) || 0), 0);
+      const companyEntitlement = Math.max(extNetDue, attCompanyVal + extraCompanyVal);
+      const workerGrossWages = attWorkerWages + extraWorkerWages;
+      const projCustomIn = incomingPayments.filter((ip) => (ip.projectId ?? null) === pid);
+      const customChecksIn = projCustomIn
+        .filter((ip) => ip.sourceType === 'شيك' || ip.method === 'شيك')
+        .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+      const receivedFromPersons = projCustomIn
+        .filter((ip) => ip.sourceType === 'شخص' && ip.method !== 'شيك')
+        .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+      const receivedFromCompanies = projCustomIn
+        .filter((ip) => (ip.sourceType === 'شركة' || ip.sourceType === 'مستخلص' || ip.sourceType === 'أخرى') && ip.method !== 'شيك')
+        .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
+      const projChecks = checks.filter((c) => (c.projectId ?? null) === pid);
+      const cashedInChecks = projChecks
+        .filter((c) => c.direction === 'وارد' && c.status === 'اتصرف' && (!c.id || !linkedCheckIds.has(c.id)))
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      const pendingIncomingChecks = projChecks
+        .filter((c) => c.direction === 'وارد' && c.status === 'معلق')
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      const outgoingChecksCashed = projChecks
+        .filter((c) => c.direction === 'صادر' && c.status === 'اتصرف')
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      const pendingOutgoingChecks = projChecks
+        .filter((c) => c.direction === 'صادر' && c.status === 'معلق')
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      const receivedFromChecks = customChecksIn + cashedInChecks;
+      const receivedFromExtracts = extCollected;
+      const totalReceivedForProject = receivedFromChecks + receivedFromPersons + receivedFromCompanies + receivedFromExtracts;
+      const advancesSpent = advances
+        .filter((adv) => (workerPrimaryProject.get(adv.workerId) ?? null) === pid)
+        .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+      const deductionsApplied = deductions
+        .filter((d) => (d.projectId ?? workerPrimaryProject.get(d.workerId) ?? null) === pid)
+        .reduce((s, d) => s + (Number(d.amount) || 0), 0);
+      const settlementsPaid = settlements
+        .filter((st) => (workerPrimaryProject.get(st.workerId) ?? null) === pid)
+        .reduce((s, st) => s + Math.max(0, Number(st.netPaid) || 0), 0);
+      const expensesSpent = expenses
+        .filter((ex) => (ex.projectId ?? defaultProjId) === pid)
+        .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+      const totalSpentInProject = advancesSpent + settlementsPaid + nashPaid + expensesSpent + outgoingChecksCashed;
+      const remainingWorkersInProj = Math.max(0, workerGrossWages - deductionsApplied - advancesSpent - settlementsPaid - nashPaid);
+      const owedByMeInProject = remainingWorkersInProj + pendingOutgoingChecks;
+      const owedToMeInProject = Math.max(0, companyEntitlement - totalReceivedForProject) + pendingIncomingChecks;
+      const netProfit = companyEntitlement - Math.max(0, workerGrossWages - deductionsApplied) - expensesSpent;
+      const cashFlowBalance = totalReceivedForProject - totalSpentInProject;
+      return {
+        projectId: pid,
+        projectName: tp.name,
+        receivedFromChecks,
+        receivedFromPersons,
+        receivedFromCompanies,
+        receivedFromExtracts,
+        totalReceivedForProject,
+        advancesSpent,
+        settlementsPaid,
+        nashPaid,
+        expensesSpent,
+        totalSpentInProject,
+        owedToMeInProject,
+        owedByMeInProject,
+        netProfit,
+        cashFlowBalance,
+      };
+    });
+  const receivedFromChecks = projectBreakdowns.reduce((s, b) => s + b.receivedFromChecks, 0);
+  const receivedFromPersons = projectBreakdowns.reduce((s, b) => s + b.receivedFromPersons, 0);
+  const receivedFromCompanies = projectBreakdowns.reduce((s, b) => s + b.receivedFromCompanies + b.receivedFromExtracts, 0);
+  const totalReceivedAllSources = receivedFromChecks + receivedFromPersons + receivedFromCompanies;
+  const totalAdvancesPaid = projectBreakdowns.reduce((s, b) => s + b.advancesSpent, 0);
+  const totalSettlementsPaid = projectBreakdowns.reduce((s, b) => s + b.settlementsPaid, 0);
+  const totalNashCashPaid = projectBreakdowns.reduce((s, b) => s + b.nashPaid, 0);
+  const totalExternalExpenses = projectBreakdowns.reduce((s, b) => s + b.expensesSpent, 0);
+  const totalSpentAll = projectBreakdowns.reduce((s, b) => s + b.totalSpentInProject, 0);
+  const totalOwedToMe = projectBreakdowns.reduce((s, b) => s + b.owedToMeInProject, 0);
+  const totalOwedByMe = projectBreakdowns.reduce((s, b) => s + b.owedByMeInProject, 0);
+  const totalNetProfit = projectBreakdowns.reduce((s, b) => s + b.netProfit, 0);
+  const netCashInHand = totalReceivedAllSources - totalSpentAll;
+  return {
+    receivedFromChecks,
+    receivedFromPersons,
+    receivedFromCompanies,
+    totalReceivedAllSources,
+    totalAdvancesPaid,
+    totalSettlementsPaid,
+    totalNashCashPaid,
+    totalExternalExpenses,
+    totalSpentAll,
+    totalOwedToMe,
+    totalOwedByMe,
+    totalNetProfit,
+    netCashInHand,
+    projectBreakdowns,
+  };
+}
 
 const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 
@@ -190,7 +384,14 @@ const SPOKEN_NUMBERS: Record<string, number> = {
   الف: 1000,
   الفين: 2000,
   تلاتالاف: 3000,
+  اربعالاف: 4000,
   خمسالاف: 5000,
+  عشرالاف: 10000,
+  عشرينالف: 20000,
+  خمسينالف: 50000,
+  ميتالف: 100000,
+  باكو: 1000,
+  ارنب: 1000000,
 };
 
 export function parseSpokenArabicNumber(text: string): number | null {
@@ -263,11 +464,14 @@ export interface ZakiContext {
   advances: Advance[];
   deductions?: Deduction[];
   dailyHeadcounts?: DailyHeadcount[];
+  settlements?: Settlement[];
   extracts: Extract[];
   extractLines: ExtractLine[];
   extras: ExtraItem[];
   extraCashes: ExtraCash[];
   checks: CheckItem[];
+  expenses?: Expense[];
+  incomingPayments?: IncomingPayment[];
   settings: AppSettings;
   pendingAdvanceWorkerId?: number | null;
 }
@@ -317,6 +521,13 @@ export type ZakiPendingWriteAction =
       workerNightRate: number;
     }
   | {
+      type: 'update_worker_rate';
+      workerId: number;
+      workerName: string;
+      workerDayRate: number;
+      workerNightRate: number;
+    }
+  | {
       type: 'add_project';
       name: string;
       companyDayRate: number;
@@ -337,6 +548,82 @@ export type ZakiPendingWriteAction =
       workerId: number;
       workerName: string;
       note: string;
+    }
+  | {
+      type: 'record_incoming_payment';
+      date: string;
+      sourceType: PaymentSourceType;
+      sourceName: string;
+      amount: number;
+      method: PaymentMethodType;
+      projectId: number | null;
+      projectName: string;
+      checkNumber?: string;
+      notes: string;
+    }
+  | {
+      type: 'record_expense';
+      date: string;
+      category: ExpenseCategory;
+      amount: number;
+      projectId: number | null;
+      projectName: string;
+      note: string;
+    }
+  | {
+      type: 'record_check';
+      direction: 'وارد' | 'صادر';
+      number: string;
+      bank: string;
+      amount: number;
+      dueDate: string;
+      status: 'معلق' | 'اتصرف' | 'مرتجع';
+      projectId: number | null;
+      notes: string;
+    }
+  | {
+      type: 'update_check_status';
+      checkId: number;
+      checkNumber: string;
+      newStatus: 'اتصرف' | 'مرتجع' | 'معلق';
+      amount: number;
+    }
+  | {
+      type: 'create_extract';
+      projectId: number;
+      projectName: string;
+      from: string;
+      to: string;
+      number: number;
+    }
+  | {
+      type: 'settle_worker';
+      workerId: number;
+      workerName: string;
+      from: string;
+      to: string;
+      days: number;
+      nights: number;
+      grossWages: number;
+      advancesDeducted: number;
+      deductionsDeducted: number;
+      netPaid: number;
+    }
+  | {
+      type: 'delete_record';
+      targetEntity:
+        | 'worker'
+        | 'project'
+        | 'attendance'
+        | 'advance'
+        | 'deduction'
+        | 'check'
+        | 'expense'
+        | 'incomingPayment'
+        | 'extract'
+        | 'extra';
+      recordId: number;
+      description: string;
     };
 
 export interface ZakiResponse {
@@ -346,18 +633,193 @@ export interface ZakiResponse {
   disambiguationOptions?: { label: string; command: string }[];
   awaitingAdvanceAmountForWorkerId?: number;
   quickCommands?: string[];
-  clientEffect?: 'navigate_bulk' | 'export_excel' | 'undo';
+  clientEffect?: 'navigate_bulk' | 'export_excel' | 'undo' | 'open_capabilities';
   actionRoute?: string;
   actionLabel?: string;
 }
 
+export interface ZakiCapabilitySection {
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  badge: string;
+  colorClass: string;
+  examples: {
+    phrase: string;
+    explanation: string;
+  }[];
+}
+
+export const ZAKI_CAPABILITIES_GUIDE: ZakiCapabilitySection[] = [
+  {
+    id: 'ledger_payments',
+    title: '١. حسابي الشامل والمقبوضات والخزنة',
+    subtitle: 'تسجيل أي فلوس وصلتك من شركة أو شخص أو شيك ومعرفة صافي ربحك واللي ليك واللي عليك',
+    icon: 'account_balance_wallet',
+    badge: 'جديد وشامل',
+    colorClass: 'emerald',
+    examples: [
+      {
+        phrase: 'وصلني 50000 من شركة إعمار لمشروع التجمع',
+        explanation: 'يسجل دفعة واردة مباشرة في الخزنة ويربطها بحساب المشروع تلقائياً',
+      },
+      {
+        phrase: 'قبضت 20000 من المهندس طارق نقدي',
+        explanation: 'يسجل مقبوضات واردة من شخص ويضيفها للرصيد النقدي الفعلي',
+      },
+      {
+        phrase: 'حسابي الشامل كام؟ وصلني كام وليا كام وعليا كام؟',
+        explanation: 'يعرض كشف كامل بكل اللي وصلك، واللي اتصرف سلف وقبض ومصاريف، وصافي الربح',
+      },
+      {
+        phrase: 'تفاصيل حساب مشروع الكوبري والربح فيه كام؟',
+        explanation: 'يحلل مشروع معين: مستحقات الشركة، المقبوض، المنصرف، المتبقي، وصافي المكسب',
+      },
+    ],
+  },
+  {
+    id: 'attendance_headcount',
+    title: '٢. اليوميات والسهرات والعدد اليومي الإجباري',
+    subtitle: 'تحضير العمال والنحاتية بالعامية المصرية ومطابقة العدد الإجباري',
+    icon: 'fact_check',
+    badge: 'يومي',
+    colorClass: 'amber',
+    examples: [
+      {
+        phrase: 'العدد النهارده 10 يومية و 4 سهرة',
+        explanation: 'يسجل دفتر العدد اليومي الإجباري للموقع بضغطة واحدة',
+      },
+      {
+        phrase: 'زكي سجل يومية لمحمد وعلي النهارده',
+        explanation: 'يسجل حضور يومية (أو سهرة) لعامل أو مجموعة عمال أو لكل النحاتية',
+      },
+      {
+        phrase: 'سجل يومية وسهرة لكل النحاتية النهارده',
+        explanation: 'يحضر كل طاقم النحاتية يومية وسهرة دفعة واحدة',
+      },
+      {
+        phrase: 'هل العدد النهارده مطابق ولا لا؟',
+        explanation: 'يقارن العدد الإجباري بالمسجل بالأسماء ويكشف أي عجز أو زيادة فوراً',
+      },
+    ],
+  },
+  {
+    id: 'advances_deductions_settlements',
+    title: '٣. السلف والخصومات وتصفية قبض يوم ١٥',
+    subtitle: 'صرف سلف، توقيع جزاءات، وتقفيل حساب العمال وصرف القبض',
+    icon: 'payments',
+    badge: 'مالي للعمال',
+    colorClass: 'blue',
+    examples: [
+      {
+        phrase: 'سلفة 500 لكريم النهارده',
+        explanation: 'يسجل سلفة نقدية على العامل ويخصمها تلقائياً في كشف القبض',
+      },
+      {
+        phrase: 'اخصم نص يوم من كريم بسبب تأخير',
+        explanation: 'يسجل خصم (ربع يوم / نص يوم / يوم كامل / مبلغ) مع السبب',
+      },
+      {
+        phrase: 'صفي حساب كريم واقبضه الصافي',
+        explanation: 'يحسب إجمالي يوميات وسهرات العامل ويخصم السلف والجزاءات ويسجل التسوية',
+      },
+      {
+        phrase: 'احسب قبض يوم 15 لكل العمال',
+        explanation: 'يعرض ملخص كشف قبض يوم ١٥ لكل العمال والنحاتية بالتفصيل',
+      },
+    ],
+  },
+  {
+    id: 'extracts_checks_expenses',
+    title: '٤. المستخلصات والشيكات والمصاريف والإضافي',
+    subtitle: 'إنشاء مستخلصات للشركات، إدارة الشيكات، وتسجيل مصاريف الموقع والناش',
+    icon: 'receipt_long',
+    badge: 'شركات وموقع',
+    colorClass: 'purple',
+    examples: [
+      {
+        phrase: 'اعمل مستخلص جديد لمشروع الكوبري',
+        explanation: 'ينشئ مستخلص جديد للمشروع ويجهز بنود العمال تلقائياً',
+      },
+      {
+        phrase: 'سجل شيك وارد بـ 40000 بنك مصر رقم 505',
+        explanation: 'يضيف شيك جديد في دفتر الشيكات ويتابع موعد استحقاقه',
+      },
+      {
+        phrase: 'صرف شيك رقم 505',
+        explanation: 'يحول حالة الشيك إلى "اتصرف" ويسمّع في الخزنة وحساب المشروع فوراً',
+      },
+      {
+        phrase: 'صرفت 350 مواصلات وعربية نقل النهارده',
+        explanation: 'يسجل مصروف خارجي (مواصلات / أكل / أدوات / صيانة) على المشروع',
+      },
+    ],
+  },
+  {
+    id: 'add_edit_delete_anything',
+    title: '٥. إضافة وتعديل وحذف أي حاجة في الموقع',
+    subtitle: 'تحكم كامل ١٠٠٪ في العمال والمشاريع والحركات والتراجع الفوري',
+    icon: 'auto_fix_high',
+    badge: 'تحكم شامل',
+    colorClass: 'rose',
+    examples: [
+      {
+        phrase: 'ضيف نحات جديد اسمه حسام بيومية 550 وسهرة 275',
+        explanation: 'يضيف عامل أو نحات أو صنايعي جديد بأسعار يوميته وسهرته',
+      },
+      {
+        phrase: 'ضيف مشروع جديد اسمه برج النيل بيومية شركة 700 وسهرة 350',
+        explanation: 'يفتح مشروع جديد بأسعار الشركة لليومية والسهرة',
+      },
+      {
+        phrase: 'عدل يومية كريم خليها 600',
+        explanation: 'يحدث سعر يومية أو سهرة العامل فوراً',
+      },
+      {
+        phrase: 'احذف اخر سلفة لكريم  أو  امسح اخر مصروف',
+        explanation: 'يحذف أي سجل (سلفة / خصم / مصروف / دفعة / شيك / حضور) أو يتراجع فوراً',
+      },
+    ],
+  },
+  {
+    id: 'methodology_analytics',
+    title: '٦. مناهج المقاولات الذكية ومقارنة أرباح المشاريع',
+    subtitle: 'تحليل أرباح المشاريع، القواعد الذهبية لإدارة الموقع، وكشف حساب العامل التفصيلي',
+    icon: 'analytics',
+    badge: 'ذكاء متقدم',
+    colorClass: 'indigo',
+    examples: [
+      {
+        phrase: 'اشرح مناهج وقواعد إدارة المقاولات الذكية',
+        explanation: 'يعرض منهجية دورتمون الذهبية (٦ قواعد) مع تحليل حي لأرقام موقعك الحالية',
+      },
+      {
+        phrase: 'قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر',
+        explanation: 'يرتب المشاريع حسب صافي الربح والسيولة وفرق اليوميات مع الشركة',
+      },
+      {
+        phrase: 'كشف حساب تفصيلي لكريم محمود',
+        explanation: 'يعرض كشف حساب كامل للعامل (يوميات، سهرات، سلف، خصومات، وصافي المستحق)',
+      },
+      {
+        phrase: 'الشيكات المعلقة والتزاماتي الشهر ده كام؟',
+        explanation: 'يعرض جميع الشيكات الواردة والصادرة المعلقة ومواعيد استحقاقها',
+      },
+    ],
+  },
+];
+
 const DEFAULT_FALLBACK_COMMANDS = [
+  'حسابي الشامل كام؟ وصلني كام وليا كام وعليا كام؟',
+  'اشرح مناهج وقواعد إدارة المقاولات الذكية',
+  'قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر',
+  'وصلني 50000 من شركة إعمار لمشروع التجمع',
   'العدد النهارده 10 يومية و 4 سهرة',
-  'هل العدد النهارده مطابق ولا لا؟',
   'احسب قبض يوم 15 لكل العمال',
+  'اعمل مستخلص جديد للمشروع',
   'اخصم نص يوم من كريم بسبب تأخير',
-  'زكي سجل يومية لمحمد وعلي النهارده',
-  'ضيف نحات جديد اسمه حسام بيومية 450 وسهرة 220',
+  'تقدر تعمل ايه يا ذكي؟',
 ];
 
 export interface WorkerMatchResult {
@@ -611,11 +1073,634 @@ export function processZakiMessage(
     };
   }
 
-  if (norm === 'اتراجع' || norm.includes('تراجع عن اخر')) {
+  if (norm === 'اتراجع' || norm.includes('تراجع عن اخر') || norm.includes('الغي اخر عمليه')) {
     return {
-      reply: 'تمام، تراجعت عن آخر عملية سجلتها.',
+      reply: 'تمام يا هندسة، تراجعتلك عن آخر عملية سجلتها فوراً.',
       clientEffect: 'undo',
     };
+  }
+
+  // 1A-0. Capabilities & Egyptian Greeting ("بتعمل ايه" / "تقدر تعمل ايه" / "قدراتك" / "ازيك يا ذكي" / "عامل ايه")
+  if (
+    norm.includes('بتعمل ايه') ||
+    norm.includes('تقدر تعمل ايه') ||
+    norm.includes('ايه قدراتك') ||
+    norm.includes('قدرات البوت') ||
+    norm.includes('تعرف تعمل ايه') ||
+    norm.includes('ما يمكن للبوت') ||
+    norm.includes('علمني') ||
+    norm.includes('دليل ذكي')
+  ) {
+    return {
+      reply:
+        'أنا ذكي يا هندسة — دراعك اليمين في الموقع والحسابات! أقدر بالعامية المصرية أعملك أي حاجة في الموقع بلا استثناء:\n' +
+        '• أسجل الفلوس اللي وصلتك (شيكات / من شركة / من شخص) وأقولك حسابك الشامل واللي ليك واللي عليك والربح الصافي في كل مشروع.\n' +
+        '• أسجل العدد اليومي الإجباري وأحضر العمال والنحاتية يوميات وسهرات وأطابق العدد.\n' +
+        '• أصرف سلف، أوقع خصومات وجزاءات، وأصفي كشف قبض يوم ١٥.\n' +
+        '• أعمل مستخلصات للشركات، أسجل وأصرف شيكات، وأسجل مصاريف الموقع والناش.\n' +
+        '• أضيف وأعدل وأحذف أي عامل أو مشروع أو حركة في ثانية واحدة! فتحتلك دليل قدراتي الكامل عشان تجرب أي أمر بضغطة زر.',
+      clientEffect: 'open_capabilities',
+      quickCommands: DEFAULT_FALLBACK_COMMANDS,
+      actionRoute: '/my-ledger',
+      actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
+    };
+  }
+
+  if (
+    norm === 'ازيك' ||
+    norm.includes('ازيك يا زكي') ||
+    norm.includes('ازيك يا ذكي') ||
+    norm.includes('عامل ايه') ||
+    norm.includes('اخبار الشغل ايه') ||
+    norm.includes('صباح الخير') ||
+    norm.includes('مساء الخير') ||
+    norm.includes('يا هندسه')
+  ) {
+    const ledger = calculateComprehensiveLedger({
+      projects: ctx.projects,
+      workers: ctx.workers,
+      attendances: ctx.attendances,
+      advances: ctx.advances,
+      deductions: ctx.deductions || [],
+      settlements: ctx.settlements || [],
+      extracts: ctx.extracts,
+      extractLines: ctx.extractLines,
+      extras: ctx.extras,
+      extraCashes: ctx.extraCashes,
+      checks: ctx.checks,
+      expenses: ctx.expenses || [],
+      incomingPayments: ctx.incomingPayments || [],
+      selectedProjectId: null,
+    });
+    return {
+      reply: `أهلاً بيك يا باشمهندس! كله تمام ومترتب ١٠٠٪. لحد دلوقتي إجمالي اللي وصلك في الخزنة ${formatCurrency(ledger.totalReceivedAllSources, numMode)}، وإجمالي اللي اتصرف ${formatCurrency(ledger.totalSpentAll, numMode)}، وليك بره عند الشركات والشيكات ${formatCurrency(ledger.totalOwedToMe, numMode)}، وعليك التزامات للعمال والشيكات ${formatCurrency(ledger.totalOwedByMe, numMode)}، وصافي ربحك ومكسبك ${formatCurrency(ledger.totalNetProfit, numMode)}. أؤمرني أسجلك إيه النهارده؟`,
+      quickCommands: DEFAULT_FALLBACK_COMMANDS,
+      actionRoute: '/my-ledger',
+      actionLabel: 'فتح صفحة حسابي الشامل بالتفصيل',
+    };
+  }
+
+  // 1A-1. Comprehensive Ledger & Project P&L Inquiry ("حسابي الشامل" / "وصلني كام" / "ليا كام وعليا كام" / "ربح مشروع" / "المكسب كام")
+  if (
+    norm.includes('حسابي') ||
+    norm.includes('الخزنه') ||
+    norm.includes('وصلني كام') ||
+    norm.includes('قبضت كام') ||
+    norm.includes('ليا كام') ||
+    norm.includes('عليا كام') ||
+    norm.includes('اتصرف كام') ||
+    norm.includes('الربح كام') ||
+    norm.includes('المكسب كام') ||
+    norm.includes('صافي الربح') ||
+    (norm.includes('تفاصيل') && norm.includes('مشروع'))
+  ) {
+    const matchedProject = ctx.projects.find((p) => {
+      const pWords = normalizeArabic(p.name)
+        .split(' ')
+        .filter((w) => w.length >= 3);
+      return pWords.some((w) => norm.includes(w));
+    });
+
+    const ledger = calculateComprehensiveLedger({
+      projects: ctx.projects,
+      workers: ctx.workers,
+      attendances: ctx.attendances,
+      advances: ctx.advances,
+      deductions: ctx.deductions || [],
+      settlements: ctx.settlements || [],
+      extracts: ctx.extracts,
+      extractLines: ctx.extractLines,
+      extras: ctx.extras,
+      extraCashes: ctx.extraCashes,
+      checks: ctx.checks,
+      expenses: ctx.expenses || [],
+      incomingPayments: ctx.incomingPayments || [],
+      selectedProjectId: matchedProject?.id ?? null,
+    });
+
+    if (matchedProject) {
+      const pb = ledger.projectBreakdowns.find((b) => b.projectId === matchedProject.id);
+      if (pb) {
+        return {
+          reply:
+            `📊 كشف حساب مشروع "${pb.projectName}" بالتفصيل:\n` +
+            `• إجمالي اللي وصلك للمشروع: ${formatCurrency(pb.totalReceivedForProject, numMode)} (شركات/مستخلصات: ${formatCurrency(pb.receivedFromCompanies + pb.receivedFromExtracts, numMode)} · شيكات: ${formatCurrency(pb.receivedFromChecks, numMode)} · أشخاص: ${formatCurrency(pb.receivedFromPersons, numMode)})\n` +
+            `• المنصرف في المشروع: ${formatCurrency(pb.totalSpentInProject, numMode)} (سلف: ${formatCurrency(pb.advancesSpent, numMode)} · قبض يوم ١٥: ${formatCurrency(pb.settlementsPaid, numMode)} · ناش: ${formatCurrency(pb.nashPaid, numMode)} · مصاريف: ${formatCurrency(pb.expensesSpent, numMode)})\n` +
+            `• ليا بره عند المشروع: ${formatCurrency(pb.owedToMeInProject, numMode)} · وعليا للعمال والشيكات: ${formatCurrency(pb.owedByMeInProject, numMode)}\n` +
+            `• صافي الربح (المكسب) في المشروع: ${formatCurrency(pb.netProfit, numMode)} · والسيولة النقدية الصافية: ${formatCurrency(pb.cashFlowBalance, numMode)}.`,
+          actionRoute: '/my-ledger',
+          actionLabel: 'فتح حسابي الشامل وتفاصيل المشاريع',
+        };
+      }
+    }
+
+    return {
+      reply:
+        `💰 ملخص حسابك الشامل والخزنة لكل المشاريع:\n` +
+        `• إجمالي اللي وصلك فعلياً: ${formatCurrency(ledger.totalReceivedAllSources, numMode)} (من شركات ومستخلصات: ${formatCurrency(ledger.receivedFromCompanies, numMode)} · من شيكات: ${formatCurrency(ledger.receivedFromChecks, numMode)} · من أشخاص: ${formatCurrency(ledger.receivedFromPersons, numMode)})\n` +
+        `• إجمالي اللي اتصرف: ${formatCurrency(ledger.totalSpentAll, numMode)} (سلف: ${formatCurrency(ledger.totalAdvancesPaid, numMode)} · تسويات وقبض: ${formatCurrency(ledger.totalSettlementsPaid, numMode)} · ناش: ${formatCurrency(ledger.totalNashCashPaid, numMode)} · مصاريف خارجية: ${formatCurrency(ledger.totalExternalExpenses, numMode)})\n` +
+        `• ليك بره (عند الشركات + شيكات واردة معلقة): ${formatCurrency(ledger.totalOwedToMe, numMode)}\n` +
+        `• عليك التزامات (أجور عمال متبقية + شيكات صادرة): ${formatCurrency(ledger.totalOwedByMe, numMode)}\n` +
+        `• صافي الربح العام: ${formatCurrency(ledger.totalNetProfit, numMode)} · والرصيد النقدي الصافي بالخزنة: ${formatCurrency(ledger.netCashInHand, numMode)}.`,
+      actionRoute: '/my-ledger',
+      actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
+    };
+  }
+
+  // 1A-2. Write Intent: Record Incoming Payment ("وصلني 50000 من شركة إعمار لمشروع التجمع" / "قبضت 20000 من الحاج سعيد" / "دخل الخزنة 15000 من المهندس طارق")
+  if (
+    norm.startsWith('وصلني') ||
+    norm.startsWith('قبضت') ||
+    norm.startsWith('استلمت') ||
+    norm.startsWith('دخل الخزنه') ||
+    norm.startsWith('جالي دفعه') ||
+    norm.includes('وصلني مبلغ') ||
+    norm.includes('دفعه وارده')
+  ) {
+    const amount = parseSpokenArabicNumber(input) || 0;
+    if (amount > 0) {
+      const date = resolveRelativeDate(input, ctx.todayIso);
+      let sourceType: PaymentSourceType = 'شركة';
+      if (norm.includes('شيك')) {
+        sourceType = 'شيك';
+      } else if (
+        norm.includes('شخص') ||
+        norm.includes('الحاج') ||
+        norm.includes('المهندس') ||
+        norm.includes('استاذ') ||
+        norm.includes('الاستاذ') ||
+        norm.includes('عم ')
+      ) {
+        sourceType = 'شخص';
+      } else if (norm.includes('مستخلص')) {
+        sourceType = 'مستخلص';
+      }
+
+      let method: PaymentMethodType = 'نقدي';
+      if (norm.includes('شيك')) method = 'شيك';
+      else if (norm.includes('تحويل') || norm.includes('بنك')) method = 'تحويل بنكي';
+      else if (norm.includes('فودافون') || norm.includes('انستاباي') || norm.includes('محفظه'))
+        method = 'محفظة إلكترونية';
+
+      const matchedProject =
+        ctx.projects.find((p) => {
+          const pWords = normalizeArabic(p.name)
+            .split(' ')
+            .filter((w) => w.length >= 3);
+          return pWords.some((w) => norm.includes(w));
+        }) || defaultProject;
+
+      const fromMatch = input.match(/من\s+([^\d]+?)(?:\s+لمشروع|\s+في مشروع|\s+لحساب|\s+نقدي|\s+شيك|\s+تحويل|$)/);
+      const sourceName = fromMatch
+        ? fromMatch[1].trim()
+        : sourceType === 'شركة'
+          ? matchedProject?.name || 'الشركة'
+          : 'دفعة مباشرة';
+
+      const chkMatch = norm.match(/رقم\s*(\d+)/);
+      const checkNumber = chkMatch ? chkMatch[1] : '';
+
+      return {
+        reply: `هسجل دفعة واردة وصلتك بقيمة ${formatCurrency(amount, numMode)} من (${sourceType}: ${sourceName}) بطريقة (${method}) لحساب "${matchedProject?.name || 'عام'}" بتاريخ ${formatArabicDateShort(date)}. تمام يا هندسة؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'record_incoming_payment',
+          date,
+          sourceType,
+          sourceName,
+          amount,
+          method,
+          projectId: matchedProject?.id ?? null,
+          projectName: matchedProject?.name || 'عام / الخزنة الرئيسية',
+          checkNumber,
+          notes: `مسجل عبر المساعد ذكي: ${input}`,
+        },
+        actionRoute: '/my-ledger',
+        actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
+      };
+    }
+  }
+
+  // 1A-3. Write Intent: Record Site Expense ("صرفت 300 مواصلات" / "دفعت 450 اكل وغداء" / "سجل مصروف 500 ادوات")
+  if (
+    norm.startsWith('صرفت') ||
+    norm.startsWith('دفعت') ||
+    norm.startsWith('مصروف') ||
+    norm.startsWith('سجل مصروف') ||
+    norm.startsWith('اشترينا')
+  ) {
+    const amount = parseSpokenArabicNumber(input) || 0;
+    if (amount > 0) {
+      const date = resolveRelativeDate(input, ctx.todayIso);
+      let category: ExpenseCategory = 'مواصلات';
+      if (
+        norm.includes('اكل') ||
+        norm.includes('فطار') ||
+        norm.includes('غداء') ||
+        norm.includes('عشاء') ||
+        norm.includes('شاي') ||
+        norm.includes('ميه')
+      ) {
+        category = 'أكل';
+      } else if (
+        norm.includes('ادوات') ||
+        norm.includes('عده') ||
+        norm.includes('اسطوان') ||
+        norm.includes('خامات') ||
+        norm.includes('مسامير') ||
+        norm.includes('سلك')
+      ) {
+        category = 'أدوات';
+      } else if (norm.includes('صيانه') || norm.includes('تصليح') || norm.includes('عطل')) {
+        category = 'صيانة';
+      } else if (!norm.includes('مواصلات') && !norm.includes('عربيه') && !norm.includes('نقل')) {
+        category = 'أخرى';
+      }
+
+      const matchedProject =
+        ctx.projects.find((p) => {
+          const pWords = normalizeArabic(p.name)
+            .split(' ')
+            .filter((w) => w.length >= 3);
+          return pWords.some((w) => norm.includes(w));
+        }) || defaultProject;
+
+      return {
+        reply: `هسجل مصروف خارجي (${category}) بمبلغ ${formatCurrency(amount, numMode)} على مشروع "${matchedProject?.name || 'عام'}" بتاريخ ${formatArabicDateShort(date)}. تمام؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'record_expense',
+          date,
+          category,
+          amount,
+          projectId: matchedProject?.id ?? null,
+          projectName: matchedProject?.name || 'عام',
+          note: input,
+        },
+        actionRoute: '/expenses',
+        actionLabel: 'تحويل لصفحة المصاريف',
+      };
+    }
+  }
+
+  // 1A-4. Write Intent: Create Extract ("اعمل مستخلص جديد لمشروع الكوبري" / "طلع مستخلص" / "افتح مستخلص")
+  if (
+    (norm.includes('اعمل مستخلص') ||
+      norm.includes('طلع مستخلص') ||
+      norm.includes('افتح مستخلص') ||
+      norm.includes('مستخلص جديد') ||
+      norm.includes('انشئ مستخلص') ||
+      norm.includes('ضيف مستخلص')) &&
+    !norm.includes('كام')
+  ) {
+    const matchedProject =
+      ctx.projects.find((p) => {
+        const pWords = normalizeArabic(p.name)
+          .split(' ')
+          .filter((w) => w.length >= 3);
+        return pWords.some((w) => norm.includes(w));
+      }) || defaultProject;
+
+    if (!matchedProject || matchedProject.id === undefined) {
+      return {
+        reply: 'يرجى إضافة مشروع أولاً عشان أقدر أعملك مستخلص عليه يا هندسة.',
+        actionRoute: '/settings',
+        actionLabel: 'إضافة مشروع من الإعدادات',
+      };
+    }
+
+    const projExtracts = ctx.extracts.filter((e) => e.projectId === matchedProject.id);
+    const nextNum = Math.max(0, ...projExtracts.map((e) => e.number || 0)) + 1;
+    const from = `${ctx.todayIso.slice(0, 7)}-01`;
+    const to = ctx.todayIso;
+
+    return {
+      reply: `هجهزلك وأحفظ مستخلص جديد رقم (${formatNumber(nextNum, numMode)}) لمشروع "${matchedProject.name}" عن الفترة من ${formatArabicDateShort(from)} إلى ${formatArabicDateShort(to)} شامل حسابات العمال والنحاتية. تمام؟`,
+      requiresConfirmation: true,
+      pendingAction: {
+        type: 'create_extract',
+        projectId: matchedProject.id,
+        projectName: matchedProject.name,
+        from,
+        to,
+        number: nextNum,
+      },
+      actionRoute: '/extracts',
+      actionLabel: 'تحويل لصفحة المستخلصات',
+    };
+  }
+
+  // 1A-5. Write Intent: Checks — Add Check or Cash/Collect Check ("صرف شيك رقم 105" / "حصل شيك 105" / "سجل شيك وارد بـ 40000 بنك مصر رقم 505")
+  if (
+    norm.includes('صرف شيك') ||
+    norm.includes('حصل شيك') ||
+    norm.includes('اتصرف شيك') ||
+    (norm.includes('شيك') && (norm.includes('اتصرف') || norm.includes('مرتجع')))
+  ) {
+    const numMatch = norm.match(/(\d+)/);
+    const numHint = numMatch ? numMatch[1] : '';
+    const targetCheck =
+      ctx.checks.find((c) => numHint && c.number.includes(numHint)) ||
+      ctx.checks.find((c) => c.status === 'معلق');
+
+    if (targetCheck && targetCheck.id !== undefined) {
+      const newStatus: 'اتصرف' | 'مرتجع' = norm.includes('مرتجع') ? 'مرتجع' : 'اتصرف';
+      return {
+        reply: `هحدث حالة الشيك رقم (${targetCheck.number}) بمبلغ ${formatCurrency(targetCheck.amount, numMode)} (${targetCheck.bank}) إلى "${newStatus}". تمام؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'update_check_status',
+          checkId: targetCheck.id,
+          checkNumber: targetCheck.number,
+          newStatus,
+          amount: targetCheck.amount,
+        },
+        actionRoute: '/checks',
+        actionLabel: 'تحويل لدفتر الشيكات',
+      };
+    }
+  }
+
+  if (
+    (norm.includes('سجل شيك') || norm.includes('ضيف شيك') || norm.includes('شيك جديد')) &&
+    !norm.includes('كام')
+  ) {
+    const direction: 'وارد' | 'صادر' = norm.includes('صادر') ? 'صادر' : 'وارد';
+    const numMatch = norm.match(/رقم\s*(\d+)/);
+    const checkNum = numMatch ? numMatch[1] : String(Math.floor(1000 + Math.random() * 9000));
+    const withoutNum = norm.replace(/رقم\s*\d+/, '');
+    const amountMatch = withoutNum.match(/(\d+(?:\.\d+)?)/);
+    const amount = amountMatch ? Number(amountMatch[1]) : parseSpokenArabicNumber(withoutNum) || 0;
+    const bankMatch = input.match(/بنك\s+([^\s\d]+(?:\s+[^\s\d]+)?)/);
+    const bank = bankMatch ? `بنك ${bankMatch[1].trim()}` : 'بنك مصر';
+
+    const matchedProject =
+      ctx.projects.find((p) => {
+        const pWords = normalizeArabic(p.name)
+          .split(' ')
+          .filter((w) => w.length >= 3);
+        return pWords.some((w) => norm.includes(w));
+      }) || defaultProject;
+
+    if (amount > 0) {
+      return {
+        reply: `هسجل شيك (${direction}) رقم ${checkNum} على ${bank} بمبلغ ${formatCurrency(amount, numMode)} لحساب "${matchedProject?.name || 'عام'}" (حالته: معلق). تمام؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'record_check',
+          direction,
+          number: checkNum,
+          bank,
+          amount,
+          dueDate: ctx.todayIso,
+          status: 'معلق',
+          projectId: matchedProject?.id ?? null,
+          notes: `شيك ${direction} مسجل عبر ذكي`,
+        },
+        actionRoute: '/checks',
+        actionLabel: 'تحويل لدفتر الشيكات',
+      };
+    }
+  }
+
+  // 1A-6. Write Intent: Settle Worker Account ("صفي حساب كريم" / "اقفل حساب محمد واصرفله قبضه")
+  if (
+    norm.includes('صفي حساب') ||
+    norm.includes('اقفل حساب') ||
+    norm.includes('سوي حساب') ||
+    norm.includes('اصرف قبض')
+  ) {
+    const wm = matchWorkersFromText(input, ctx.workers);
+    if (wm.matched.length > 0) {
+      const w = wm.matched[0];
+      const wAtt = ctx.attendances.filter((a) => a.workerId === w.id);
+      const days = wAtt.reduce((s, a) => s + (a.dayWorked ? 1 : 0), 0);
+      const nights = wAtt.reduce((s, a) => s + (a.nightWorked ? 1 : 0), 0);
+      const grossWages = wAtt.reduce(
+        (s, a) =>
+          s +
+          (a.dayWorked ? a.workerDayRateSnapshot || w.workerDayRate : 0) +
+          (a.nightWorked ? a.workerNightRateSnapshot || w.workerNightRate : 0),
+        0
+      );
+      const advancesDeducted = ctx.advances
+        .filter((a) => a.workerId === w.id && a.settlementId === null)
+        .reduce((s, a) => s + a.amount, 0);
+      const deductionsDeducted = (ctx.deductions || [])
+        .filter((d) => d.workerId === w.id && d.settlementId === null)
+        .reduce((s, d) => s + d.amount, 0);
+      const netPaid = Math.max(0, grossWages - advancesDeducted - deductionsDeducted);
+      const from = `${ctx.todayIso.slice(0, 7)}-01`;
+      const to = ctx.todayIso;
+
+      return {
+        reply: `هصفي حساب ${w.name}: إجمالي الأجر ${formatCurrency(grossWages, numMode)} (${formatNumber(days, numMode)} يومية و ${formatNumber(nights, numMode)} سهرة) − سلف ${formatCurrency(advancesDeducted, numMode)} − خصومات ${formatCurrency(deductionsDeducted, numMode)} = الصافي المستحق للصرف ${formatCurrency(netPaid, numMode)}. أعتمد التسوية والصرف؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'settle_worker',
+          workerId: w.id!,
+          workerName: w.name,
+          from,
+          to,
+          days,
+          nights,
+          grossWages,
+          advancesDeducted,
+          deductionsDeducted,
+          netPaid,
+        },
+        actionRoute: '/settlements',
+        actionLabel: 'تحويل لصفحة كشف قبض يوم 15 والتسويات',
+      };
+    }
+  }
+
+  // 1A-7. Write Intent: Update Worker Rate ("عدل يومية كريم خليها 600" / "غير يومية محمد لـ 550 وسهرة 275")
+  if (
+    (norm.includes('عدل يوميه') ||
+      norm.includes('غير يوميه') ||
+      norm.includes('خلي يوميه') ||
+      norm.includes('زود يوميه')) &&
+    !norm.includes('شركه')
+  ) {
+    const wm = matchWorkersFromText(input, ctx.workers);
+    const newRate = parseSpokenArabicNumber(input) || 0;
+    if (wm.matched.length > 0 && newRate > 0) {
+      const w = wm.matched[0];
+      const nightMatch = norm.match(/سهره\s*(\d+)/);
+      const newNight = nightMatch ? Number(nightMatch[1]) : Math.round(newRate / 2);
+      return {
+        reply: `هعدل سعر يومية ${w.name} لتصبح ${formatCurrency(newRate, numMode)} وسهرته ${formatCurrency(newNight, numMode)}. تمام؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'update_worker_rate',
+          workerId: w.id!,
+          workerName: w.name,
+          workerDayRate: newRate,
+          workerNightRate: newNight,
+        },
+        actionRoute: '/workers',
+        actionLabel: 'تحويل لصفحة العمال والنحاتية',
+      };
+    }
+  }
+
+  // 1A-8. Write Intent: Delete Any Record ("احذف" / "امسح" / "شيل" / "الغي")
+  if (
+    norm.startsWith('احذف') ||
+    norm.startsWith('امسح') ||
+    norm.startsWith('شيل') ||
+    norm.startsWith('الغي')
+  ) {
+    const wm = matchWorkersFromText(input, ctx.workers);
+    const targetWorker = wm.matched[0];
+
+    // Delete advance
+    if (norm.includes('سلفه') || norm.includes('سلف')) {
+      const cand = targetWorker
+        ? ctx.advances.find((a) => a.workerId === targetWorker.id)
+        : ctx.advances[0];
+      if (cand && cand.id !== undefined) {
+        const wName = ctx.workers.find((w) => w.id === cand.workerId)?.name || '';
+        return {
+          reply: `هحذف سلفة ${wName} بقيمة ${formatCurrency(cand.amount, numMode)} بتاريخ ${formatArabicDateShort(cand.date)}. متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'advance',
+            recordId: cand.id,
+            description: `سلفة ${wName} (${formatCurrency(cand.amount, numMode)})`,
+          },
+          actionRoute: '/advances',
+          actionLabel: 'تحويل لصفحة السلف',
+        };
+      }
+    }
+
+    // Delete deduction
+    if (norm.includes('خصم') || norm.includes('جزاء')) {
+      const deds = ctx.deductions || [];
+      const cand = targetWorker
+        ? deds.find((d) => d.workerId === targetWorker.id)
+        : deds[0];
+      if (cand && cand.id !== undefined) {
+        const wName = ctx.workers.find((w) => w.id === cand.workerId)?.name || '';
+        return {
+          reply: `هحذف خصم ${wName} بقيمة ${formatCurrency(cand.amount, numMode)} (${cand.reason}). متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'deduction',
+            recordId: cand.id,
+            description: `خصم ${wName} (${formatCurrency(cand.amount, numMode)})`,
+          },
+          actionRoute: '/deductions',
+          actionLabel: 'تحويل لصفحة الخصومات',
+        };
+      }
+    }
+
+    // Delete attendance
+    if (norm.includes('حضور') || norm.includes('يوميه') || norm.includes('تحضير')) {
+      const date = resolveRelativeDate(input, ctx.todayIso);
+      const cand = targetWorker
+        ? ctx.attendances.find((a) => a.workerId === targetWorker.id && a.date === date) ||
+          ctx.attendances.find((a) => a.workerId === targetWorker.id)
+        : ctx.attendances[0];
+      if (cand && cand.id !== undefined) {
+        const wName = ctx.workers.find((w) => w.id === cand.workerId)?.name || '';
+        return {
+          reply: `هحذف سجل حضور ${wName} بتاريخ ${formatArabicDateShort(cand.date)}. متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'attendance',
+            recordId: cand.id,
+            description: `حضور ${wName} يوم ${cand.date}`,
+          },
+          actionRoute: '/attendance',
+          actionLabel: 'تحويل لشبكة الحضور',
+        };
+      }
+    }
+
+    // Delete expense
+    if (norm.includes('مصروف') || norm.includes('مصاريف')) {
+      const exps = ctx.expenses || [];
+      const cand = exps[0];
+      if (cand && cand.id !== undefined) {
+        return {
+          reply: `هحذف مصروف (${cand.category}) بقيمة ${formatCurrency(cand.amount, numMode)} بتاريخ ${formatArabicDateShort(cand.date)}. متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'expense',
+            recordId: cand.id,
+            description: `مصروف ${cand.category} (${formatCurrency(cand.amount, numMode)})`,
+          },
+          actionRoute: '/expenses',
+          actionLabel: 'تحويل لصفحة المصاريف',
+        };
+      }
+    }
+
+    // Delete incoming payment
+    if (norm.includes('دفعه') || norm.includes('مقبوض') || norm.includes('وارد')) {
+      const incs = ctx.incomingPayments || [];
+      const cand = incs[0];
+      if (cand && cand.id !== undefined) {
+        return {
+          reply: `هحذف الدفعة الواردة من (${cand.sourceName}) بقيمة ${formatCurrency(cand.amount, numMode)}. متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'incomingPayment',
+            recordId: cand.id,
+            description: `دفعة واردة من ${cand.sourceName} (${formatCurrency(cand.amount, numMode)})`,
+          },
+          actionRoute: '/my-ledger',
+          actionLabel: 'تحويل لحسابي الشامل',
+        };
+      }
+    }
+
+    // Delete check
+    if (norm.includes('شيك')) {
+      const numMatch = norm.match(/(\d+)/);
+      const cand = numMatch
+        ? ctx.checks.find((c) => c.number.includes(numMatch[1]))
+        : ctx.checks[0];
+      if (cand && cand.id !== undefined) {
+        return {
+          reply: `هحذف الشيك رقم ${cand.number} (${cand.bank}) بقيمة ${formatCurrency(cand.amount, numMode)}. متأكد؟`,
+          requiresConfirmation: true,
+          pendingAction: {
+            type: 'delete_record',
+            targetEntity: 'check',
+            recordId: cand.id,
+            description: `شيك رقم ${cand.number} (${formatCurrency(cand.amount, numMode)})`,
+          },
+          actionRoute: '/checks',
+          actionLabel: 'تحويل لدفتر الشيكات',
+        };
+      }
+    }
+
+    // Delete worker
+    if (targetWorker && targetWorker.id !== undefined && (norm.includes('عامل') || norm.includes('نحات') || norm.includes(normalizeArabic(targetWorker.name)))) {
+      return {
+        reply: `هحذف العامل "${targetWorker.name}" (${targetWorker.role}) من قائمة العمال. متأكد يا هندسة؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'delete_record',
+          targetEntity: 'worker',
+          recordId: targetWorker.id,
+          description: `العامل ${targetWorker.name}`,
+        },
+        actionRoute: '/workers',
+        actionLabel: 'تحويل لصفحة العمال',
+      };
+    }
   }
 
   // 1B. Write Intent: Add New Worker or Sculptor ("ضيف نحات جديد اسمه حسام بيومية 450 وسهرة 220" / "ضيف عامل جديد اسمه محمود بيومية 350")
@@ -1443,11 +2528,174 @@ export function processZakiMessage(
     }
   }
 
+  // 15. Smart Contractor Methodology & Golden Rules ("اشرح مناهج وقواعد إدارة المقاولات الذكية", "نصيحة مالية")
+  if (
+    norm.includes('مناهج') ||
+    norm.includes('منهجيه') ||
+    norm.includes('قواعد المقاولات') ||
+    norm.includes('نصيحه ماليه') ||
+    norm.includes('القاعده الذهبيه') ||
+    (norm.includes('قواعد') && norm.includes('اداره'))
+  ) {
+    const ledger = calculateComprehensiveLedger({
+      projects: ctx.projects,
+      workers: ctx.workers,
+      attendances: ctx.attendances,
+      advances: ctx.advances,
+      deductions: ctx.deductions || [],
+      settlements: ctx.settlements || [],
+      extracts: ctx.extracts || [],
+      extractLines: ctx.extractLines || [],
+      extras: ctx.extras || [],
+      extraCashes: ctx.extraCashes,
+      checks: ctx.checks,
+      expenses: ctx.expenses || [],
+      incomingPayments: ctx.incomingPayments || [],
+      selectedProjectId: null,
+    });
+    const avgWorkerDay =
+      ctx.workers.length > 0
+        ? Math.round(
+            ctx.workers.reduce((s, w) => s + w.workerDayRate, 0) / ctx.workers.length
+          )
+        : 0;
+    const avgCompDay =
+      ctx.projects.length > 0
+        ? Math.round(
+            ctx.projects.reduce((s, p) => s + p.companyDayRate, 0) / ctx.projects.length
+          )
+        : 0;
+    const spreadPerDay = avgCompDay - avgWorkerDay;
+    const totalDeductionsApplied = (ctx.deductions || []).reduce(
+      (s, d) => s + d.amount,
+      0
+    );
+
+    return {
+      reply: [
+        `📐 **مناهج وقواعد إدارة المقاولات الذكية في موقعك:**`,
+        `١. **قاعدة مطابقة العدد اليومي الإجباري:** لا تُصرف يومية أو سهرة إلا بعد مطابقة دفتر العدد الإجباري مع الأسماء المسجلة.`,
+        `٢. **قاعدة فارق اليومية والسهرة (Spread):** متوسط يومية الشركة (${formatCurrency(avgCompDay, numMode)}) مقابل متوسط يومية العامل (${formatCurrency(avgWorkerDay, numMode)}) يوفّر لك هامش ربح يومي متوسطه (${formatCurrency(spreadPerDay, numMode)}) عن كل عامل.`,
+        `٣. **قاعدة دورة قبض يوم ١٥ وسقف السلف:** إجمالي السلف المنصرفة حالياً (${formatCurrency(ledger.totalAdvancesPaid, numMode)}) والخصومات المطبقة وفّرت (${formatCurrency(totalDeductionsApplied, numMode)}).`,
+        `٤. **قاعدة التوازن النقدي (الخزنة مقابل الشيكات):** السيولة النقدية الفعلية بالخزنة (${formatCurrency(ledger.netCashInHand, numMode)})، ومستحقاتك الخارجية (${formatCurrency(ledger.totalOwedToMe, numMode)}).`,
+        `٥. **قاعدة ربط كل دفعة بمشروعها:** أي مبلغ يصلك (شركة / شخص / شيك) يُربط بمشروعه لفرز المشروع الكسبان من الخسران بدقة ١٠٠٪.`,
+        `٦. **صافي ربحك العام الحالي:** ${formatCurrency(ledger.totalNetProfit, numMode)}.`,
+      ].join('\n'),
+      actionRoute: '/my-ledger',
+      actionLabel: 'فتح منهجية المقاولات وحسابي الشامل',
+    };
+  }
+
+  // 16. Project Profitability Comparison ("قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر")
+  if (
+    (norm.includes('قارن') && norm.includes('مشاريع')) ||
+    (norm.includes('انهي مشروع') && (norm.includes('بيكسب') || norm.includes('اربح') || norm.includes('افضل'))) ||
+    norm.includes('مقارنه المشاريع') ||
+    norm.includes('ترتيب المشاريع')
+  ) {
+    const ledger = calculateComprehensiveLedger({
+      projects: ctx.projects,
+      workers: ctx.workers,
+      attendances: ctx.attendances,
+      advances: ctx.advances,
+      deductions: ctx.deductions || [],
+      settlements: ctx.settlements || [],
+      extracts: ctx.extracts || [],
+      extractLines: ctx.extractLines || [],
+      extras: ctx.extras || [],
+      extraCashes: ctx.extraCashes,
+      checks: ctx.checks,
+      expenses: ctx.expenses || [],
+      incomingPayments: ctx.incomingPayments || [],
+      selectedProjectId: null,
+    });
+    const sorted = [...ledger.projectBreakdowns].sort((a, b) => b.netProfit - a.netProfit);
+    if (sorted.length === 0) {
+      return {
+        reply: 'لا توجد مشاريع مسجلة حالياً للمقارنة بينها.',
+        actionRoute: '/settings',
+        actionLabel: 'إضافة مشروع جديد',
+      };
+    }
+    const lines = sorted.map(
+      (p, idx) =>
+        `${idx + 1}. **${p.projectName}**: صافي الربح ${formatCurrency(p.netProfit, numMode)} | وصلك: ${formatCurrency(p.totalReceivedForProject, numMode)} | اتصرف: ${formatCurrency(p.totalSpentInProject, numMode)} | ليك: ${formatCurrency(p.owedToMeInProject, numMode)}`
+    );
+    return {
+      reply: `🏆 **مقارنة وترتيب أرباح المشاريع من الأعلى للأقل:**\n${lines.join('\n')}\n💡 المشروع الأعلى ربحاً هو **${sorted[0].projectName}** بصافي ربح **${formatCurrency(sorted[0].netProfit, numMode)}**.`,
+      actionRoute: '/my-ledger',
+      actionLabel: 'عرض بطاقات مقارنة المشاريع',
+    };
+  }
+
+  // 17. Pending Checks & Financial Obligations ("الشيكات المعلقة والتزاماتي الشهر ده كام؟")
+  if (
+    norm.includes('الشيكات المعلقه') ||
+    norm.includes('شيكات معلقه') ||
+    norm.includes('التزاماتي') ||
+    (norm.includes('شيكات') && (norm.includes('معادها') || norm.includes('الجايه')))
+  ) {
+    const pendingIn = ctx.checks.filter((c) => c.direction === 'وارد' && c.status === 'معلق');
+    const pendingOut = ctx.checks.filter((c) => c.direction === 'صادر' && c.status === 'معلق');
+    const sumIn = pendingIn.reduce((s, c) => s + c.amount, 0);
+    const sumOut = pendingOut.reduce((s, c) => s + c.amount, 0);
+    return {
+      reply: [
+        `🏦 **ملخص الشيكات المعلقة والتزاماتك المالية:**`,
+        `• **شيكات واردة معلقة (فلوس ليك):** ${formatNumber(pendingIn.length, numMode)} شيك بإجمالي **${formatCurrency(sumIn, numMode)}**`,
+        `• **شيكات صادرة معلقة (التزامات عليك):** ${formatNumber(pendingOut.length, numMode)} شيك بإجمالي **${formatCurrency(sumOut, numMode)}**`,
+      ].join('\n'),
+      actionRoute: '/checks',
+      actionLabel: 'فتح دفتر الشيكات',
+    };
+  }
+
+  // 18. Detailed Worker Statement ("كشف حساب تفصيلي لكريم محمود")
+  if (
+    norm.includes('كشف حساب') ||
+    (norm.includes('تفاصيل حساب') && !norm.includes('مشروع'))
+  ) {
+    const wm = matchWorkersFromText(input, ctx.workers);
+    if (wm.matched.length > 0) {
+      const w = wm.matched[0];
+      const wAtt = ctx.attendances.filter((a) => a.workerId === w.id);
+      const days = wAtt.reduce((s, a) => s + a.dayWorked, 0);
+      const nights = wAtt.reduce((s, a) => s + a.nightWorked, 0);
+      const gross = wAtt.reduce(
+        (s, a) =>
+          s +
+          a.dayWorked * (a.workerDayRateSnapshot || w.workerDayRate) +
+          a.nightWorked * (a.workerNightRateSnapshot || w.workerNightRate),
+        0
+      );
+      const adv = ctx.advances
+        .filter((a) => a.workerId === w.id && a.settlementId === null)
+        .reduce((s, a) => s + a.amount, 0);
+      const ded = (ctx.deductions || [])
+        .filter((d) => d.workerId === w.id && d.settlementId === null)
+        .reduce((s, d) => s + d.amount, 0);
+      const net = gross - adv - ded;
+      return {
+        reply: [
+          `👷 **كشف حساب تفصيلي — ${w.name} (${w.role}):**`,
+          `• سعر اليومية: ${formatCurrency(w.workerDayRate, numMode)} | سعر السهرة: ${formatCurrency(w.workerNightRate, numMode)}`,
+          `• إجمالي الحضور: ${formatNumber(days, numMode)} يومية و ${formatNumber(nights, numMode)} سهرة`,
+          `• إجمالي الأجر المستحق: ${formatCurrency(gross, numMode)}`,
+          `• السلف المفتوحة: ${formatCurrency(adv, numMode)} | الخصومات المفتوحة: ${formatCurrency(ded, numMode)}`,
+          `• **صافي المستحق للصرف الآن:** ${formatCurrency(net, numMode)}`,
+        ].join('\n'),
+        actionRoute: '/workers',
+        actionLabel: 'فتح ملف العامل الكامل',
+      };
+    }
+  }
+
   // Fallback
   return {
-    reply: 'أنا معاك يا هندسة! أقدر أسجلك العدد اليومي الإجباري، يوميات العمال والنحاتية، السهرات، الخصومات والجزاءات، السلف، أو أحسبلك كشف قبض يوم ١٥. جرب واحد من الأوامر الذكية دي:',
+    reply:
+      'أنا معاك يا هندسة! أقدر بالعامية المصرية أسجلك أي فلوس وصلتك (شيكات أو من شركة أو شخص)، أحسبلك حسابك الشامل والربح في كل مشروع، أشرحلك مناهج وقواعد إدارة المقاولات، أحضّر العمال والنحاتية، أعمل مستخلصات، أصرف سلف وأوقع خصومات، أو أضيف وأحذف أي حاجة في الموقع. جرب واحد من الأوامر دي أو اضغط على "قدرات ذكي الشاملة":',
     quickCommands: DEFAULT_FALLBACK_COMMANDS,
-    actionRoute: '/dashboard',
-    actionLabel: 'تحويل للرئيسية',
+    actionRoute: '/my-ledger',
+    actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
   };
 }

@@ -288,3 +288,88 @@ test('Zaki adds a new sculptor ("ضيف نحات جديد اسمه ابراهي�
     assert.equal(res.pendingAction.workerNightRate, 250);
   }
 });
+
+test('Zaki records incoming payment from company/check/person to project ("وصلني 25000 شيك من شركة طلعت مصطفى لحساب مشروع الكوبري الجديد")', () => {
+  const res = processZakiMessage(
+    'وصلني 25000 شيك من شركة طلعت مصطفى لحساب مشروع الكوبري الجديد',
+    mockContext
+  );
+  assert.equal(res.requiresConfirmation, true);
+  assert.equal(res.pendingAction?.type, 'record_incoming_payment');
+  if (res.pendingAction?.type === 'record_incoming_payment') {
+    assert.equal(res.pendingAction.amount, 25000);
+    assert.equal(res.pendingAction.projectId, 1);
+  }
+});
+
+test('Zaki records site expense ("صرفت 350 مواصلات لمشروع الكوبري الجديد")', () => {
+  const res = processZakiMessage(
+    'صرفت 350 مواصلات لمشروع الكوبري الجديد',
+    mockContext
+  );
+  assert.equal(res.requiresConfirmation, true);
+  assert.equal(res.pendingAction?.type, 'record_expense');
+  if (res.pendingAction?.type === 'record_expense') {
+    assert.equal(res.pendingAction.amount, 350);
+    assert.equal(res.pendingAction.category, 'مواصلات');
+  }
+});
+
+test('Zaki creates new extract ("اعمل مستخلص جديد لمشروع الكوبري الجديد")', () => {
+  const res = processZakiMessage(
+    'اعمل مستخلص جديد لمشروع الكوبري الجديد',
+    mockContext
+  );
+  assert.equal(res.requiresConfirmation, true);
+  assert.equal(res.pendingAction?.type, 'create_extract');
+  if (res.pendingAction?.type === 'create_extract') {
+    assert.equal(res.pendingAction.projectId, 1);
+    assert.equal(res.pendingAction.number, 2);
+  }
+});
+
+test('Zaki deletes/deactivates worker ("احذف العامل كريم محمود")', () => {
+  const res = processZakiMessage('احذف العامل كريم محمود', mockContext);
+  assert.equal(res.requiresConfirmation, true);
+  assert.equal(res.pendingAction?.type, 'delete_record');
+  if (res.pendingAction?.type === 'delete_record') {
+    assert.equal(res.pendingAction.targetEntity, 'worker');
+    assert.equal(res.pendingAction.recordId, 4);
+  }
+});
+
+test('Zaki answers comprehensive ledger query ("حسابي الشامل وصلني كام وصرفت كام وربحي كام؟")', () => {
+  const res = processZakiMessage(
+    'حسابي الشامل وصلني كام وصرفت كام وربحي كام؟',
+    mockContext
+  );
+  assert.ok(res.reply.includes('حسابك الشامل والخزنة'));
+  assert.equal(res.actionRoute, '/my-ledger');
+});
+
+test('Zaki explains contractor methodology and golden rules ("اشرح مناهج وقواعد إدارة المقاولات الذكية")', () => {
+  const res = processZakiMessage(
+    'اشرح مناهج وقواعد إدارة المقاولات الذكية',
+    mockContext
+  );
+  assert.ok(res.reply.includes('مناهج وقواعد إدارة المقاولات الذكية'));
+  assert.equal(res.actionRoute, '/my-ledger');
+});
+
+test('Zaki compares project profitability ("قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر")', () => {
+  const res = processZakiMessage(
+    'قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر',
+    mockContext
+  );
+  assert.ok(res.reply.includes('مقارنة وترتيب أرباح المشاريع'));
+  assert.equal(res.actionRoute, '/my-ledger');
+});
+
+test('Zaki returns detailed worker statement ("كشف حساب تفصيلي لكريم محمود")', () => {
+  const res = processZakiMessage('كشف حساب تفصيلي لكريم محمود', mockContext);
+  assert.ok(res.reply.includes('كشف حساب تفصيلي'));
+  assert.ok(res.reply.includes('كريم محمود'));
+  assert.equal(res.actionRoute, '/workers');
+});
+
+

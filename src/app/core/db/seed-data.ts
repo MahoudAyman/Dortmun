@@ -11,6 +11,7 @@ import type {
   ExtraItem,
   Extract,
   ExtractLine,
+  IncomingPayment,
   Project,
   Settlement,
   Worker,
@@ -61,4 +62,5 @@ export const INITIAL_EXTRAS: ExtraItem[] = [];
 export const INITIAL_EXTRA_CASH: ExtraCash[] = [];
 export const INITIAL_CHECKS: CheckItem[] = [];
 export const INITIAL_EXPENSES: Expense[] = [];
+export const INITIAL_INCOMING_PAYMENTS: IncomingPayment[] = [];
 export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [];
