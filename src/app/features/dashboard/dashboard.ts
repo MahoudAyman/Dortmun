@@ -11,7 +11,41 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, MatIconModule],
   template: `
-    <div class="space-y-6">
+    <div class="space-y-4 sm:space-y-6">
+      <!-- Smart Quick Field Command Strip -->
+      <div class="ceramic-card p-3 sm:p-4 bg-gradient-to-l from-indigo-500/10 via-[var(--bg-card)] to-emerald-500/10 border border-indigo-500/20">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <span class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <mat-icon class="!w-5 !h-5 !text-[20px]">bolt</mat-icon>
+            </span>
+            <div>
+              <h2 class="text-sm font-black text-[var(--text-heading)]">المساعد الميداني الذكي السريع</h2>
+              <p class="text-[11px] text-[var(--text-secondary)]">اكتب أمراً مباشراً مثل: <strong>سلفة 500 أحمد</strong> أو <strong>مصروف 250 مواصلات</strong> ليتم تسجيله فوراً</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 w-full md:w-auto">
+            <input
+              type="text"
+              [value]="dashSmartCommand()"
+              (input)="dashSmartCommand.set($any($event.target).value)"
+              (keydown.enter)="runDashSmartCommand()"
+              placeholder="اكتب أمراً سريعاً (مثال: سلفة 300 محمد)..."
+              class="flex-1 sm:w-64 min-w-0 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              type="button"
+              (click)="runDashSmartCommand()"
+              class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1 shrink-0 shadow-2xs cursor-pointer"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">send</mat-icon>
+              <span>تنفيذ</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Mandatory Daily Headcount & Payday 15 Command Banner -->
       @let hc = store.todayHeadcountMatch();
       @let payday = store.payday15Info();
@@ -484,21 +518,29 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
             </div>
           </div>
 
-          <div class="space-y-2 max-h-64 overflow-y-auto">
+          <div class="space-y-2 max-h-56 overflow-y-auto">
             @for (log of store.auditLogs().slice(0, 6); track log.id || $index) {
               <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex items-start justify-between gap-2 text-xs">
                 <div>
-                  <div class="font-bold text-[var(--text-heading)]">{{ log.action }} — <span class="text-[#3390EC]">{{ log.entity }}</span></div>
+                  <div class="font-bold text-[var(--text-heading)] flex flex-wrap items-center gap-1.5">
+                    <span>{{ log.action }} — <span class="text-[#3390EC]">{{ log.entity }}</span></span>
+                    @if (log.deviceName) {
+                      <span class="px-2 py-0.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold">
+                        📱 {{ log.deviceName }}
+                      </span>
+                    }
+                  </div>
                   <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">{{ log.details }}</p>
                 </div>
                 <span class="text-[10px] text-[var(--text-secondary)] tabular-nums shrink-0">{{ store.digits(log.timestamp.slice(11)) }}</span>
               </div>
             } @empty {
-              <div class="p-6 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center">
-                <p class="text-xs text-[var(--text-secondary)]">سجل الحركات فارغ حالياً — أي عملية تسجيل أو تراجع أو رد تراجع ستظهر هنا فوراً.</p>
+              <div class="p-5 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center">
+                <p class="text-xs text-[var(--text-secondary)]">سجل الحركات فارغ حالياً — أي عملية تسجيل أو تراجع أو رد تراجع ستظهر هنا فوراً مع اسم الجهاز.</p>
               </div>
             }
           </div>
+
         </div>
       </div>
 
@@ -711,6 +753,17 @@ export class DashboardPage {
     if (isPlatformBrowser(this.platformId) && navigator.clipboard) {
       await navigator.clipboard.writeText(text);
       this.store.showToast(`تم نسخ كشف قبض "${name}" جاهزاً للواتساب`, 'success');
+    }
+  }
+
+  readonly dashSmartCommand = signal<string>('');
+
+  async runDashSmartCommand(): Promise<void> {
+    const cmd = this.dashSmartCommand().trim();
+    if (!cmd) return;
+    const ok = await this.store.executeSmartCommand(cmd);
+    if (ok) {
+      this.dashSmartCommand.set('');
     }
   }
 }

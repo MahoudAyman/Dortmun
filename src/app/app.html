@@ -41,7 +41,9 @@
         <div class="font-bold text-base text-[var(--text-heading)] truncate">
           {{ store.settings().companyName }}
         </div>
-        <div class="text-xs text-[var(--text-secondary)] truncate">نظام سيراميك ذكي · محلي ١٠٠٪</div>
+        <div class="text-xs text-[var(--text-secondary)] truncate">
+          نظام إدارة المقاولات والحسابات الذكي
+        </div>
       </div>
     </div>
 
@@ -207,14 +209,14 @@
   <div class="flex-1 flex flex-col min-w-0">
     <!-- PINNED TWO-TIER TOP BANNER (ثبّت البانر العلوي بالكامل: الشريط الرئيسي + شريط الاختصارات والمؤشرات السريعة) -->
     <div class="sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] shadow-xs no-print">
-      <!-- Tier 1: Main Top App Bar -->
-      <header class="h-16 px-4 lg:px-6 flex items-center justify-between gap-2.5 border-b border-[var(--border-subtle)]/70">
+      <!-- Tier 1: Main Top App Bar (Mobile-optimized compact height + Desktop full controls) -->
+      <header class="h-14 sm:h-16 px-3 lg:px-6 flex items-center justify-between gap-2 border-b border-[var(--border-subtle)]/70">
         <!-- Zone 1: Mobile Menu Trigger + Brand Wordmark + Quick Action Button -->
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
           <button
             type="button"
             (click)="mobileMenuOpen.set(!mobileMenuOpen())"
-            class="lg:hidden p-2 rounded-full border border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)]"
+            class="lg:hidden min-w-[40px] min-h-[40px] p-2 rounded-full border border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)] flex items-center justify-center shrink-0"
             aria-label="فتح القائمة الجانبية"
           >
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -223,21 +225,21 @@
               <line x1="4" x2="20" y1="18" y2="18"></line>
             </svg>
           </button>
-          <a routerLink="/dashboard" class="text-base sm:text-lg font-bold tracking-tight text-[var(--text-heading)] whitespace-nowrap shrink-0">
+          <a routerLink="/dashboard" class="text-sm sm:text-lg font-bold tracking-tight text-[var(--text-heading)] truncate max-w-[130px] sm:max-w-none whitespace-nowrap">
             {{ store.settings().companyName }}
           </a>
 
-          <!-- New Feature: Instant Quick Action Hub Button (+ تسجيل فوري سريع) -->
+          <!-- Instant Quick Action Hub Button (+ تسجيل فوري سريع) -->
           <button
             type="button"
-            (click)="openQuickActionModal('deduction')"
-            title="تسجيل خصم أو سلفة أو مصروف أو عامل فوراً (Ctrl+K)"
-            class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs whitespace-nowrap"
+            (click)="openQuickActionModal('smart')"
+            title="تسجيل فوري أو أمر ذكي بالصوت والكتابة (Ctrl+K)"
+            class="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1 shadow-2xs whitespace-nowrap shrink-0"
           >
             <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 5v14M5 12h14"></path>
             </svg>
-            <span>تسجيل فوري</span>
+            <span class="hidden xs:inline sm:inline">تسجيل فوري</span>
           </button>
         </div>
 
@@ -276,8 +278,38 @@
           }
         </div>
 
-        <!-- Zone 3: Calculator + Alerts + Undo + Redo + Numerals + Day/Night Mode -->
-        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <!-- Zone 3: Cloud & Device Hub + Calculator + Alerts + Undo + Redo + Numerals + Day/Night Mode -->
+        <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+          <!-- Smart Direct Connect / Disconnect Toggle Button (Default: Connected) -->
+          <button
+            type="button"
+            (click)="store.toggleLocalOnlyMode()"
+            [title]="store.localOnlyMode() ? 'الاتصال مفصول حالياً — اضغط للاتصال الفوري والمزامنة التلقائية' : 'متصل تلقائياً (يرفع ويجلب أي تغيير مباشر) — اضغط لفصل الاتصال'"
+            aria-label="زر الاتصال وفصل الاتصال"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold whitespace-nowrap transition-all cursor-pointer"
+            [class.bg-emerald-50]="!store.localOnlyMode()"
+            [class.dark:bg-emerald-950/40]="!store.localOnlyMode()"
+            [class.border-emerald-400]="!store.localOnlyMode()"
+            [class.text-emerald-700]="!store.localOnlyMode()"
+            [class.dark:text-emerald-300]="!store.localOnlyMode()"
+            [class.bg-[var(--color-secondary-soft)]]="store.localOnlyMode()"
+            [class.border-[#E7C78F]]="store.localOnlyMode()"
+            [class.text-[var(--text-heading)]]="store.localOnlyMode()"
+          >
+            @if (store.localOnlyMode()) {
+              <span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+              <span>اتصال</span>
+            } @else {
+              <span
+                class="w-2 h-2 rounded-full shrink-0"
+                [class.bg-emerald-500]="store.cloudSyncStatus() === 'connected'"
+                [class.bg-[#3390EC]]="store.cloudSyncStatus() === 'syncing'"
+                [class.animate-ping]="store.cloudSyncStatus() === 'syncing'"
+              ></span>
+              <span>{{ store.cloudSyncStatus() === 'syncing' ? 'يزامن...' : 'متصل' }}</span>
+            }
+          </button>
+
           <!-- Smart Contractor Calculator Trigger -->
           <button
             type="button"
@@ -300,7 +332,7 @@
             <button
               type="button"
               (click)="notificationsOpen.set(!notificationsOpen())"
-              class="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-semibold whitespace-nowrap"
+              class="relative inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-semibold whitespace-nowrap"
               aria-label="مركز التنبيهات الذكية"
             >
               <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -314,7 +346,7 @@
             </button>
 
             @if (notificationsOpen()) {
-              <div class="fixed sm:absolute left-4 sm:left-0 right-4 sm:right-auto top-16 sm:top-12 sm:w-96 ceramic-card p-4 z-50 space-y-3">
+              <div class="fixed sm:absolute left-3 sm:left-0 right-3 sm:right-auto top-15 sm:top-12 sm:w-96 ceramic-card p-4 z-50 space-y-3">
                 <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
                   <span class="text-xs font-bold text-[var(--text-heading)]">
                     التنبيهات الذكية الفورية ({{ store.num(store.smartAlerts().length) }})
@@ -367,13 +399,13 @@
             [disabled]="!store.lastUndo()"
             [title]="store.lastUndo() ? 'تراجع عن: ' + store.lastUndo()!.description : 'لا توجد عملية للتراجع'"
             aria-label="تراجع عن آخر عملية"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+            class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
           >
             <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 7v6h6"></path>
               <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
             </svg>
-            <span>تراجع</span>
+            <span class="hidden sm:inline">تراجع</span>
             @if (store.undoStack().length > 0) {
               <span class="px-1.5 py-0.2 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold tabular-nums">
                 {{ store.num(store.undoStack().length) }}
@@ -388,13 +420,13 @@
             [disabled]="!store.lastRedo()"
             [title]="store.lastRedo() ? 'رد التراجع: ' + store.lastRedo()!.description : 'لا توجد عملية متراجع عنها لردّها'"
             aria-label="رد التراجع وإعادة العملية"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
+            class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap"
           >
             <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 7v6h-6"></path>
               <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path>
             </svg>
-            <span>رد التراجع</span>
+            <span class="hidden sm:inline">رد التراجع</span>
             @if (store.redoStack().length > 0) {
               <span class="px-1.5 py-0.2 rounded-full bg-[#E7C78F]/30 text-[var(--text-heading)] text-[10px] font-bold tabular-nums">
                 {{ store.num(store.redoStack().length) }}
@@ -405,7 +437,7 @@
           <button
             type="button"
             (click)="store.toggleNumeralMode()"
-            class="px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
+            class="hidden sm:inline-flex px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
             aria-label="تبديل الأرقام عربي أو إنجليزي"
           >
             {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
@@ -417,26 +449,26 @@
             (click)="store.toggleDarkMode()"
             [title]="store.settings().darkMode ? 'التحويل إلى الوضع النهاري (الفاتح)' : 'التحويل إلى الوضع الليلي (الداكن)'"
             aria-label="تبديل الوضع الليلي والنهاري"
-            class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
+            class="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap"
           >
             @if (store.settings().darkMode) {
               <svg class="w-4 h-4 text-[#E7C78F] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="4"></circle>
                 <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
               </svg>
-              <span>نهاري</span>
+              <span class="hidden sm:inline">نهاري</span>
             } @else {
               <svg class="w-4 h-4 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
               </svg>
-              <span>ليلي</span>
+              <span class="hidden sm:inline">ليلي</span>
             }
           </button>
         </div>
       </header>
 
-      <!-- Tier 2: Pinned Quick Shortcuts & Live Status Ribbon (شريط الاختصارات والمؤشرات المثبّت دائماً في الأعلى) -->
-      <div class="px-4 lg:px-6 py-2 flex flex-wrap items-center gap-2">
+      <!-- Tier 2: Single-Line Horizontal Swipeable Quick Shortcuts Ribbon (شريط الاختصارات السريعة القابل للسحب على الهاتف) -->
+      <div class="px-3 lg:px-6 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
         <span class="text-xs font-bold text-[var(--text-secondary)] shrink-0 inline-flex items-center gap-1 whitespace-nowrap">
           <svg class="w-4 h-4 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -530,6 +562,29 @@
           <span>اسأل المساعد زكي</span>
         </a>
 
+        <!-- Instant 1-Click Cloud vs Local-Only Mode Switcher -->
+        <button
+          type="button"
+          (click)="store.toggleLocalOnlyMode()"
+          class="px-3.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
+          [class.border-emerald-400]="!store.localOnlyMode()"
+          [class.bg-emerald-50]="!store.localOnlyMode()"
+          [class.dark:bg-emerald-950/30]="!store.localOnlyMode()"
+          [class.text-emerald-700]="!store.localOnlyMode()"
+          [class.dark:text-emerald-300]="!store.localOnlyMode()"
+          [class.border-[#E7C78F]]="store.localOnlyMode()"
+          [class.bg-[var(--color-secondary-soft)]]="store.localOnlyMode()"
+          [class.text-[var(--text-heading)]]="store.localOnlyMode()"
+        >
+          @if (store.localOnlyMode()) {
+            <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_off</mat-icon>
+            <span>وضع محلي فقط (اضغط لتفعيل الخادم ١٠٠٪)</span>
+          } @else {
+            <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_done</mat-icon>
+            <span>مزامنة الخادم ١٠٠٪ (اضغط للوضع المحلي)</span>
+          }
+        </button>
+
         <button
           type="button"
           (click)="confirmZeroResetOpen.set(true)"
@@ -609,15 +664,15 @@
       <router-outlet />
     </main>
 
-    <!-- Floating Mobile Bottom Navigation Bar -->
+    <!-- Floating Mobile Bottom Navigation Bar (5 Ergonomic Thumb-Zone Slots) -->
     <nav
       aria-label="شريط التنقل السفلي للموبايل"
-      class="lg:hidden fixed bottom-3.5 left-3.5 right-3.5 z-30 h-16 mobile-floating-nav grid grid-cols-5 items-center px-2 no-print"
+      class="lg:hidden fixed bottom-2.5 left-2.5 right-2.5 z-30 h-16 mobile-floating-nav grid grid-cols-5 items-center px-1.5 no-print"
     >
       <a
         routerLink="/dashboard"
         routerLinkActive="mobile-nav-active"
-        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+        class="mobile-nav-item flex flex-col items-center justify-center min-h-[44px] py-1 text-[11px] gap-0.5"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect width="7" height="9" x="3" y="3" rx="1"></rect>
@@ -632,7 +687,7 @@
       <a
         routerLink="/attendance"
         routerLinkActive="mobile-nav-active"
-        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+        class="mobile-nav-item flex flex-col items-center justify-center min-h-[44px] py-1 text-[11px] gap-0.5"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="4" width="18" height="18" rx="2"></rect>
@@ -642,23 +697,25 @@
         <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
 
-      <a
-        routerLink="/deductions"
-        routerLinkActive="mobile-nav-active"
-        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      <!-- Center Thumb-Zone Instant Action Trigger (+ تسجيل فوري بالصوت والكتابة) -->
+      <button
+        type="button"
+        (click)="openQuickActionModal('smart')"
+        aria-label="تسجيل فوري وأمر ذكي"
+        class="flex flex-col items-center justify-center min-h-[48px] -mt-3"
       >
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M8 12h8"></path>
-        </svg>
-        <span>الخصومات</span>
-        <span class="mobile-nav-dot" aria-hidden="true"></span>
-      </a>
+        <span class="w-11 h-11 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] shadow-md flex items-center justify-center font-bold">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"></path>
+          </svg>
+        </span>
+        <span class="text-[10px] font-bold text-[#3390EC] dark:text-[#4EA4F6] mt-0.5">تسجيل فوري</span>
+      </button>
 
       <a
         routerLink="/settlements"
         routerLinkActive="mobile-nav-active"
-        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+        class="mobile-nav-item flex flex-col items-center justify-center min-h-[44px] py-1 text-[11px] gap-0.5"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect width="20" height="14" x="2" y="5" rx="2"></rect>
@@ -668,59 +725,69 @@
         <span class="mobile-nav-dot" aria-hidden="true"></span>
       </a>
 
-      <a
-        routerLink="/zaki"
-        routerLinkActive="mobile-nav-active"
-        class="mobile-nav-item flex flex-col items-center justify-center py-1 text-[11px] gap-0.5"
+      <button
+        type="button"
+        (click)="openCloudHubModal('sql')"
+        class="mobile-nav-item flex flex-col items-center justify-center min-h-[44px] py-1 text-[11px] gap-0.5"
+        aria-label="مركز الخادم وكود SQL"
       >
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 8V4H8"></path>
-          <rect width="16" height="12" x="4" y="8" rx="2"></rect>
-          <path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path>
-        </svg>
-        <span>زكي</span>
-        <span class="mobile-nav-dot" aria-hidden="true"></span>
-      </a>
+        <mat-icon class="!text-lg !w-5 !h-5 text-emerald-600 dark:text-emerald-400">cloud_done</mat-icon>
+        <span>الخادم و SQL</span>
+      </button>
     </nav>
   </div>
 </div>
 
-<!-- NEW FEATURE 1: Instant Quick Action Hub Modal (+ تسجيل فوري سريع من أي شاشة) -->
+<!-- NEW FEATURE 1: Instant Quick Action Hub Modal (+ تسجيل فوري سريع + الأمر الذكي بالصوت والكتابة) -->
 @if (quickActionModalOpen()) {
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-    <div class="ceramic-card p-6 max-w-lg w-full space-y-5">
+  <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 p-0 sm:p-4 backdrop-blur-xs">
+    <div class="ceramic-card rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto sm:hidden"></div>
       <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
         <div class="flex items-center gap-2.5">
-          <div class="w-10 h-10 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center font-bold">
+          <div class="w-10 h-10 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center font-bold shrink-0">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
           </div>
           <div>
             <h3 class="text-base font-bold text-[var(--text-heading)]">
-              مركز التسجيل الفوري السريع (Ctrl+K)
+              مركز التسجيل الفوري والأمر الذكي (Ctrl+K)
             </h3>
             <p class="text-xs text-[var(--text-secondary)]">
-              سجّل خصماً أو سلفة أو مصروفاً أو عاملاً جديداً فوراً دون مغادرة صفحتك
+              سجّل بالصوت أو الكتابة الذكية أو اختر نوع العملية فوراً
             </p>
           </div>
         </div>
         <button
           type="button"
           (click)="quickActionModalOpen.set(false)"
-          class="text-[var(--text-secondary)] hover:text-[var(--text-heading)]"
+          class="text-[var(--text-secondary)] hover:text-[var(--text-heading)] p-1.5"
           aria-label="إغلاق"
         >
           <mat-icon>close</mat-icon>
         </button>
       </div>
 
-      <!-- 4 Smart Tabs -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <!-- 5 Smart Tabs (Swipeable on mobile) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        <button
+          type="button"
+          (click)="quickActionTab.set('smart')"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0 inline-flex items-center gap-1"
+          [class.bg-[#3390EC]]="quickActionTab() === 'smart'"
+          [class.text-white]="quickActionTab() === 'smart'"
+          [class.border-[#3390EC]]="quickActionTab() === 'smart'"
+          [class.bg-[var(--bg-app)]]="quickActionTab() !== 'smart'"
+          [class.border-[var(--border-subtle)]]="quickActionTab() !== 'smart'"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">mic</mat-icon>
+          <span>أمر ذكي (صوت/كتابة)</span>
+        </button>
         <button
           type="button"
           (click)="quickActionTab.set('deduction')"
-          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0"
           [class.bg-[#3390EC]]="quickActionTab() === 'deduction'"
           [class.text-white]="quickActionTab() === 'deduction'"
           [class.border-[#3390EC]]="quickActionTab() === 'deduction'"
@@ -732,7 +799,7 @@
         <button
           type="button"
           (click)="quickActionTab.set('advance')"
-          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0"
           [class.bg-[#3390EC]]="quickActionTab() === 'advance'"
           [class.text-white]="quickActionTab() === 'advance'"
           [class.border-[#3390EC]]="quickActionTab() === 'advance'"
@@ -744,7 +811,7 @@
         <button
           type="button"
           (click)="quickActionTab.set('expense')"
-          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0"
           [class.bg-[#3390EC]]="quickActionTab() === 'expense'"
           [class.text-white]="quickActionTab() === 'expense'"
           [class.border-[#3390EC]]="quickActionTab() === 'expense'"
@@ -756,7 +823,7 @@
         <button
           type="button"
           (click)="quickActionTab.set('worker')"
-          class="py-2 px-3 rounded-full text-xs font-bold border transition-all"
+          class="py-2 px-3 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0"
           [class.bg-[#3390EC]]="quickActionTab() === 'worker'"
           [class.text-white]="quickActionTab() === 'worker'"
           [class.border-[#3390EC]]="quickActionTab() === 'worker'"
@@ -766,6 +833,73 @@
           + عامل / نحّات
         </button>
       </div>
+
+      <!-- Tab 0: Smart Natural Language / Voice Command -->
+      @if (quickActionTab() === 'smart') {
+        <div class="space-y-4">
+          <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-2.5">
+            <label for="qa-smart-cmd" class="block text-xs font-bold text-[var(--text-heading)]">
+              اكتب أو انطق الأمر الذكي وسيقوم النظام بتحليله وتنفيذه ومزامنته مع الخادم فوراً:
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                id="qa-smart-cmd"
+                type="text"
+                [value]="smartCommandInput()"
+                (input)="smartCommandInput.set($any($event.target).value)"
+                (keydown.enter)="runSmartCommandNow()"
+                placeholder="مثلاً: خصم نص يوم على أحمد بسبب تأخير..."
+                class="flex-1 min-w-0 px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-sm font-bold"
+              />
+              <button
+                type="button"
+                (click)="startVoiceCommand()"
+                [class.bg-rose-600]="isVoiceListening()"
+                [class.bg-[#3390EC]]="!isVoiceListening()"
+                class="w-11 h-11 rounded-full text-white flex items-center justify-center shrink-0"
+                aria-label="إدخال صوتي للأمر الذكي"
+                title="تحدث بالصوت لتسجيل العملية"
+              >
+                <mat-icon>{{ isVoiceListening() ? 'graphic_eq' : 'mic' }}</mat-icon>
+              </button>
+            </div>
+
+            <!-- Live Smart Parser Preview -->
+            <div class="p-3 rounded-xl bg-[#1F2A37] text-white text-xs flex items-center justify-between gap-2">
+              <span class="text-slate-300">تحليل الأمر الذكي:</span>
+              <span class="font-bold text-[#E7C78F]">{{ parsedSmartCommandPreview().summary }}</span>
+            </div>
+
+            <!-- 1-Tap Smart Command Examples -->
+            <div class="space-y-1.5">
+              <span class="block text-[11px] font-bold text-[var(--text-secondary)]">أمثلة جاهزة (اضغط للتجربة):</span>
+              <div class="flex flex-wrap gap-1.5">
+                @for (ex of ['خصم نص يوم على أحمد بسبب تأخير', 'سلفة 500 لمحمود', 'مصروف مواصلات 200', 'العدد اليومي 12 عامل و 4 نحات و 5 سهرة', 'إضافة نحات إبراهيم 600']; track ex) {
+                  <button
+                    type="button"
+                    (click)="smartCommandInput.set(ex)"
+                    class="px-2.5 py-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-[11px] font-semibold"
+                  >
+                    {{ ex }}
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2">
+            <button type="button" (click)="quickActionModalOpen.set(false)" class="px-4 py-2.5 rounded-full border border-[var(--border-subtle)] text-xs font-bold">إلغاء</button>
+            <button
+              type="button"
+              (click)="runSmartCommandNow()"
+              class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold inline-flex items-center gap-1.5"
+            >
+              <mat-icon class="!text-base !w-4 !h-4">bolt</mat-icon>
+              <span>تنفيذ الأمر ومزامنته مع الخادم</span>
+            </button>
+          </div>
+        </div>
+      }
 
       <!-- Tab 1: Quick Deduction -->
       @if (quickActionTab() === 'deduction') {
@@ -1375,3 +1509,461 @@
     </div>
   </div>
 }
+
+<!-- Cloud Server Sync 100%, Registered Devices, Full 18-Table SQL & Cloud Backups Hub Modal -->
+@if (store.showCloudHubModal()) {
+  <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-xs overflow-y-auto">
+    <div class="ceramic-card rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 max-w-4xl w-full space-y-4 sm:my-6 max-h-[92vh] overflow-y-auto">
+      <div class="w-10 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto sm:hidden"></div>
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3.5">
+        <div class="flex items-center gap-3">
+          <div
+            class="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-bold shrink-0"
+            [class.bg-emerald-600]="!store.localOnlyMode()"
+            [class.bg-amber-600]="store.localOnlyMode()"
+          >
+            <mat-icon>{{ store.localOnlyMode() ? 'cloud_off' : 'cloud_done' }}</mat-icon>
+          </div>
+          <div>
+            <h3 class="text-sm sm:text-lg font-bold text-[var(--text-heading)]">
+              مركز الخادم السحابي ١٠٠٪ · الأجهزة · كود SQL الكامل (١٨ جدولاً)
+            </h3>
+            <p class="text-xs text-[var(--text-secondary)]">
+              مزامنة فورية ١٠٠٪ مع Supabase · استعادة سحابية · فحص الجداول · وعزل محلي بضغطة واحدة
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          (click)="store.showCloudHubModal.set(false)"
+          class="text-[var(--text-secondary)] hover:text-[var(--text-heading)] p-1.5"
+          aria-label="إغلاق مركز الخادم"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <!-- 4 Smart Navigation Tabs inside Cloud Hub (Swipeable on mobile) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 border-b border-[var(--border-subtle)]">
+        <button
+          type="button"
+          (click)="cloudHubTab.set('devices')"
+          class="px-3.5 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+          [class.bg-[#3390EC]]="cloudHubTab() === 'devices'"
+          [class.text-white]="cloudHubTab() === 'devices'"
+          [class.border-[#3390EC]]="cloudHubTab() === 'devices'"
+          [class.bg-[var(--bg-app)]]="cloudHubTab() !== 'devices'"
+          [class.border-[var(--border-subtle)]]="cloudHubTab() !== 'devices'"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">devices</mat-icon>
+          <span>١. المزامنة والأجهزة ({{ store.num(store.registeredDevices().length) }})</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="cloudHubTab.set('sql')"
+          class="px-3.5 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+          [class.bg-[#3390EC]]="cloudHubTab() === 'sql'"
+          [class.text-white]="cloudHubTab() === 'sql'"
+          [class.border-[#3390EC]]="cloudHubTab() === 'sql'"
+          [class.bg-[var(--bg-app)]]="cloudHubTab() !== 'sql'"
+          [class.border-[var(--border-subtle)]]="cloudHubTab() !== 'sql'"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">code</mat-icon>
+          <span>٢. كود SQL الكامل لـ Supabase (١٨ جدولاً)</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="cloudHubTab.set('diagnostics'); store.runCloudDiagnostics()"
+          class="px-3.5 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+          [class.bg-[#3390EC]]="cloudHubTab() === 'diagnostics'"
+          [class.text-white]="cloudHubTab() === 'diagnostics'"
+          [class.border-[#3390EC]]="cloudHubTab() === 'diagnostics'"
+          [class.bg-[var(--bg-app)]]="cloudHubTab() !== 'diagnostics'"
+          [class.border-[var(--border-subtle)]]="cloudHubTab() !== 'diagnostics'"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">fact_check</mat-icon>
+          <span>٣. فحص الجداول الـ ١٨ ({{ store.num(store.readyTablesCount()) }}/١٨)</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="cloudHubTab.set('backups')"
+          class="px-3.5 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+          [class.bg-[#3390EC]]="cloudHubTab() === 'backups'"
+          [class.text-white]="cloudHubTab() === 'backups'"
+          [class.border-[#3390EC]]="cloudHubTab() === 'backups'"
+          [class.bg-[var(--bg-app)]]="cloudHubTab() !== 'backups'"
+          [class.border-[var(--border-subtle)]]="cloudHubTab() !== 'backups'"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">restore</mat-icon>
+          <span>٤. النسخ الاحتياطية السحابية ({{ store.num(store.cloudBackups().length) }})</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: DEVICES & 100% SYNC / LOCAL-ONLY CONTROL -->
+      @if (cloudHubTab() === 'devices') {
+        <div class="space-y-4">
+          <!-- Dual Mode Selector: 100% Cloud Server vs 100% Local-Only -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode(false)"
+              class="p-4 rounded-2xl border-2 text-right transition-all space-y-1.5"
+              [class.border-emerald-500]="!store.localOnlyMode()"
+              [class.bg-emerald-50]="!store.localOnlyMode()"
+              [class.dark:bg-emerald-950/30]="!store.localOnlyMode()"
+              [class.border-[var(--border-subtle)]]="store.localOnlyMode()"
+              [class.bg-[var(--bg-app)]]="store.localOnlyMode()"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-bold text-[var(--text-heading)] inline-flex items-center gap-1.5">
+                  <mat-icon class="!text-base text-emerald-600">cloud_sync</mat-icon>
+                  <span>متكامل مع الخادم ١٠٠٪ (مزامنة فورية)</span>
+                </span>
+                @if (!store.localOnlyMode()) {
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">مُفعّل الآن</span>
+                }
+              </div>
+              <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
+                يزامن كل حركة صغيرة وكبيرة فوراً مع خادم Supabase ويسجل اسم الجهاز في كل عملية (إضافة، تعديل، حذف، تراجع، إعدادات، وأسماء).
+              </p>
+            </button>
+
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode(true)"
+              class="p-4 rounded-2xl border-2 text-right transition-all space-y-1.5"
+              [class.border-[#E7C78F]]="store.localOnlyMode()"
+              [class.bg-[var(--color-secondary-soft)]]="store.localOnlyMode()"
+              [class.border-[var(--border-subtle)]]="!store.localOnlyMode()"
+              [class.bg-[var(--bg-app)]]="!store.localOnlyMode()"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-bold text-[var(--text-heading)] inline-flex items-center gap-1.5">
+                  <mat-icon class="!text-base text-amber-600">smartphone</mat-icon>
+                  <span>وضع محلي بالكامل بدون خادم (Local Only)</span>
+                </span>
+                @if (store.localOnlyMode()) {
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">مُفعّل الآن</span>
+                }
+              </div>
+              <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
+                يعزل التطبيق تماماً عن الخادم ويحفظ كل بياناتك وحركاتك محلياً ١٠٠٪ داخل هذا الجهاز فقط بدون أي اتصال سحابي.
+              </p>
+            </button>
+          </div>
+
+          <!-- Current Device Login Name Registration -->
+          <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="text-sm font-bold text-[var(--text-heading)] flex items-center gap-1.5">
+                  <mat-icon class="!text-base text-[#3390EC]">devices</mat-icon>
+                  <span>تسجيل اسم هذا الجهاز (يظهر في سجل الدخول وكل العمليات)</span>
+                </h4>
+                <p class="text-xs text-[var(--text-secondary)]">
+                  معرّف الجهاز: <span class="font-mono">{{ store.currentDevice().deviceId }}</span> · النظام: {{ store.currentDevice().browserOs }}
+                </p>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold tabular-nums">
+                {{ store.num(store.currentDevice().operationsCount) }} حركة مسجلة بهذا الجهاز
+              </span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                [value]="deviceNameInput()"
+                (input)="deviceNameInput.set($any($event.target).value)"
+                placeholder="اكتب اسم الجهاز (مثلاً: كمبيوتر محمود الرئيسي، موبايل المشرف أحمد...)"
+                aria-label="اسم الجهاز الحالي"
+                class="flex-1 min-w-0 px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-sm font-bold text-[var(--text-heading)]"
+              />
+              <button
+                type="button"
+                (click)="saveCurrentDeviceName()"
+                class="px-5 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <mat-icon class="!text-base !w-4 !h-4">save</mat-icon>
+                <span>حفظ اسم الجهاز ومزامنته</span>
+              </button>
+            </div>
+
+            <!-- Quick Device Name Presets -->
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] text-[var(--text-secondary)] font-semibold">أسماء سريعة:</span>
+              @for (preset of ['كمبيوتر المهندس محمود الرئيسي', 'موبايل محمود الشخصي', 'موبايل مشرف الموقع', 'لابتوب المكتب والحسابات', 'تابلت المهندس المقيم']; track preset) {
+                <button
+                  type="button"
+                  (click)="deviceNameInput.set(preset); saveCurrentDeviceName()"
+                  class="px-2.5 py-1 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-[11px] font-semibold"
+                >
+                  {{ preset }}
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Live Cloud Sync Status & Manual Force Push / Pull -->
+          @if (!store.localOnlyMode()) {
+            <div class="p-4 rounded-2xl bg-[#1F2A37] text-white flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2 font-bold text-sm">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                  <span>خادم Supabase متصل مباشر: {{ store.supabaseUrl }}</span>
+                </div>
+                <div class="text-slate-300">
+                  آخر حركة متزامنة: <strong class="text-[#E7C78F]">{{ store.lastCloudOperation() }}</strong>
+                  @if (store.lastSyncedByDeviceName()) {
+                    <span> · بواسطة جهاز: <strong class="text-[#4EA4F6]">{{ store.lastSyncedByDeviceName() }}</strong></span>
+                  }
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  (click)="store.syncToCloudNow('رفع يدوي كامل من الجهاز إلى الخادم')"
+                  class="px-4 py-2 rounded-full bg-[#3390EC] hover:bg-[#4EA4F6] text-white font-bold text-xs inline-flex items-center gap-1.5"
+                >
+                  <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_upload</mat-icon>
+                  <span>رفع للخادم الآن</span>
+                </button>
+                <button
+                  type="button"
+                  (click)="store.pullFromCloudServer(true)"
+                  class="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs inline-flex items-center gap-1.5"
+                >
+                  <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_download</mat-icon>
+                  <span>سحب من الخادم الآن</span>
+                </button>
+              </div>
+            </div>
+          }
+
+          <!-- Registered & Online Devices List -->
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-bold text-[var(--text-heading)] flex items-center gap-1.5">
+                <mat-icon class="!text-base text-[#3390EC]">important_devices</mat-icon>
+                <span>الأجهزة المسجلة التي سجّلت دخول ({{ store.num(store.registeredDevices().length) }} جهاز)</span>
+              </h4>
+              <span class="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                {{ store.num(store.onlineDevicesCount()) }} متصل الآن
+              </span>
+            </div>
+
+            <div class="space-y-2 max-h-56 overflow-y-auto">
+              @for (dev of store.registeredDevices(); track dev.deviceId) {
+                <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[var(--color-primary-soft)] text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                      <mat-icon class="!text-lg">
+                        {{ dev.deviceType === 'mobile' ? 'smartphone' : dev.deviceType === 'tablet' ? 'tablet_mac' : 'computer' }}
+                      </mat-icon>
+                    </div>
+                    <div>
+                      <div class="font-bold text-[var(--text-heading)] flex flex-wrap items-center gap-1.5">
+                        <span>{{ dev.deviceName }}</span>
+                        @if (dev.deviceId === store.currentDevice().deviceId) {
+                          <span class="px-2 py-0.5 rounded-full bg-[#3390EC] text-white text-[10px] font-bold">هذا الجهاز</span>
+                        }
+                        @if (dev.syncMode === 'local') {
+                          <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">وضع محلي</span>
+                        } @else if (dev.isOnline) {
+                          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">متصل الآن ●</span>
+                        }
+                      </div>
+                      <div class="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                        {{ dev.browserOs }} · أول دخول: {{ store.digits(dev.firstLoginAt) }} · آخر نشاط: {{ store.digits(dev.lastActiveAt) }}
+                      </div>
+                      <div class="text-[11px] text-[#3390EC] font-semibold mt-0.5">
+                        آخر حركة: {{ dev.lastAction }} ({{ store.num(dev.operationsCount) }} عملية)
+                      </div>
+                    </div>
+                  </div>
+
+                  @if (dev.deviceId !== store.currentDevice().deviceId) {
+                    <button
+                      type="button"
+                      (click)="store.removeRegisteredDevice(dev.deviceId)"
+                      class="px-3 py-1.5 rounded-full border border-rose-300 text-rose-600 hover:bg-rose-50 text-[11px] font-bold"
+                    >
+                      إزالة الجهاز
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- TAB 2: COMPLETE 18-TABLE SUPABASE SQL SCHEMA & RPC -->
+      @if (cloudHubTab() === 'sql') {
+        <div class="space-y-4">
+          <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="text-sm font-bold text-[var(--text-heading)] flex items-center gap-1.5">
+                  <mat-icon class="!text-base text-[#3390EC]">storage</mat-icon>
+                  <span>كود SQL الذكي الكامل لجميع جداول التطبيق (١٨ جدولاً + Views + دالة المزامنة التلقائية)</span>
+                </h4>
+                <p class="text-xs text-[var(--text-secondary)] mt-0.5">
+                  انسخ هذا الكود بالكامل وضعه في <strong>Supabase SQL Editor</strong> ثم اضغط <strong>Run</strong> لتفعيل الـ ١٨ جدولاً والدوال الذكية وصلاحيات RLS والـ Realtime.
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  (click)="copySupabaseSqlScript()"
+                  class="px-4 py-2 rounded-full bg-[#3390EC] text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs"
+                >
+                  <mat-icon class="!text-sm !w-4 !h-4">content_copy</mat-icon>
+                  <span>نسخ كود SQL الكامل</span>
+                </button>
+                <button
+                  type="button"
+                  (click)="downloadSupabaseSqlFile()"
+                  class="px-4 py-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5"
+                >
+                  <mat-icon class="!text-sm !w-4 !h-4 text-[#3390EC]">download</mat-icon>
+                  <span>تحميل ملف .sql</span>
+                </button>
+              </div>
+            </div>
+
+            <pre
+              dir="ltr"
+              style="font-family: 'Cairo', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"
+              class="p-4 rounded-2xl bg-[#0E1621] text-emerald-300 text-[11px] overflow-x-auto max-h-80 overflow-y-auto leading-relaxed select-all text-left border border-slate-800"
+            >{{ store.getSupabaseSetupSql() }}</pre>
+          </div>
+        </div>
+      }
+
+      <!-- TAB 3: LIVE 18-TABLE DIAGNOSTICS & HEALTH CHECK MATRIX -->
+      @if (cloudHubTab() === 'diagnostics') {
+        <div class="space-y-4">
+          <div class="p-4 rounded-2xl bg-[#1F2A37] text-white flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div class="space-y-1">
+              <div class="font-bold text-sm flex items-center gap-2">
+                <mat-icon class="!text-base text-[#4EA4F6]">speed</mat-icon>
+                <span>فحص اتصال وجداول Supabase الحية ({{ store.num(store.readyTablesCount()) }} من ١٨ جدولاً مفعلاً)</span>
+              </div>
+              <p class="text-slate-300">
+                زمن استجابة الخادم: <strong class="text-emerald-400 tabular-nums">{{ store.num(store.serverLatencyMs()) }} مللي ثانية</strong> · إصدار المزامنة السحابية: <strong class="text-[#E7C78F] tabular-nums">#{{ store.num(store.cloudVersion()) }}</strong>
+              </p>
+            </div>
+            <button
+              type="button"
+              (click)="store.runCloudDiagnostics()"
+              class="px-4 py-2 rounded-full bg-[#3390EC] text-white font-bold text-xs inline-flex items-center gap-1.5"
+            >
+              <mat-icon class="!text-sm !w-4 !h-4">refresh</mat-icon>
+              <span>{{ store.diagnosticsLoading() ? 'جارٍ الفحص...' : 'إعادة فحص الجداول الآن' }}</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-80 overflow-y-auto">
+            @for (tbl of store.tableDiagnostics(); track tbl.name) {
+              <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs">
+                <div class="min-w-0">
+                  <div class="font-bold text-[var(--text-heading)] truncate font-mono text-[11px]" dir="ltr">{{ tbl.name }}</div>
+                  <div class="text-[11px] text-[var(--text-secondary)] truncate">{{ tbl.label }}</div>
+                </div>
+                @if (tbl.ready) {
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold shrink-0 tabular-nums">
+                    جاهز ({{ store.num(tbl.rowCount) }})
+                  </span>
+                } @else {
+                  <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold shrink-0">
+                    شغّل كود SQL
+                  </span>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- TAB 4: CLOUD TIME-MACHINE BACKUPS & 1-CLICK RESTORE -->
+      @if (cloudHubTab() === 'backups') {
+        <div class="space-y-4">
+          <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+            <h4 class="text-sm font-bold text-[var(--text-heading)] flex items-center gap-1.5">
+              <mat-icon class="!text-base text-[#3390EC]">cloud_upload</mat-icon>
+              <span>إنشاء نقطة استعادة ونسخة احتياطية سحابية مسماة على الخادم</span>
+            </h4>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                [value]="backupTitleInput()"
+                (input)="backupTitleInput.set($any($event.target).value)"
+                placeholder="اسم النسخة الاحتياطية (مثلاً: قبل تسوية قبض يوم ١٥ أكتوبر...)"
+                aria-label="عنوان النسخة السحابية"
+                class="flex-1 min-w-0 px-4 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-sm font-bold"
+              />
+              <button
+                type="button"
+                (click)="createNewCloudBackup()"
+                class="px-5 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <mat-icon class="!text-base !w-4 !h-4">backup</mat-icon>
+                <span>حفظ نسخة سحابية الآن</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-2 max-h-64 overflow-y-auto">
+            @for (bkp of store.cloudBackups(); track bkp.id) {
+              <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <div class="font-bold text-[var(--text-heading)]">{{ bkp.backupTitle }}</div>
+                  <div class="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    التاريخ: {{ store.digits(bkp.createdAt) }} · بواسطة: {{ bkp.createdByDeviceName }} · عمال: {{ store.num(bkp.workersCount) }} · يوميات: {{ store.num(bkp.attendanceCount) }}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  (click)="store.restoreCloudBackup(bkp.id)"
+                  class="px-3.5 py-1.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] hover:bg-[#3390EC] hover:text-white font-bold text-xs inline-flex items-center gap-1"
+                >
+                  <mat-icon class="!text-sm !w-3.5 !h-3.5">settings_backup_restore</mat-icon>
+                  <span>استعادة هذه النقطة</span>
+                </button>
+              </div>
+            } @empty {
+              <div class="p-6 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center text-xs text-[var(--text-secondary)]">
+                لا توجد نقاط استعادة سحابية محفوظة بعد — اضغط "حفظ نسخة سحابية الآن" لحفظ نسخة كاملة على الخادم.
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
+        <button
+          type="button"
+          (click)="copySupabaseSqlScript()"
+          class="px-4 py-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-app)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5"
+        >
+          <mat-icon class="!text-sm !w-4 !h-4 text-[#3390EC]">content_copy</mat-icon>
+          <span>نسخ كود SQL الكامل (١٨ جدولاً)</span>
+        </button>
+        <button
+          type="button"
+          (click)="store.showCloudHubModal.set(false)"
+          class="px-6 py-2.5 rounded-full bg-[#3390EC] text-white text-xs font-bold"
+        >
+          تم وإغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+

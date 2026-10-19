@@ -13,6 +13,7 @@ import type {
   Extract,
   ExtractLine,
   Project,
+  RegisteredDevice,
   Settlement,
   Worker,
 } from './models';
@@ -33,6 +34,7 @@ export class DortmunDatabase extends Dexie {
   expenses!: Table<Expense, number>;
   settings!: Table<AppSettings, number>;
   auditLog!: Table<AuditLogEntry, number>;
+  devices!: Table<RegisteredDevice, string>;
 
   constructor() {
     super('DortmunContractingZeroDB');
@@ -52,6 +54,25 @@ export class DortmunDatabase extends Dexie {
       expenses: '++id, date, category, projectId',
       settings: '++id',
       auditLog: '++id, timestamp, action, entity',
+    });
+
+    this.version(2).stores({
+      workers: '++id, name, role, active',
+      projects: '++id, name, active',
+      attendance: '++id, date, workerId, projectId',
+      advances: '++id, date, workerId, settlementId',
+      deductions: '++id, date, workerId, projectId, settlementId',
+      dailyHeadcounts: '++id, date, projectId',
+      settlements: '++id, workerId, date, from, to',
+      extracts: '++id, projectId, number, from, to',
+      extractLines: '++id, extractId, workerId',
+      extras: '++id, date, projectId, type, authorizedBy',
+      extraCash: '++id, extraId, workerId',
+      checks: '++id, direction, status, dueDate, projectId, extractId',
+      expenses: '++id, date, category, projectId',
+      settings: '++id',
+      auditLog: '++id, timestamp, action, entity, deviceId',
+      devices: 'deviceId, deviceName, lastActiveAt',
     });
   }
 }

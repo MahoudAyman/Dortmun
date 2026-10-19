@@ -314,3 +314,21 @@ a:active {
     color: #000 !important;
   }
 }
+
+/* Hide scrollbar for mobile horizontal swipe ribbons while keeping scrollability */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Mobile ergonomics: smooth touch scrolling and prevent iOS auto-zoom on focus */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+

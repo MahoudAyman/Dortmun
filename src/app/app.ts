@@ -21,6 +21,7 @@ import { filter, Subscription } from 'rxjs';
 import { StoreService } from './core/db/store';
 import type { DeductionMode, ExpenseCategory, WorkerRole } from './core/db/models';
 import { calculateDeductionAmount } from './core/calc/calculations';
+import { parseSmartSiteCommand } from './core/db/supabase-sql-schema';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -52,9 +53,22 @@ export class App implements AfterViewInit, OnDestroy {
   readonly deferredPrompt = signal<BeforeInstallPromptEvent | null>(null);
   readonly showPwaGuideModal = signal<boolean>(false);
 
+  // Cloud Hub & Device Registration state
+  readonly deviceNameInput = signal<string>('');
+  readonly showSqlSetupPanel = signal<boolean>(true);
+  readonly cloudHubTab = signal<'devices' | 'sql' | 'diagnostics' | 'backups'>('devices');
+  readonly backupTitleInput = signal<string>('');
+
+  // Smart Command Bar (voice & natural text entry)
+  readonly smartCommandInput = signal<string>('');
+  readonly isVoiceListening = signal<boolean>(false);
+  readonly parsedSmartCommandPreview = computed(() =>
+    parseSmartSiteCommand(this.smartCommandInput())
+  );
+
   // New Feature 1: Quick Action Command Modal (+ تسجيل فوري سريع)
   readonly quickActionModalOpen = signal<boolean>(false);
-  readonly quickActionTab = signal<'deduction' | 'advance' | 'expense' | 'worker'>('deduction');
+  readonly quickActionTab = signal<'smart' | 'deduction' | 'advance' | 'expense' | 'worker'>('deduction');
 
   // Quick Deduction state
   readonly qaWorkerId = signal<number>(0);
@@ -284,7 +298,94 @@ export class App implements AfterViewInit, OnDestroy {
     });
   }
 
-  openQuickActionModal(tab: 'deduction' | 'advance' | 'expense' | 'worker' = 'deduction'): void {
+  openCloudHubModal(tab: 'devices' | 'sql' | 'diagnostics' | 'backups' = 'devices'): void {
+    this.deviceNameInput.set(this.store.currentDevice().deviceName);
+    this.cloudHubTab.set(tab);
+    this.store.showCloudHubModal.set(true);
+    void this.store.runCloudDiagnostics();
+  }
+
+  async saveCurrentDeviceName(): Promise<void> {
+    await this.store.updateDeviceName(this.deviceNameInput());
+  }
+
+  async copySupabaseSqlScript(): Promise<void> {
+    if (isPlatformBrowser(this.platformId) && navigator.clipboard) {
+      await navigator.clipboard.writeText(this.store.getSupabaseSetupSql());
+      this.store.showToast(
+        'تم نسخ كود SQL الكامل (١٨ جدولاً + الدوال الذكية) — الصقه في Supabase SQL Editor واضغط Run',
+        'success'
+      );
+    }
+  }
+
+  downloadSupabaseSqlFile(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+    const sql = this.store.getSupabaseSetupSql();
+    const blob = new Blob([sql], { type: 'application/sql;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'dortmun_supabase_full_schema.sql';
+    a.click();
+    URL.revokeObjectURL(url);
+    this.store.showToast('تم تحميل ملف dortmun_supabase_full_schema.sql بنجاح', 'success');
+  }
+
+  async createNewCloudBackup(): Promise<void> {
+    await this.store.createCloudBackup(this.backupTitleInput());
+    this.backupTitleInput.set('');
+  }
+
+  async runSmartCommandNow(): Promise<void> {
+    const ok = await this.store.executeSmartCommand(this.smartCommandInput());
+    if (ok) {
+      this.smartCommandInput.set('');
+      this.quickActionModalOpen.set(false);
+    }
+  }
+
+  startVoiceCommand(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+    const win = window as unknown as Record<string, unknown>;
+    const SpeechRec = (win['SpeechRecognition'] || win['webkitSpeechRecognition']) as
+      | (new () => {
+          lang: string;
+          interimResults: boolean;
+          onresult: (e: { results: { 0: { transcript: string } }[] }) => void;
+          onerror: () => void;
+          onend: () => void;
+          start: () => void;
+        })
+      | undefined;
+
+    if (!SpeechRec) {
+      this.store.showToast('الإدخال الصوتي غير مدعوم في هذا المتصفح — يمكنك الكتابة مباشرة', 'warning');
+      return;
+    }
+
+    try {
+      const rec = new SpeechRec();
+      rec.lang = 'ar-EG';
+      rec.interimResults = false;
+      this.isVoiceListening.set(true);
+      rec.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        if (transcript) {
+          this.smartCommandInput.set(transcript);
+        }
+      };
+      rec.onerror = () => this.isVoiceListening.set(false);
+      rec.onend = () => this.isVoiceListening.set(false);
+      rec.start();
+    } catch {
+      this.isVoiceListening.set(false);
+    }
+  }
+
+  openQuickActionModal(
+    tab: 'smart' | 'deduction' | 'advance' | 'expense' | 'worker' = 'deduction'
+  ): void {
     const firstWorker = this.store.activeWorkers()[0];
     if (firstWorker?.id && !this.qaWorkerId()) {
       this.qaWorkerId.set(firstWorker.id);
@@ -389,6 +490,7 @@ export class App implements AfterViewInit, OnDestroy {
     const text = [
       `📊 *تقرير اليوم — ${this.store.settings().companyName}*`,
       `📅 التاريخ: ${this.store.digits(this.store.todayIso())}`,
+      `📱 الجهاز المرسل: ${this.store.currentDevice().deviceName}`,
       `━━━━━━━━━━━━━━`,
       `👷 *العدد اليومي الإجباري:* ${this.store.num(hc.expectedDays)} يومية (${this.store.num(hc.expectedRegularWorkers)} عمال + ${this.store.num(hc.expectedSculptors)} نحات) · ${this.store.num(hc.expectedNights)} سهرة`,
       `✅ *المسجل بالأسماء:* ${this.store.num(hc.actualDays)} يومية · ${this.store.num(hc.actualNights)} سهرة (${hc.statusLabel})`,

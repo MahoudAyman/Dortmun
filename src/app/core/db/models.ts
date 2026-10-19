@@ -210,6 +210,7 @@ export interface AppSettings {
   backupReminderDays: number;
   numeralMode: NumeralMode;
   darkMode: boolean;
+  localOnlyMode?: boolean; // true = وضع محلي فقط بدون خادم, false = متصل بالخادم 100%
   lockedMonths: string[]; // ['YYYY-MM']
   taxRates: TaxRateItem[];
   engineers: string[];
@@ -223,6 +224,8 @@ export interface AuditLogEntry {
   action: string;
   entity: string;
   details: string;
+  deviceId?: string;
+  deviceName?: string;
 }
 
 export interface UndoOperation {
@@ -233,5 +236,60 @@ export interface UndoOperation {
   recordIds?: number[];
   previousData?: unknown;
   newData?: unknown;
+}
+
+export interface RegisteredDevice {
+  deviceId: string;
+  deviceName: string;
+  deviceType: 'desktop' | 'mobile' | 'tablet';
+  browserOs: string;
+  firstLoginAt: string;
+  lastActiveAt: string;
+  lastAction: string;
+  operationsCount: number;
+  isOnline?: boolean;
+  syncMode: 'cloud' | 'local';
+}
+
+export interface CloudSyncSnapshot {
+  version: number;
+  updatedAt: string;
+  updatedByDeviceId: string;
+  updatedByDeviceName: string;
+  lastOperation: string;
+  workers: Worker[];
+  projects: Project[];
+  attendances: Attendance[];
+  advances: Advance[];
+  deductions: Deduction[];
+  dailyHeadcounts: DailyHeadcount[];
+  settlements: Settlement[];
+  extracts: Extract[];
+  extractLines: ExtractLine[];
+  extras: ExtraItem[];
+  extraCashes: ExtraCash[];
+  checks: CheckItem[];
+  expenses: Expense[];
+  settings: AppSettings;
+  auditLogs: AuditLogEntry[];
+  devices: RegisteredDevice[];
+}
+
+export interface CloudBackupSummary {
+  id: number;
+  backupTitle: string;
+  createdAt: string;
+  createdByDeviceId: string;
+  createdByDeviceName: string;
+  version: number;
+  workersCount: number;
+  attendanceCount: number;
+}
+
+export interface SupabaseTableDiagnostic {
+  name: string;
+  label: string;
+  ready: boolean;
+  rowCount: number;
 }
 

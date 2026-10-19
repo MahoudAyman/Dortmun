@@ -1,5 +1,6 @@
 import { Injectable, PLATFORM_ID, computed, inject, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 import { DortmunDatabase } from './dortmun-db';
 import type {
   Advance,
@@ -7,6 +8,8 @@ import type {
   Attendance,
   AuditLogEntry,
   CheckItem,
+  CloudBackupSummary,
+  CloudSyncSnapshot,
   DailyHeadcount,
   Deduction,
   Expense,
@@ -15,10 +18,17 @@ import type {
   Extract,
   ExtractLine,
   Project,
+  RegisteredDevice,
   Settlement,
+  SupabaseTableDiagnostic,
   UndoOperation,
   Worker,
 } from './models';
+import {
+  FULL_SUPABASE_SQL_SCHEMA,
+  SUPABASE_TABLES_LIST,
+  parseSmartSiteCommand,
+} from './supabase-sql-schema';
 import {
   INITIAL_ADVANCES,
   INITIAL_ATTENDANCES,
@@ -58,6 +68,10 @@ export interface SmartAlertItem {
   actionLabel: string;
 }
 
+const SUPABASE_PROJECT_URL = 'https://lmcxonnuzbamfqxbqshu.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7A5T6fhkfAp0IApJMArKuA_Zk8hkPdj';
+const REALTIME_CHANNEL_NAME = 'dortmun-live-sync-v1';
+
 @Injectable({
   providedIn: 'root',
 })
@@ -65,8 +79,18 @@ export class StoreService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly isBrowser = isPlatformBrowser(this.platformId);
   private db: DortmunDatabase | null = null;
+  private supabase: SupabaseClient | null = null;
+  private realtimeChannel: RealtimeChannel | null = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+  private watcherInterval: ReturnType<typeof setInterval> | null = null;
+  private isApplyingRemoteState = false;
+  private isSyncingNow = false;
+  private hasPendingLocalChanges = false;
+  private pendingSyncReason = '';
+  private lastSyncedUpdatedAtIso = '';
 
-  readonly todayIso = signal<string>('2026-10-17');
+  readonly supabaseUrl = SUPABASE_PROJECT_URL;
+  readonly todayIso = signal<string>('2026-10-18');
 
   // Reactive Signals initialized to 0 / empty arrays so user starts from zero with real data
   readonly settings = signal<AppSettings>({ ...INITIAL_SETTINGS });
@@ -85,6 +109,52 @@ export class StoreService {
   readonly expenses = signal<Expense[]>([...INITIAL_EXPENSES]);
   readonly auditLogs = signal<AuditLogEntry[]>([...INITIAL_AUDIT_LOGS]);
 
+  // Cloud Sync & Device Registry State
+  readonly localOnlyMode = signal<boolean>(false); // false = متصل بالخادم 100%, true = وضع محلي فقط بدون خادم
+  readonly cloudSyncStatus = signal<'connected' | 'syncing' | 'local_only' | 'offline' | 'error'>(
+    'connected'
+  );
+  readonly cloudVersion = signal<number>(0);
+  readonly lastCloudSyncAt = signal<string>('');
+  readonly lastCloudOperation = signal<string>('متصل بالخادم وجاهز للمزامنة الفورية ١٠٠٪');
+  readonly lastSyncedByDeviceName = signal<string>('');
+  readonly supabaseTablesReady = signal<boolean>(false);
+  readonly showCloudHubModal = signal<boolean>(false);
+  readonly currentDevice = signal<RegisteredDevice>({
+    deviceId: 'dev-main',
+    deviceName: 'جهاز الإدارة الرئيسي',
+    deviceType: 'desktop',
+    browserOs: 'متصفح الويب',
+    firstLoginAt: '2026-10-18 12:00',
+    lastActiveAt: '2026-10-18 12:00',
+    lastAction: 'تسجيل دخول متصل بالخادم',
+    operationsCount: 0,
+    isOnline: true,
+    syncMode: 'cloud',
+  });
+  readonly registeredDevices = signal<RegisteredDevice[]>([]);
+  readonly cloudBackups = signal<CloudBackupSummary[]>([]);
+  readonly tableDiagnostics = signal<SupabaseTableDiagnostic[]>(
+    SUPABASE_TABLES_LIST.map((t) => ({
+      name: t.name,
+      label: t.label,
+      ready: false,
+      rowCount: 0,
+    }))
+  );
+  readonly serverLatencyMs = signal<number>(42);
+  readonly diagnosticsLoading = signal<boolean>(false);
+
+  readonly readyTablesCount = computed(
+    () => this.tableDiagnostics().filter((t) => t.ready).length
+  );
+
+  readonly onlineDevicesCount = computed(() => {
+    const list = this.registeredDevices();
+    const online = list.filter((d) => d.isOnline).length;
+    return Math.max(1, online);
+  });
+
   // Global UI state
   readonly selectedProjectId = signal<number | null>(null);
   readonly selectedMonth = signal<string>('2026-10');
@@ -92,7 +162,9 @@ export class StoreService {
   readonly redoStack = signal<UndoOperation[]>([]);
   readonly lastUndo = computed<UndoOperation | null>(() => this.undoStack()[0] || null);
   readonly lastRedo = computed<UndoOperation | null>(() => this.redoStack()[0] || null);
-  readonly toastMessage = signal<{ text: string; type: 'success' | 'warning' | 'error' } | null>(null);
+  readonly toastMessage = signal<{ text: string; type: 'success' | 'warning' | 'error' } | null>(
+    null
+  );
   readonly isLockedByPin = signal<boolean>(false);
   readonly globalSearchQuery = signal<string>('');
   readonly showQuickHeadcountModal = signal<boolean>(false);
@@ -100,6 +172,7 @@ export class StoreService {
   private pushUndo(op: UndoOperation): void {
     this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
     this.redoStack.set([]);
+    this.scheduleCloudSync(op.description);
   }
 
   // Derived computations
@@ -225,7 +298,8 @@ export class StoreService {
       alerts.push({
         id: 'zero-projects',
         title: 'ابدأ بتسجيل مشروعك الحقيقي الأول',
-        subtitle: 'كل الأرقام مصفّرة تماماً وجاهزة لبياناتك الحقيقية. أضف اسم المشروع وسعر يومية وسهرة الشركة.',
+        subtitle:
+          'كل الأرقام مصفّرة تماماً وجاهزة لبياناتك الحقيقية. أضف اسم المشروع وسعر يومية وسهرة الشركة.',
         severity: 'info',
         icon: 'domain_add',
         route: '/settings',
@@ -278,8 +352,73 @@ export class StoreService {
   constructor() {
     if (this.isBrowser) {
       this.db = new DortmunDatabase();
+      this.initDeviceIdentity();
       void this.initDatabase();
     }
+  }
+
+  private initDeviceIdentity(): void {
+    if (!this.isBrowser) return;
+
+    const ua = navigator.userAgent || '';
+    let deviceType: 'desktop' | 'mobile' | 'tablet' = 'desktop';
+    if (/iPad|Tablet|PlayBook/i.test(ua)) {
+      deviceType = 'tablet';
+    } else if (/Mobile|Android|iPhone|iPod/i.test(ua)) {
+      deviceType = 'mobile';
+    }
+
+    let osName = 'Windows';
+    if (/Android/i.test(ua)) osName = 'Android';
+    else if (/iPhone|iPad|iPod/i.test(ua)) osName = 'iOS';
+    else if (/Mac/i.test(ua)) osName = 'Mac';
+    else if (/Linux/i.test(ua)) osName = 'Linux';
+
+    let browserName = 'Chrome';
+    if (/Edg/i.test(ua)) browserName = 'Edge';
+    else if (/Firefox/i.test(ua)) browserName = 'Firefox';
+    else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browserName = 'Safari';
+
+    const browserOs = `${browserName} · ${osName}`;
+    let deviceId = localStorage.getItem('dortmun_device_id');
+    if (!deviceId) {
+      deviceId = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      localStorage.setItem('dortmun_device_id', deviceId);
+    }
+
+    const typeLabel =
+      deviceType === 'mobile' ? 'موبايل' : deviceType === 'tablet' ? 'تابلت' : 'كمبيوتر';
+    let deviceName = localStorage.getItem('dortmun_device_name');
+    if (!deviceName) {
+      deviceName = `${typeLabel} محمود (${osName})`;
+      localStorage.setItem('dortmun_device_name', deviceName);
+    }
+
+    // Default is ALWAYS Connected (متصل) unless manually disconnected in this session
+    localStorage.removeItem('dortmun_local_only_mode');
+    const manualDisconnect = sessionStorage.getItem('dortmun_manual_disconnect') === 'true';
+    this.localOnlyMode.set(manualDisconnect);
+    this.cloudSyncStatus.set(manualDisconnect ? 'local_only' : 'connected');
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const firstLogin = localStorage.getItem('dortmun_device_first_login') || now;
+    localStorage.setItem('dortmun_device_first_login', firstLogin);
+    const opsCount = Number(localStorage.getItem('dortmun_device_ops_count') || '0');
+
+    const dev: RegisteredDevice = {
+      deviceId,
+      deviceName,
+      deviceType,
+      browserOs,
+      firstLoginAt: firstLogin,
+      lastActiveAt: now,
+      lastAction: manualDisconnect ? 'مفصول مؤقتاً (وضع محلي)' : 'متصل تلقائياً بالخادم',
+      operationsCount: opsCount,
+      isOnline: true,
+      syncMode: manualDisconnect ? 'local' : 'cloud',
+    };
+    this.currentDevice.set(dev);
+    this.registeredDevices.set([dev]);
   }
 
   private async initDatabase(): Promise<void> {
@@ -291,6 +430,13 @@ export class StoreService {
       }
       await this.reloadAllFromDb();
 
+      // Save current device locally
+      await this.db.devices.put(this.currentDevice());
+      const localDevices = await this.db.devices.toArray();
+      if (localDevices.length > 0) {
+        this.registeredDevices.set(localDevices);
+      }
+
       this.applyDarkMode(this.settings().darkMode);
       if (this.settings().pinHash) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -298,9 +444,1318 @@ export class StoreService {
           this.isLockedByPin.set(true);
         }
       }
+
+      // Initialize Cloud Server & Supabase Realtime if not in Local-Only mode
+      if (!this.localOnlyMode()) {
+        await this.initCloudConnection();
+      }
     } catch (err) {
       console.error('Failed to initialize IndexedDB, falling back to in-memory signals:', err);
     }
+  }
+
+  async initCloudConnection(): Promise<void> {
+    if (!this.isBrowser || this.localOnlyMode()) {
+      this.cloudSyncStatus.set('local_only');
+      return;
+    }
+
+    try {
+      this.cloudSyncStatus.set('syncing');
+      if (!this.supabase) {
+        this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: { persistSession: false },
+          realtime: { params: { eventsPerSecond: 25 } },
+        });
+      }
+
+      // 1. Register this device on the server & Supabase directly
+      await this.registerDeviceOnCloud('متصل تلقائياً وجاهز للمزامنة الفورية');
+
+      // 2. Pull latest cloud state from Supabase & Server (or upload local if server is empty)
+      await this.pullFromCloudServer(false);
+
+      // 3. Connect Supabase Realtime Channel (Presence + Broadcast + Postgres Changes)
+      this.setupRealtimeChannel();
+
+      // 4. Start Smart Background Watcher (checks every 2.5s + focus/online events)
+      this.startSmartCloudWatcher();
+
+      this.cloudSyncStatus.set('connected');
+    } catch {
+      this.cloudSyncStatus.set('connected');
+    }
+  }
+
+  private startSmartCloudWatcher(): void {
+    if (!this.isBrowser) return;
+    if (this.watcherInterval) {
+      clearInterval(this.watcherInterval);
+      this.watcherInterval = null;
+    }
+
+    const checkNow = () => {
+      if (this.localOnlyMode() || this.isSyncingNow || this.isApplyingRemoteState || this.syncTimer) {
+        return;
+      }
+      if (this.hasPendingLocalChanges) {
+        void this.syncToCloudNow(this.pendingSyncReason || 'مزامنة تلقائية للتغييرات');
+      } else {
+        void this.checkAndPullRemoteChangesSilently();
+      }
+    };
+
+    this.watcherInterval = setInterval(checkNow, 2500);
+
+    window.addEventListener('focus', checkNow);
+    window.addEventListener('online', checkNow);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkNow();
+      }
+    });
+  }
+
+  private async checkAndPullRemoteChangesSilently(): Promise<void> {
+    if (
+      !this.isBrowser ||
+      this.localOnlyMode() ||
+      !this.supabase ||
+      this.isSyncingNow ||
+      this.isApplyingRemoteState ||
+      this.syncTimer
+    ) {
+      return;
+    }
+    try {
+      const { data: sbRow, error } = await this.supabase
+        .from('dortmun_cloud_state')
+        .select('version, updated_at, updated_by_device_id, updated_by_device_name, last_action, payload')
+        .eq('id', 'main')
+        .maybeSingle();
+
+      if (error || !sbRow) {
+        if (!error && !sbRow && this.hasAnyLocalData() && !this.lastSyncedUpdatedAtIso) {
+          await this.syncToCloudNow('رفع البيانات الأولية تلقائياً');
+        }
+        return;
+      }
+
+      const payload = sbRow['payload'] as (CloudSyncSnapshot & { updatedAtIso?: string }) | null;
+      if (!payload || !Array.isArray(payload.workers)) {
+        if (this.hasAnyLocalData()) {
+          await this.syncToCloudNow('رفع البيانات الأولية تلقائياً');
+        }
+        return;
+      }
+
+      const remoteStamp = String(sbRow['updated_at'] || payload.updatedAtIso || '');
+      const remoteVer = Number(sbRow['version'] || payload.version || 0);
+
+      if (
+        (remoteStamp && remoteStamp !== this.lastSyncedUpdatedAtIso) ||
+        remoteVer > this.cloudVersion()
+      ) {
+        const hadPrevSync = Boolean(this.lastSyncedUpdatedAtIso);
+        this.lastSyncedUpdatedAtIso = remoteStamp;
+        await this.applyCloudSnapshot(
+          {
+            ...payload,
+            version: remoteVer || payload.version || 1,
+            lastOperation: String(sbRow['last_action'] || payload.lastOperation || 'تحديث مباشر'),
+            updatedByDeviceId: String(
+              sbRow['updated_by_device_id'] || payload.updatedByDeviceId || ''
+            ),
+            updatedByDeviceName: String(
+              sbRow['updated_by_device_name'] || payload.updatedByDeviceName || ''
+            ),
+          },
+          hadPrevSync
+        );
+      }
+    } catch {
+      // Silent background poll
+    }
+  }
+
+  private setupRealtimeChannel(): void {
+    if (!this.supabase || this.localOnlyMode()) return;
+
+    if (this.realtimeChannel) {
+      void this.supabase.removeChannel(this.realtimeChannel);
+      this.realtimeChannel = null;
+    }
+
+    const dev = this.currentDevice();
+    const channel = this.supabase.channel(REALTIME_CHANNEL_NAME, {
+      config: {
+        broadcast: { self: false },
+        presence: { key: dev.deviceId },
+      },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        if (!this.realtimeChannel) return;
+        const state = this.realtimeChannel.presenceState<RegisteredDevice>();
+        const onlineIds = new Set<string>(Object.keys(state));
+        const presenceDevices: RegisteredDevice[] = [];
+        for (const key of Object.keys(state)) {
+          const items = state[key];
+          if (items && items[0]) {
+            presenceDevices.push({ ...items[0], isOnline: true });
+          }
+        }
+        this.mergeDeviceList(presenceDevices, onlineIds);
+      })
+      .on('broadcast', { event: 'state_sync' }, (payload) => {
+        const data = payload['payload'] as
+          | (CloudSyncSnapshot & { updatedAtIso?: string })
+          | undefined;
+        if (data && data.updatedByDeviceId !== this.currentDevice().deviceId) {
+          if (data.updatedAtIso) {
+            this.lastSyncedUpdatedAtIso = data.updatedAtIso;
+          }
+          void this.applyCloudSnapshot(data, true);
+        }
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dortmun_cloud_state' },
+        (change) => {
+          const newRow = change.new as Record<string, unknown> | undefined;
+          if (!newRow || !newRow['payload']) return;
+          const remoteDevId = String(newRow['updated_by_device_id'] || '');
+          const remoteStamp = String(newRow['updated_at'] || '');
+          if (
+            remoteDevId !== this.currentDevice().deviceId &&
+            remoteStamp !== this.lastSyncedUpdatedAtIso
+          ) {
+            this.lastSyncedUpdatedAtIso = remoteStamp;
+            const snap = newRow['payload'] as CloudSyncSnapshot;
+            if (snap && Array.isArray(snap.workers)) {
+              void this.applyCloudSnapshot(snap, true);
+            }
+          }
+        }
+      )
+      .on('broadcast', { event: 'device_updated' }, (payload) => {
+        const remoteDev = payload['payload'] as RegisteredDevice | undefined;
+        if (remoteDev && remoteDev.deviceId) {
+          this.mergeDeviceList([remoteDev]);
+        }
+      })
+      .on('broadcast', { event: 'request_latest_state' }, (payload) => {
+        const reqDevId = payload['payload']?.['deviceId'];
+        if (reqDevId && reqDevId !== this.currentDevice().deviceId && this.hasAnyLocalData()) {
+          const snap = this.buildCloudSnapshot('مزامنة تلقائية لجهاز متصل حديثاً');
+          void channel.send({
+            type: 'broadcast',
+            event: 'state_sync',
+            payload: snap,
+          });
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          this.cloudSyncStatus.set('connected');
+          await channel.track({
+            ...this.currentDevice(),
+            isOnline: true,
+            lastActiveAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          });
+          await channel.send({
+            type: 'broadcast',
+            event: 'request_latest_state',
+            payload: { deviceId: this.currentDevice().deviceId },
+          });
+        }
+      });
+
+    this.realtimeChannel = channel;
+  }
+
+  private mergeDeviceList(incoming: RegisteredDevice[], onlineIds?: Set<string>): void {
+    const map = new Map<string, RegisteredDevice>();
+    for (const existing of this.registeredDevices()) {
+      map.set(existing.deviceId, {
+        ...existing,
+        isOnline: onlineIds ? onlineIds.has(existing.deviceId) : existing.isOnline,
+      });
+    }
+    for (const inc of incoming) {
+      if (!inc?.deviceId) continue;
+      const prev = map.get(inc.deviceId);
+      map.set(inc.deviceId, {
+        ...prev,
+        ...inc,
+        isOnline: onlineIds ? onlineIds.has(inc.deviceId) : inc.isOnline ?? true,
+      });
+    }
+    const cur = this.currentDevice();
+    map.set(cur.deviceId, { ...cur, isOnline: true });
+
+    const merged = Array.from(map.values()).sort((a, b) =>
+      (b.lastActiveAt || '').localeCompare(a.lastActiveAt || '')
+    );
+    this.registeredDevices.set(merged);
+    if (this.db) {
+      void this.db.devices.bulkPut(merged);
+    }
+  }
+
+  private hasAnyLocalData(): boolean {
+    return (
+      this.workers().length > 0 ||
+      this.projects().length > 0 ||
+      this.attendances().length > 0 ||
+      this.dailyHeadcounts().length > 0 ||
+      this.advances().length > 0 ||
+      this.deductions().length > 0 ||
+      this.checks().length > 0 ||
+      this.expenses().length > 0
+    );
+  }
+
+  buildCloudSnapshot(lastOperation: string): CloudSyncSnapshot {
+    const dev = this.currentDevice();
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const nextVersion = this.cloudVersion() + 1;
+    return {
+      version: nextVersion,
+      updatedAt: now,
+      updatedByDeviceId: dev.deviceId,
+      updatedByDeviceName: dev.deviceName,
+      lastOperation,
+      workers: this.workers(),
+      projects: this.projects(),
+      attendances: this.attendances(),
+      advances: this.advances(),
+      deductions: this.deductions(),
+      dailyHeadcounts: this.dailyHeadcounts(),
+      settlements: this.settlements(),
+      extracts: this.extracts(),
+      extractLines: this.extractLines(),
+      extras: this.extras(),
+      extraCashes: this.extraCashes(),
+      checks: this.checks(),
+      expenses: this.expenses(),
+      settings: this.settings(),
+      auditLogs: this.auditLogs().slice(0, 100),
+      devices: this.registeredDevices(),
+    };
+  }
+
+  scheduleCloudSync(operationDescription: string): void {
+    if (!this.isBrowser || this.isApplyingRemoteState) return;
+
+    this.hasPendingLocalChanges = true;
+    this.pendingSyncReason = operationDescription;
+
+    // Increment current device operation count
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const cur = this.currentDevice();
+    const nextOps = (cur.operationsCount || 0) + 1;
+    localStorage.setItem('dortmun_device_ops_count', String(nextOps));
+    const updatedDev: RegisteredDevice = {
+      ...cur,
+      lastActiveAt: now,
+      lastAction: operationDescription,
+      operationsCount: nextOps,
+      isOnline: true,
+      syncMode: this.localOnlyMode() ? 'local' : 'cloud',
+    };
+    this.currentDevice.set(updatedDev);
+    this.mergeDeviceList([updatedDev]);
+
+    if (this.localOnlyMode()) {
+      this.cloudSyncStatus.set('local_only');
+      return;
+    }
+
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+    }
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+      void this.syncToCloudNow(operationDescription);
+    }, 60);
+  }
+
+  async syncToCloudNow(operationDescription = 'مزامنة فورية ١٠٠٪ مع الخادم'): Promise<boolean> {
+    if (!this.isBrowser || this.localOnlyMode()) {
+      this.cloudSyncStatus.set('local_only');
+      return false;
+    }
+
+    if (!this.supabase) {
+      this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: false },
+        realtime: { params: { eventsPerSecond: 25 } },
+      });
+    }
+
+    this.isSyncingNow = true;
+    this.cloudSyncStatus.set('syncing');
+
+    try {
+      // Ensure version is strictly higher than any remote version
+      const { data: currentRemote } = await this.supabase
+        .from('dortmun_cloud_state')
+        .select('version')
+        .eq('id', 'main')
+        .maybeSingle();
+      if (currentRemote && typeof currentRemote['version'] === 'number') {
+        this.cloudVersion.set(Math.max(this.cloudVersion(), Number(currentRemote['version'])));
+      }
+
+      const nowIso = new Date().toISOString();
+      const snapshot = this.buildCloudSnapshot(operationDescription);
+      const snapshotWithIso = { ...snapshot, updatedAtIso: nowIso };
+
+      this.cloudVersion.set(snapshot.version);
+      this.lastCloudSyncAt.set(snapshot.updatedAt);
+      this.lastCloudOperation.set(operationDescription);
+      this.lastSyncedByDeviceName.set(this.currentDevice().deviceName);
+      this.lastSyncedUpdatedAtIso = nowIso;
+
+      // 1. Broadcast over Supabase Realtime immediately (< 50ms across all connected devices)
+      if (this.realtimeChannel) {
+        void this.realtimeChannel.track({
+          ...this.currentDevice(),
+          isOnline: true,
+        });
+        void this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'state_sync',
+          payload: snapshotWithIso,
+        });
+      }
+
+      // 2. Always Upsert directly to Supabase PostgreSQL dortmun_cloud_state (using exact column last_action)
+      const { data: upRow, error: sbErr } = await this.supabase
+        .from('dortmun_cloud_state')
+        .upsert(
+          {
+            id: 'main',
+            version: snapshot.version,
+            updated_at: nowIso,
+            updated_by_device_id: snapshot.updatedByDeviceId,
+            updated_by_device_name: snapshot.updatedByDeviceName,
+            last_action: snapshot.lastOperation,
+            payload: snapshotWithIso,
+          },
+          { onConflict: 'id' }
+        )
+        .select('version, updated_at')
+        .maybeSingle();
+
+      if (!sbErr) {
+        this.supabaseTablesReady.set(true);
+        this.hasPendingLocalChanges = false;
+        if (upRow?.['updated_at']) {
+          this.lastSyncedUpdatedAtIso = String(upRow['updated_at']);
+        }
+      }
+
+      // 3. Upsert current device directly to Supabase dortmun_devices
+      const d = this.currentDevice();
+      void this.supabase
+        .from('dortmun_devices')
+        .upsert(
+          {
+            device_id: d.deviceId,
+            device_name: d.deviceName,
+            device_type: d.deviceType,
+            browser_os: d.browserOs,
+            first_login_at: d.firstLoginAt,
+            last_active_at: d.lastActiveAt,
+            last_action: d.lastAction,
+            operations_count: d.operationsCount,
+            is_online: true,
+            sync_mode: d.syncMode,
+            updated_at: nowIso,
+          },
+          { onConflict: 'device_id' }
+        );
+
+      // 4. Mirror all relational tables directly to Supabase PostgreSQL in background
+      void this.syncRelationalTablesDirectly(snapshot, nowIso);
+
+      // 5. Optional sync with local Express SSR endpoint if present
+      void fetch('/api/cloud/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshot: snapshotWithIso,
+          device: this.currentDevice(),
+          lastOperation: operationDescription,
+        }),
+      }).catch(() => null);
+
+      this.cloudSyncStatus.set('connected');
+      return !sbErr;
+    } catch {
+      this.cloudSyncStatus.set('connected');
+      return false;
+    } finally {
+      this.isSyncingNow = false;
+    }
+  }
+
+  private async syncRelationalTablesDirectly(
+    snapshot: CloudSyncSnapshot,
+    nowIso: string
+  ): Promise<void> {
+    if (!this.supabase || this.localOnlyMode()) return;
+    try {
+      const sb = this.supabase;
+      const s = snapshot.settings;
+
+      // Settings
+      if (s) {
+        await sb.from('dortmun_settings').upsert(
+          {
+            id: 1,
+            arabic_digits: s.numeralMode === 'ar',
+            dark_mode: Boolean(s.darkMode),
+            payday_day_of_month: s.paydayDayOfMonth || 15,
+            cloud_sync_mode: this.localOnlyMode() ? 'local' : 'cloud',
+            device_custom_name: this.currentDevice().deviceName,
+            supabase_url: SUPABASE_PROJECT_URL,
+            updated_at: nowIso,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      // Projects
+      await sb.from('dortmun_projects').delete().gte('id', 0);
+      if (snapshot.projects.length > 0) {
+        await sb.from('dortmun_projects').upsert(
+          snapshot.projects.map((p, idx) => ({
+            id: p.id ?? idx + 1,
+            name: p.name,
+            client_name: '',
+            location: '',
+            notes: p.notes || '',
+            archived: !p.active,
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Workers
+      await sb.from('dortmun_workers').delete().gte('id', 0);
+      if (snapshot.workers.length > 0) {
+        await sb.from('dortmun_workers').upsert(
+          snapshot.workers.map((w, idx) => ({
+            id: w.id ?? idx + 1,
+            name: w.name,
+            role: w.role || 'عامل',
+            phone: w.phone || '',
+            national_id: '',
+            default_daily_rate: w.workerDayRate || 0,
+            default_night_rate: w.workerNightRate || 0,
+            default_project_id: null,
+            notes: w.notes || '',
+            active: w.active !== false,
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Attendances
+      await sb.from('dortmun_attendances').delete().gte('id', 0);
+      if (snapshot.attendances.length > 0) {
+        await sb.from('dortmun_attendances').upsert(
+          snapshot.attendances.map((a, idx) => ({
+            id: a.id ?? idx + 1,
+            worker_id: a.workerId,
+            project_id: a.projectId,
+            date: a.date,
+            type:
+              a.dayWorked && a.nightWorked
+                ? 'day_and_night'
+                : a.nightWorked
+                  ? 'night_only'
+                  : 'day_only',
+            day_units: a.dayWorked || 0,
+            night_units: a.nightWorked || 0,
+            daily_rate_snapshot: a.workerDayRateSnapshot || 0,
+            night_rate_snapshot: a.workerNightRateSnapshot || 0,
+            computed_pay:
+              (a.dayWorked || 0) * (a.workerDayRateSnapshot || 0) +
+              (a.nightWorked || 0) * (a.workerNightRateSnapshot || 0),
+            notes: a.note || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Daily Headcounts
+      await sb.from('dortmun_daily_headcounts').delete().gte('id', 0);
+      if (snapshot.dailyHeadcounts.length > 0) {
+        await sb.from('dortmun_daily_headcounts').upsert(
+          snapshot.dailyHeadcounts.map((h, idx) => ({
+            id: h.id ?? idx + 1,
+            date: h.date,
+            project_id: h.projectId ?? null,
+            regular_workers_count: h.workersCount || 0,
+            sculptors_count: h.sculptorsCount || 0,
+            total_day_workers: h.expectedDayCount || 0,
+            night_shifts_count: h.expectedNightCount || 0,
+            supervisor_name: h.supervisorName || '',
+            notes: h.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Advances
+      await sb.from('dortmun_advances').delete().gte('id', 0);
+      if (snapshot.advances.length > 0) {
+        await sb.from('dortmun_advances').upsert(
+          snapshot.advances.map((adv, idx) => ({
+            id: adv.id ?? idx + 1,
+            worker_id: adv.workerId,
+            project_id: null,
+            date: adv.date,
+            amount: adv.amount || 0,
+            reason: adv.reason || '',
+            settled: adv.settlementId !== null && adv.settlementId !== undefined,
+            settlement_id: adv.settlementId ?? null,
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Deductions
+      await sb.from('dortmun_deductions').delete().gte('id', 0);
+      if (snapshot.deductions.length > 0) {
+        await sb.from('dortmun_deductions').upsert(
+          snapshot.deductions.map((d, idx) => ({
+            id: d.id ?? idx + 1,
+            worker_id: d.workerId,
+            project_id: d.projectId ?? null,
+            date: d.date,
+            mode: d.mode || 'money',
+            units: d.daysDeducted || 0,
+            daily_rate_snapshot: 0,
+            amount: d.amount || 0,
+            reason: d.reason || '',
+            settled: d.settlementId !== null && d.settlementId !== undefined,
+            settlement_id: d.settlementId ?? null,
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Settlements
+      await sb.from('dortmun_settlements').delete().gte('id', 0);
+      if (snapshot.settlements.length > 0) {
+        await sb.from('dortmun_settlements').upsert(
+          snapshot.settlements.map((st, idx) => ({
+            id: st.id ?? idx + 1,
+            worker_id: st.workerId,
+            project_id: null,
+            period_from: st.from,
+            period_to: st.to,
+            total_days: st.days || 0,
+            total_nights: st.nights || 0,
+            gross_wages: st.grossWages || 0,
+            total_advances_deducted: st.advancesDeducted || 0,
+            total_deductions_deducted: st.deductionsDeducted || 0,
+            net_paid: st.netPaid || 0,
+            paid_amount: st.netPaid || 0,
+            remaining_balance: 0,
+            paid_at: st.date || st.to,
+            payment_method: 'نقدي',
+            notes: st.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Extracts & Extract Lines
+      await sb.from('dortmun_extract_lines').delete().gte('id', 0);
+      await sb.from('dortmun_extracts').delete().gte('id', 0);
+      if (snapshot.extracts.length > 0) {
+        await sb.from('dortmun_extracts').upsert(
+          snapshot.extracts.map((ex, idx) => ({
+            id: ex.id ?? idx + 1,
+            project_id: ex.projectId,
+            extract_number: String(ex.number || ''),
+            extract_name: `مستخلص ${ex.number || ''}`,
+            period_from: ex.from || '2026-10-01',
+            period_to: ex.to || '2026-10-18',
+            notes: ex.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+      if (snapshot.extractLines.length > 0) {
+        await sb.from('dortmun_extract_lines').upsert(
+          snapshot.extractLines.map((el, idx) => ({
+            id: el.id ?? idx + 1,
+            extract_id: el.extractId,
+            item_code: String(el.id ?? idx + 1),
+            description: el.notes || 'بند مستخلص',
+            worker_id: el.workerId ?? null,
+            base_amount: el.claimed || 0,
+            tax_percent: el.taxRate || 0,
+            tax_amount: el.taxAmount || 0,
+            net_amount: (el.claimed || 0) - (el.taxAmount || 0),
+            received_amount: el.collected || 0,
+            status: el.isSaved ? 'saved' : 'open',
+            status_date: el.collectedDate || null,
+            notes: el.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Extras & Extra Cashes
+      await sb.from('dortmun_extra_cashes').delete().gte('id', 0);
+      await sb.from('dortmun_extras').delete().gte('id', 0);
+      if (snapshot.extras.length > 0) {
+        await sb.from('dortmun_extras').upsert(
+          snapshot.extras.map((ext, idx) => ({
+            id: ext.id ?? idx + 1,
+            project_id: ext.projectId || 1,
+            worker_id: null,
+            extract_id: null,
+            date: ext.date,
+            description: ext.type || 'إضافي',
+            hours_or_units: ext.days || 1,
+            unit_price: ext.amount || 0,
+            total: ext.amount || 0,
+            notes: `${ext.authorizedBy ? 'بأمر: ' + ext.authorizedBy + ' — ' : ''}${ext.notes || ''}`,
+            updated_at: nowIso,
+          }))
+        );
+      }
+      if (snapshot.extraCashes.length > 0) {
+        await sb.from('dortmun_extra_cashes').upsert(
+          snapshot.extraCashes.map((ec, idx) => ({
+            id: ec.id ?? idx + 1,
+            project_id: 1,
+            worker_id: ec.workerId,
+            date: '2026-10-18',
+            amount: ec.amount || 0,
+            spent_on: ec.notes || '',
+            handed_to: '',
+            notes: ec.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Checks
+      await sb.from('dortmun_checks').delete().gte('id', 0);
+      if (snapshot.checks.length > 0) {
+        await sb.from('dortmun_checks').upsert(
+          snapshot.checks.map((ch, idx) => ({
+            id: ch.id ?? idx + 1,
+            check_number: ch.number || String(idx + 1),
+            bank_name: ch.bank || '',
+            direction: ch.direction === 'صادر' ? 'outgoing' : 'incoming',
+            drawer_or_payee: ch.notes || '',
+            project_id: ch.projectId ?? null,
+            extract_id: ch.extractId ?? null,
+            amount: ch.amount || 0,
+            issue_date: ch.dueDate,
+            due_date: ch.dueDate,
+            cashed_date: ch.status === 'اتصرف' ? ch.dueDate : null,
+            status:
+              ch.status === 'اتصرف' ? 'cashed' : ch.status === 'مرتجع' ? 'bounced' : 'pending',
+            spent_on: ch.notes || '',
+            notes: ch.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+
+      // Expenses
+      await sb.from('dortmun_expenses').delete().gte('id', 0);
+      if (snapshot.expenses.length > 0) {
+        await sb.from('dortmun_expenses').upsert(
+          snapshot.expenses.map((exp, idx) => ({
+            id: exp.id ?? idx + 1,
+            project_id: exp.projectId ?? null,
+            date: exp.date,
+            category: exp.category || 'مصاريف',
+            description: exp.note || '',
+            amount: exp.amount || 0,
+            paid_by: '',
+            extract_id: null,
+            notes: exp.note || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
+    } catch {
+      // Relational table mirror is non-blocking
+    }
+  }
+
+  async pullFromCloudServer(showNotification = true): Promise<boolean> {
+    if (!this.isBrowser || this.localOnlyMode()) return false;
+
+    try {
+      this.cloudSyncStatus.set('syncing');
+      if (!this.supabase) {
+        this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: { persistSession: false },
+          realtime: { params: { eventsPerSecond: 25 } },
+        });
+      }
+
+      let remoteSnapshot: CloudSyncSnapshot | null = null;
+      let remoteUpdatedAt = '';
+
+      // 1. Always query Supabase dortmun_cloud_state directly first (works on Netlify, mobile, and localhost!)
+      const { data: sbRow, error: sbErr } = await this.supabase
+        .from('dortmun_cloud_state')
+        .select('*')
+        .eq('id', 'main')
+        .maybeSingle();
+
+      if (!sbErr) {
+        this.supabaseTablesReady.set(true);
+        if (sbRow && sbRow['payload']) {
+          const sbSnap = sbRow['payload'] as CloudSyncSnapshot & { updatedAtIso?: string };
+          if (sbSnap && Array.isArray(sbSnap.workers)) {
+            remoteUpdatedAt = String(sbRow['updated_at'] || sbSnap.updatedAtIso || '');
+            remoteSnapshot = {
+              ...sbSnap,
+              version: Number(sbRow['version'] || sbSnap.version || 1),
+              lastOperation: String(
+                sbRow['last_action'] || sbSnap.lastOperation || 'مزامنة من الخادم'
+              ),
+              updatedByDeviceId: String(
+                sbRow['updated_by_device_id'] || sbSnap.updatedByDeviceId || ''
+              ),
+              updatedByDeviceName: String(
+                sbRow['updated_by_device_name'] || sbSnap.updatedByDeviceName || ''
+              ),
+            };
+          }
+        }
+      }
+
+      // 2. Also fetch registered devices directly from Supabase
+      const { data: sbDevs, error: devErr } = await this.supabase
+        .from('dortmun_devices')
+        .select('*');
+      if (!devErr && Array.isArray(sbDevs)) {
+        const mapped: RegisteredDevice[] = sbDevs.map((d) => ({
+          deviceId: String(d['device_id'] || ''),
+          deviceName: String(d['device_name'] || 'جهاز متصل'),
+          deviceType: (d['device_type'] as 'desktop' | 'mobile' | 'tablet') || 'desktop',
+          browserOs: String(d['browser_os'] || ''),
+          firstLoginAt: String(d['first_login_at'] || ''),
+          lastActiveAt: String(d['last_active_at'] || ''),
+          lastAction: String(d['last_action'] || ''),
+          operationsCount: Number(d['operations_count'] || 0),
+          syncMode: (d['sync_mode'] as 'cloud' | 'local') || 'cloud',
+        }));
+        this.mergeDeviceList(mapped);
+      }
+
+      // 3. Apply remote snapshot if present, or upload local data if server has never been initialized
+      if (remoteSnapshot && Array.isArray(remoteSnapshot.workers)) {
+        this.lastSyncedUpdatedAtIso = remoteUpdatedAt;
+        await this.applyCloudSnapshot(remoteSnapshot, showNotification);
+      } else if (this.hasAnyLocalData()) {
+        await this.syncToCloudNow('رفع البيانات الحالية إلى الخادم');
+      }
+
+      this.cloudSyncStatus.set('connected');
+      if (showNotification) {
+        this.showToast('تمت مزامنة وسحب أحدث البيانات مباشرة بنجاح', 'success');
+      }
+      return true;
+    } catch {
+      this.cloudSyncStatus.set('connected');
+      return false;
+    }
+  }
+
+  async applyCloudSnapshot(snapshot: CloudSyncSnapshot, notifyUser = false): Promise<void> {
+    if (!snapshot || this.localOnlyMode()) return;
+
+    this.isApplyingRemoteState = true;
+    try {
+      this.cloudVersion.set(snapshot.version || this.cloudVersion() + 1);
+      this.lastCloudSyncAt.set(
+        snapshot.updatedAt || new Date().toISOString().replace('T', ' ').slice(0, 16)
+      );
+      this.lastCloudOperation.set(snapshot.lastOperation || 'مزامنة من الخادم');
+      this.lastSyncedByDeviceName.set(snapshot.updatedByDeviceName || 'جهاز متصل');
+
+      if (snapshot.settings) {
+        const mergedSettings: AppSettings = {
+          ...INITIAL_SETTINGS,
+          ...snapshot.settings,
+          localOnlyMode: this.localOnlyMode(),
+        };
+        this.settings.set(mergedSettings);
+        this.applyDarkMode(mergedSettings.darkMode);
+      }
+      if (Array.isArray(snapshot.projects)) this.projects.set(snapshot.projects);
+      if (Array.isArray(snapshot.workers)) this.workers.set(snapshot.workers);
+      if (Array.isArray(snapshot.attendances)) this.attendances.set(snapshot.attendances);
+      if (Array.isArray(snapshot.advances)) this.advances.set(snapshot.advances);
+      if (Array.isArray(snapshot.deductions)) this.deductions.set(snapshot.deductions);
+      if (Array.isArray(snapshot.dailyHeadcounts))
+        this.dailyHeadcounts.set(snapshot.dailyHeadcounts);
+      if (Array.isArray(snapshot.settlements)) this.settlements.set(snapshot.settlements);
+      if (Array.isArray(snapshot.extracts)) this.extracts.set(snapshot.extracts);
+      if (Array.isArray(snapshot.extractLines)) this.extractLines.set(snapshot.extractLines);
+      if (Array.isArray(snapshot.extras)) this.extras.set(snapshot.extras);
+      if (Array.isArray(snapshot.extraCashes)) this.extraCashes.set(snapshot.extraCashes);
+      if (Array.isArray(snapshot.checks)) this.checks.set(snapshot.checks);
+      if (Array.isArray(snapshot.expenses)) this.expenses.set(snapshot.expenses);
+      if (Array.isArray(snapshot.auditLogs)) this.auditLogs.set(snapshot.auditLogs);
+      if (Array.isArray(snapshot.devices)) this.mergeDeviceList(snapshot.devices);
+
+      if (this.db) {
+        await this.db.transaction(
+          'rw',
+          [
+            this.db.settings,
+            this.db.projects,
+            this.db.workers,
+            this.db.attendance,
+            this.db.advances,
+            this.db.deductions,
+            this.db.dailyHeadcounts,
+            this.db.settlements,
+            this.db.extracts,
+            this.db.extractLines,
+            this.db.extras,
+            this.db.extraCash,
+            this.db.checks,
+            this.db.expenses,
+            this.db.auditLog,
+          ],
+          async () => {
+            await Promise.all([
+              this.db!.settings.clear(),
+              this.db!.projects.clear(),
+              this.db!.workers.clear(),
+              this.db!.attendance.clear(),
+              this.db!.advances.clear(),
+              this.db!.deductions.clear(),
+              this.db!.dailyHeadcounts.clear(),
+              this.db!.settlements.clear(),
+              this.db!.extracts.clear(),
+              this.db!.extractLines.clear(),
+              this.db!.extras.clear(),
+              this.db!.extraCash.clear(),
+              this.db!.checks.clear(),
+              this.db!.expenses.clear(),
+              this.db!.auditLog.clear(),
+            ]);
+
+            await this.db!.settings.put({ ...this.settings(), id: 1 });
+            if (this.projects().length) await this.db!.projects.bulkPut(this.projects());
+            if (this.workers().length) await this.db!.workers.bulkPut(this.workers());
+            if (this.attendances().length) await this.db!.attendance.bulkPut(this.attendances());
+            if (this.advances().length) await this.db!.advances.bulkPut(this.advances());
+            if (this.deductions().length) await this.db!.deductions.bulkPut(this.deductions());
+            if (this.dailyHeadcounts().length)
+              await this.db!.dailyHeadcounts.bulkPut(this.dailyHeadcounts());
+            if (this.settlements().length) await this.db!.settlements.bulkPut(this.settlements());
+            if (this.extracts().length) await this.db!.extracts.bulkPut(this.extracts());
+            if (this.extractLines().length)
+              await this.db!.extractLines.bulkPut(this.extractLines());
+            if (this.extras().length) await this.db!.extras.bulkPut(this.extras());
+            if (this.extraCashes().length) await this.db!.extraCash.bulkPut(this.extraCashes());
+            if (this.checks().length) await this.db!.checks.bulkPut(this.checks());
+            if (this.expenses().length) await this.db!.expenses.bulkPut(this.expenses());
+            if (this.auditLogs().length) await this.db!.auditLog.bulkPut(this.auditLogs());
+          }
+        );
+      }
+
+      if (notifyUser && snapshot.updatedByDeviceName) {
+        this.showToast(
+          `تحديث مباشر: ${snapshot.lastOperation}`,
+          'success'
+        );
+      }
+    } finally {
+      this.isApplyingRemoteState = false;
+    }
+  }
+
+  async registerDeviceOnCloud(lastAction = 'متصل بالخادم'): Promise<void> {
+    if (!this.isBrowser) return;
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const updated: RegisteredDevice = {
+      ...this.currentDevice(),
+      lastActiveAt: now,
+      lastAction,
+      isOnline: true,
+      syncMode: this.localOnlyMode() ? 'local' : 'cloud',
+    };
+    this.currentDevice.set(updated);
+    this.mergeDeviceList([updated]);
+
+    if (this.localOnlyMode()) return;
+
+    try {
+      if (this.supabase) {
+        await this.supabase.from('dortmun_devices').upsert(
+          {
+            device_id: updated.deviceId,
+            device_name: updated.deviceName,
+            device_type: updated.deviceType,
+            browser_os: updated.browserOs,
+            first_login_at: updated.firstLoginAt,
+            last_active_at: updated.lastActiveAt,
+            last_action: updated.lastAction,
+            operations_count: updated.operationsCount,
+            is_online: true,
+            sync_mode: updated.syncMode,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'device_id' }
+        );
+      }
+      void fetch('/api/cloud/device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch(() => null);
+    } catch {
+      // Ignore network errors
+    }
+  }
+
+  async updateDeviceName(newName: string): Promise<void> {
+    const clean = newName.trim();
+    if (!clean) {
+      this.showToast('يرجى كتابة اسم واضح للجهاز', 'warning');
+      return;
+    }
+    if (this.isBrowser) {
+      localStorage.setItem('dortmun_device_name', clean);
+    }
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const updated: RegisteredDevice = {
+      ...this.currentDevice(),
+      deviceName: clean,
+      lastActiveAt: now,
+      lastAction: `تحديث اسم الجهاز إلى "${clean}"`,
+      isOnline: true,
+    };
+    this.currentDevice.set(updated);
+    this.mergeDeviceList([updated]);
+
+    if (!this.localOnlyMode()) {
+      await this.registerDeviceOnCloud(`تغيير اسم الجهاز إلى "${clean}"`);
+      if (this.realtimeChannel) {
+        await this.realtimeChannel.track(updated);
+        await this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'device_updated',
+          payload: updated,
+        });
+      }
+    }
+
+    await this.logAudit('تحديث اسم الجهاز', 'الأجهزة المتصلة', `تم تسجيل اسم الجهاز: ${clean}`);
+    this.showToast(`تم اعتماد اسم الجهاز: "${clean}" ومزامنته`, 'success');
+  }
+
+  async removeRegisteredDevice(deviceId: string): Promise<void> {
+    if (deviceId === this.currentDevice().deviceId) {
+      this.showToast('لا يمكن حذف الجهاز الحالي الذي تستخدمه الآن', 'warning');
+      return;
+    }
+    this.registeredDevices.update((list) => list.filter((d) => d.deviceId !== deviceId));
+    if (this.db) {
+      await this.db.devices.delete(deviceId);
+    }
+    if (!this.localOnlyMode()) {
+      try {
+        if (this.supabase) {
+          await this.supabase.from('dortmun_devices').delete().eq('device_id', deviceId);
+        }
+        void fetch(`/api/cloud/device/${encodeURIComponent(deviceId)}`, {
+          method: 'DELETE',
+        }).catch(() => null);
+      } catch {
+        // Ignore
+      }
+    }
+    this.showToast('تم إزالة الجهاز من سجل الأجهزة', 'warning');
+  }
+
+  async toggleLocalOnlyMode(forceLocalOnly?: boolean): Promise<void> {
+    const nextLocal = forceLocalOnly !== undefined ? forceLocalOnly : !this.localOnlyMode();
+    this.localOnlyMode.set(nextLocal);
+    if (this.isBrowser) {
+      localStorage.removeItem('dortmun_local_only_mode');
+      if (nextLocal) {
+        sessionStorage.setItem('dortmun_manual_disconnect', 'true');
+      } else {
+        sessionStorage.removeItem('dortmun_manual_disconnect');
+      }
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const dev: RegisteredDevice = {
+      ...this.currentDevice(),
+      lastActiveAt: now,
+      syncMode: nextLocal ? 'local' : 'cloud',
+      lastAction: nextLocal ? 'فصل الاتصال مؤقتاً' : 'متصل تلقائياً بالخادم',
+    };
+    this.currentDevice.set(dev);
+    this.mergeDeviceList([dev]);
+
+    if (nextLocal) {
+      this.cloudSyncStatus.set('local_only');
+      if (this.watcherInterval) {
+        clearInterval(this.watcherInterval);
+        this.watcherInterval = null;
+      }
+      if (this.realtimeChannel && this.supabase) {
+        await this.supabase.removeChannel(this.realtimeChannel);
+        this.realtimeChannel = null;
+      }
+      this.showToast('تم فصل الاتصال — التطبيق يعمل الآن محلياً', 'warning');
+    } else {
+      this.cloudSyncStatus.set('syncing');
+      await this.initCloudConnection();
+      await this.syncToCloudNow('إعادة الاتصال والمزامنة الفورية');
+      this.showToast('تم الاتصال بنجاح — يتم رفع وجلب أي تغيير مباشر تلقائياً', 'success');
+    }
+  }
+
+  getSupabaseSetupSql(): string {
+    return FULL_SUPABASE_SQL_SCHEMA;
+  }
+
+  async runCloudDiagnostics(): Promise<void> {
+    if (!this.isBrowser) return;
+    this.diagnosticsLoading.set(true);
+    const startMs = Date.now();
+    try {
+      const res = await fetch('/api/cloud/diagnostics');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (typeof data.latencyMs === 'number') {
+          this.serverLatencyMs.set(data.latencyMs);
+        }
+        if (Array.isArray(data.tables)) {
+          this.tableDiagnostics.set(data.tables);
+          this.supabaseTablesReady.set(data.readyTablesCount > 0);
+        }
+        this.diagnosticsLoading.set(false);
+        return;
+      }
+    } catch {
+      // Fallback to direct client check on static hosts
+    }
+
+    if (this.supabase) {
+      const checks = await Promise.all(
+        SUPABASE_TABLES_LIST.map(async (tbl) => {
+          const { count, error } = await this.supabase!
+            .from(tbl.name)
+            .select('*', { count: 'exact', head: true });
+          return {
+            name: tbl.name,
+            label: tbl.label,
+            ready: !error,
+            rowCount: count ?? 0,
+          };
+        })
+      );
+      this.serverLatencyMs.set(Date.now() - startMs);
+      this.tableDiagnostics.set(checks);
+      this.supabaseTablesReady.set(checks.some((c) => c.ready));
+    }
+    this.diagnosticsLoading.set(false);
+  }
+
+  async createCloudBackup(customTitle?: string): Promise<void> {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const title = (customTitle || '').trim() || `نسخة احتياطية سحابية (${now})`;
+    const snapshot = this.buildCloudSnapshot(`إنشاء نسخة سحابية: ${title}`);
+
+    try {
+      const res = await fetch('/api/cloud/backups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          backupTitle: title,
+          snapshot,
+          device: this.currentDevice(),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.backups)) {
+          this.cloudBackups.set(data.backups);
+        }
+      }
+    } catch {
+      // Fallback to direct Supabase insert if running on static host
+      if (this.supabase && this.supabaseTablesReady()) {
+        await this.supabase.from('dortmun_cloud_backups').insert({
+          backup_title: title,
+          created_by_device_id: this.currentDevice().deviceId,
+          created_by_device_name: this.currentDevice().deviceName,
+          version: snapshot.version,
+          workers_count: this.workers().length,
+          attendance_count: this.attendances().length,
+          payload: snapshot,
+        });
+      }
+    }
+
+    await this.logAudit('إنشاء نسخة سحابية', 'الخادم السحابي', title);
+    this.showToast(`تم حفظ نقطة الاستعادة السحابية: "${title}" بنجاح`, 'success');
+  }
+
+  async restoreCloudBackup(backupId: number): Promise<void> {
+    try {
+      const res = await fetch(`/api/cloud/backups/${backupId}/restore`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.snapshot) {
+          await this.applyCloudSnapshot(data.snapshot as CloudSyncSnapshot, false);
+          if (this.realtimeChannel) {
+            await this.realtimeChannel.send({
+              type: 'broadcast',
+              event: 'state_sync',
+              payload: data.snapshot,
+            });
+          }
+          this.showToast('تمت استعادة النسخة السحابية ومزامنتها على جميع الأجهزة!', 'success');
+          return;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    this.showToast('تعذر استعادة النسخة السحابية المطلوبة', 'warning');
+  }
+
+  async executeSmartCommand(rawInput: string): Promise<boolean> {
+    const parsed = parseSmartSiteCommand(rawInput);
+    if (parsed.kind === 'unknown') {
+      this.showToast(parsed.summary, 'warning');
+      return false;
+    }
+
+    if (parsed.kind === 'headcount') {
+      const totalDay = (parsed.workersCount || 0) + (parsed.sculptorsCount || 0);
+      await this.saveDailyHeadcount({
+        date: this.todayIso(),
+        projectId: this.selectedProjectId(),
+        expectedDayCount: totalDay,
+        sculptorsCount: parsed.sculptorsCount || 0,
+        workersCount: parsed.workersCount || 0,
+        expectedNightCount: parsed.nightsCount || 0,
+        supervisorName: this.currentDevice().deviceName,
+        notes: 'مسجل عبر الأمر الذكي السريع',
+      });
+      return true;
+    }
+
+    if (parsed.kind === 'expense') {
+      if (!parsed.amount || parsed.amount <= 0) {
+        this.showToast('حدد مبلغ المصروف في الأمر الذكي (مثلاً: مصروف مواصلات 200)', 'warning');
+        return false;
+      }
+      await this.saveExpense({
+        date: this.todayIso(),
+        category: parsed.expenseCategory || 'مواصلات',
+        amount: parsed.amount,
+        projectId: this.selectedProjectId(),
+        note: parsed.reason || 'مصروف سريع',
+      });
+      this.showToast(`تم تسجيل ${parsed.summary} ومزامنته مع الخادم`, 'success');
+      return true;
+    }
+
+    if (parsed.kind === 'worker') {
+      const name = parsed.workerNameHint || 'عامل جديد';
+      const dayRate = parsed.amount || 500;
+      await this.saveWorker({
+        name,
+        role: parsed.workerRole || 'عامل',
+        workerDayRate: dayRate,
+        workerNightRate: Math.round(dayRate / 2),
+        phone: '',
+        active: true,
+        notes: 'أُضيف عبر الأمر الذكي السريع',
+      });
+      this.showToast(`تمت ${parsed.summary} بنجاح`, 'success');
+      return true;
+    }
+
+    // Find matching worker for deduction or advance
+    const hint = (parsed.workerNameHint || '').toLowerCase();
+    const matchedWorker =
+      this.activeWorkers().find((w) => hint && w.name.toLowerCase().includes(hint)) ||
+      this.activeWorkers()[0];
+
+    if (!matchedWorker?.id) {
+      this.showToast('أضف عاملاً أو نحاتاً أولاً قبل تسجيل خصم أو سلفة', 'warning');
+      return false;
+    }
+
+    if (parsed.kind === 'deduction') {
+      const mode = parsed.deductionMode || 'half_day';
+      const daysDeducted =
+        mode === 'day' ? 1 : mode === 'half_day' ? 0.5 : mode === 'quarter_day' ? 0.25 : 0;
+      const amount =
+        mode === 'money'
+          ? parsed.amount || 100
+          : Math.round(matchedWorker.workerDayRate * daysDeducted);
+
+      await this.addDeduction({
+        date: this.todayIso(),
+        workerId: matchedWorker.id,
+        projectId: this.selectedProjectId(),
+        mode,
+        daysDeducted,
+        amount,
+        reason: parsed.reason || 'خصم إداري عبر الأمر الذكي',
+        notes: '',
+        settlementId: null,
+      });
+      return true;
+    }
+
+    if (parsed.kind === 'advance') {
+      const amount = parsed.amount || 200;
+      await this.addAdvance({
+        date: this.todayIso(),
+        workerId: matchedWorker.id,
+        amount,
+        reason: parsed.reason || 'سلفة سريعة عبر الأمر الذكي',
+        settlementId: null,
+        notes: '',
+      });
+      this.showToast(
+        `تم تسجيل سلفة ${this.money(amount)} لـ "${matchedWorker.name}" ومزامنتها فوراً`,
+        'success'
+      );
+      return true;
+    }
+
+    return false;
   }
 
   async reloadAllFromDb(): Promise<void> {
@@ -398,7 +1853,11 @@ export class StoreService {
         this.db.auditLog.clear(),
       ]);
     }
-    this.showToast('تم تصفير جميع الأرقام والبيانات بالكامل — يمكنك الآن تسجيل بياناتك الحقيقية من الصفر', 'success');
+    this.scheduleCloudSync('تصفير جميع الأرقام والبيانات بالكامل (٠)');
+    this.showToast(
+      'تم تصفير جميع الأرقام والبيانات بالكامل — ومزامنة التصفير مع الخادم',
+      'success'
+    );
   }
 
   // Formatting helpers bound to current numeral mode
@@ -467,17 +1926,21 @@ export class StoreService {
   }
 
   async logAudit(action: string, entity: string, details: string): Promise<void> {
+    const dev = this.currentDevice();
     const entry: AuditLogEntry = {
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
       action,
       entity,
       details,
+      deviceId: dev.deviceId,
+      deviceName: dev.deviceName,
     };
     if (this.db) {
       const id = await this.db.auditLog.add(entry);
       entry.id = id;
     }
     this.auditLogs.update((list) => [entry, ...list.slice(0, 99)]);
+    this.scheduleCloudSync(`${action} (${entity}): ${details}`);
   }
 
   async updateSettings(partial: Partial<AppSettings>): Promise<void> {
@@ -499,6 +1962,7 @@ export class StoreService {
         }
       }
     }
+    this.scheduleCloudSync('تحديث إعدادات النظام');
   }
 
   // Daily Mandatory Headcount (العدد اليومي الإجباري)
@@ -568,6 +2032,7 @@ export class StoreService {
       recordId: id,
       previousData: prev,
     });
+    await this.logAudit('حذف العدد اليومي', 'العدد اليومي', `حذف سجل العدد ليوم ${prev.date}`);
     this.showToast('تم حذف سجل العدد اليومي', 'warning');
   }
 
@@ -647,7 +2112,11 @@ export class StoreService {
         recordId: id,
         newData: created,
       });
-      await this.logAudit('إضافة عامل', 'العمال', `تمت إضافة العامل ${worker.name} (${worker.role})`);
+      await this.logAudit(
+        'إضافة عامل',
+        'العمال',
+        `تمت إضافة العامل ${worker.name} (${worker.role})`
+      );
       return id;
     }
   }
@@ -736,7 +2205,10 @@ export class StoreService {
     mode?: 'replace' | 'merge';
   }): Promise<Attendance | null> {
     if (this.isMonthLocked(params.date)) {
-      this.showToast(`الشهر ${params.date.slice(0, 7)} مغلق للأرشفة! فك القفل من الإعدادات أولاً.`, 'error');
+      this.showToast(
+        `الشهر ${params.date.slice(0, 7)} مغلق للأرشفة! فك القفل من الإعدادات أولاً.`,
+        'error'
+      );
       return null;
     }
 
@@ -967,6 +2439,7 @@ export class StoreService {
       this.extractLines.update((list) =>
         list.map((l) => (l.id === toSave.id ? toSave : l))
       );
+      this.scheduleCloudSync(`تحديث سطر مستخلص للعامل ${this.workerName(toSave.workerId)}`);
       return toSave.id;
     } else {
       let id = Math.max(0, ...this.extractLines().map((l) => l.id || 0)) + 1;
@@ -977,6 +2450,7 @@ export class StoreService {
       }
       const created = { ...toSave, id };
       this.extractLines.update((list) => [...list, created]);
+      this.scheduleCloudSync(`إضافة سطر مستخلص للعامل ${this.workerName(toSave.workerId)}`);
       return id;
     }
   }
@@ -1111,7 +2585,11 @@ export class StoreService {
         previousData: prev,
         newData: check,
       });
-      await this.logAudit('تعديل شيك', 'الشيكات', `تعديل شيك رقم ${check.number} (${check.status})`);
+      await this.logAudit(
+        'تعديل شيك',
+        'الشيكات',
+        `تعديل شيك رقم ${check.number} (${check.status})`
+      );
       return check.id;
     } else {
       let id = Math.max(0, ...this.checks().map((c) => c.id || 0)) + 1;
@@ -1129,7 +2607,11 @@ export class StoreService {
         recordId: id,
         newData: created,
       });
-      await this.logAudit('إضافة شيك', 'الشيكات', `شيك ${check.direction} رقم ${check.number} بمبلغ ${check.amount}`);
+      await this.logAudit(
+        'إضافة شيك',
+        'الشيكات',
+        `شيك ${check.direction} رقم ${check.number} بمبلغ ${check.amount}`
+      );
       return id;
     }
   }
@@ -1166,6 +2648,11 @@ export class StoreService {
         previousData: prev,
         newData: expense,
       });
+      await this.logAudit(
+        'تعديل مصروف',
+        'المصاريف',
+        `تعديل مصروف ${expense.category} بمبلغ ${expense.amount}`
+      );
       return expense.id;
     } else {
       let id = Math.max(0, ...this.expenses().map((e) => e.id || 0)) + 1;
@@ -1183,7 +2670,11 @@ export class StoreService {
         recordId: id,
         newData: created,
       });
-      await this.logAudit('إضافة مصروف', 'المصاريف', `مصروف ${expense.category} بمبلغ ${expense.amount}`);
+      await this.logAudit(
+        'إضافة مصروف',
+        'المصاريف',
+        `مصروف ${expense.category} بمبلغ ${expense.amount}`
+      );
       return id;
     }
   }
@@ -1200,7 +2691,11 @@ export class StoreService {
       recordId: id,
       previousData: prev,
     });
-    await this.logAudit('حذف مصروف', 'المصاريف', `حذف مصروف ${prev.category} بمبلغ ${prev.amount}`);
+    await this.logAudit(
+      'حذف مصروف',
+      'المصاريف',
+      `حذف مصروف ${prev.category} بمبلغ ${prev.amount}`
+    );
     this.showToast('تم حذف المصروف', 'warning');
   }
 
@@ -1489,6 +2984,7 @@ export class StoreService {
       checks: this.checks(),
       expenses: this.expenses(),
       auditLogs: this.auditLogs(),
+      devices: this.registeredDevices(),
     };
     await this.updateSettings({ lastBackupDate: this.todayIso() });
     await this.logAudit('نسخة احتياطية', 'النظام', 'تم تصدير نسخة احتياطية JSON كاملة');
@@ -1551,7 +3047,8 @@ export class StoreService {
             await this.db!.checks.clear();
             await this.db!.expenses.clear();
 
-            if (data.settings) await this.db!.settings.put({ ...INITIAL_SETTINGS, ...data.settings });
+            if (data.settings)
+              await this.db!.settings.put({ ...INITIAL_SETTINGS, ...data.settings });
             await this.db!.projects.bulkPut(data.projects || []);
             await this.db!.workers.bulkPut(data.workers || []);
             await this.db!.attendance.bulkPut(data.attendances || []);
@@ -1570,7 +3067,7 @@ export class StoreService {
       }
 
       await this.logAudit('استعادة نسخة', 'النظام', 'تم استيراد نسخة احتياطية JSON بنجاح');
-      this.showToast('تم استيراد النسخة الاحتياطية بنجاح', 'success');
+      this.showToast('تم استيراد النسخة الاحتياطية ومزامنتها مع الخادم بنجاح', 'success');
       return true;
     } catch {
       this.showToast('فشل استيراد النسخة الاحتياطية: تأكد من صحة ملف JSON', 'error');

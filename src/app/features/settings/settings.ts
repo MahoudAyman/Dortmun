@@ -9,6 +9,44 @@ import { StoreService } from '../../core/db/store';
   imports: [ReactiveFormsModule, MatIconModule],
   template: `
     <div class="space-y-6">
+      <!-- Connection & Device Management Section -->
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <mat-icon class="text-emerald-500">cloud_sync</mat-icon>
+              <span>حالة الاتصال والمزامنة الذكية المباشرة</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              الجهاز الحالي: <strong>{{ store.currentDevice().deviceName }}</strong> · الوضع الطبيعي: اتصال تلقائي يرفع ويجلب أي تغيير فوراً
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode()"
+              class="px-4 py-2 rounded-full text-xs font-bold border transition-all inline-flex items-center gap-1.5 cursor-pointer"
+              [class.bg-emerald-600]="!store.localOnlyMode()"
+              [class.text-white]="!store.localOnlyMode()"
+              [class.border-emerald-600]="!store.localOnlyMode()"
+              [class.bg-amber-500/20]="store.localOnlyMode()"
+              [class.border-amber-500]="store.localOnlyMode()"
+            >
+              <mat-icon class="!text-sm !w-4 !h-4">{{ store.localOnlyMode() ? 'cloud_off' : 'cloud_done' }}</mat-icon>
+              <span>{{ store.localOnlyMode() ? 'مفصول (اضغط للاتصال الفوري)' : 'متصل تلقائياً (اضغط للفصل)' }}</span>
+            </button>
+            <button
+              type="button"
+              (click)="store.showCloudHubModal.set(true)"
+              class="px-4 py-2 rounded-full bg-[#3390EC] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <mat-icon class="!text-sm !w-4 !h-4">devices</mat-icon>
+              <span>إدارة اسم الجهاز والنسخ الاحتياطية</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- General & Cap Rules Settings -->
       <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
         <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -95,7 +133,7 @@ import { StoreService } from '../../core/db/store';
 
           <div>
             <label for="set-pin" class="block text-xs font-medium mb-1">رمز قفل التطبيق (PIN اختياري)</label>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
               <input
                 id="set-pin"
                 type="password"
@@ -103,12 +141,12 @@ import { StoreService } from '../../core/db/store';
                 [value]="pinInput()"
                 (input)="pinInput.set($any($event.target).value)"
                 placeholder="مثال: 1234"
-                class="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm tabular-nums"
+                class="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm tabular-nums"
               />
               <button
                 type="button"
                 (click)="savePin()"
-                class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                class="shrink-0 whitespace-nowrap px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
               >
                 {{ store.settings().pinHash ? 'تحديث / إلغاء' : 'تفعيل القفل' }}
               </button>
@@ -117,18 +155,18 @@ import { StoreService } from '../../core/db/store';
 
           <div>
             <label for="set-lock-month" class="block text-xs font-medium mb-1">أرشفة وقفل شهر ضد التعديل</label>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
               <input
                 id="set-lock-month"
                 type="month"
                 [value]="monthToToggle()"
                 (change)="monthToToggle.set($any($event.target).value)"
-                class="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums"
+                class="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums"
               />
               <button
                 type="button"
                 (click)="toggleArchiveMonth()"
-                class="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold whitespace-nowrap"
+                class="shrink-0 px-3 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold whitespace-nowrap"
               >
                 {{ store.isMonthLocked(monthToToggle()) ? 'فك القفل' : 'قفل الشهر' }}
               </button>
@@ -156,8 +194,8 @@ import { StoreService } from '../../core/db/store';
           <form [formGroup]="projectForm" (ngSubmit)="addProject()" class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <input type="text" formControlName="name" placeholder="اسم المشروع الجديد..." aria-label="اسم المشروع الجديد" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs" />
             <div class="grid grid-cols-2 gap-2">
-              <input type="number" formControlName="companyDayRate" placeholder="يومية الشركة" aria-label="سعر يومية الشركة" class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
-              <input type="number" formControlName="companyNightRate" placeholder="سهرة الشركة" aria-label="سعر سهرة الشركة" class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
+              <input type="number" formControlName="companyDayRate" placeholder="يومية الشركة" aria-label="سعر يومية الشركة" class="min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
+              <input type="number" formControlName="companyNightRate" placeholder="سهرة الشركة" aria-label="سعر سهرة الشركة" class="min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
             </div>
             <button type="submit" [disabled]="projectForm.invalid" class="w-full py-2 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 font-bold text-xs">
               إضافة مشروع
@@ -189,10 +227,10 @@ import { StoreService } from '../../core/db/store';
             }
           </div>
 
-          <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <input type="text" [value]="newTaxName()" (input)="newTaxName.set($any($event.target).value)" placeholder="اسم الضريبة (مثلاً دمغة)" aria-label="اسم الضريبة الجديدة" class="flex-1 px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs" />
-            <input type="number" [value]="newTaxRate()" (input)="newTaxRate.set(+$any($event.target).value)" placeholder="%" aria-label="قيمة الضريبة الجديدة" class="w-16 px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
-            <button type="button" (click)="addTaxRate()" class="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs">إضافة</button>
+          <div class="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <input type="text" [value]="newTaxName()" (input)="newTaxName.set($any($event.target).value)" placeholder="اسم الضريبة (مثلاً دمغة)" aria-label="اسم الضريبة الجديدة" class="min-w-0 flex-1 px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs" />
+            <input type="number" [value]="newTaxRate()" (input)="newTaxRate.set(+$any($event.target).value)" placeholder="%" aria-label="قيمة الضريبة الجديدة" class="w-14 shrink-0 px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs tabular-nums" />
+            <button type="button" (click)="addTaxRate()" class="shrink-0 whitespace-nowrap px-3 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs">إضافة</button>
           </div>
         </div>
 
@@ -208,16 +246,16 @@ import { StoreService } from '../../core/db/store';
             }
           </div>
 
-          <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
             <input
               type="text"
               [value]="newEngineerName()"
               (input)="newEngineerName.set($any($event.target).value)"
               placeholder="مثال: المهندس وائل"
               aria-label="اسم مهندس أو مشرف جديد"
-              class="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
+              class="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
             />
-            <button type="button" (click)="addEngineer()" class="px-3 py-2 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 font-bold text-xs">
+            <button type="button" (click)="addEngineer()" class="shrink-0 whitespace-nowrap px-3 py-2 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 font-bold text-xs">
               إضافة
             </button>
           </div>
