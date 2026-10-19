@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calculateCheckFundBreakdowns,
   calculateComprehensiveLedger,
+  calculateDailyPocketSummary,
   calculateDeductionAmount,
   calculateExtractLineMetrics,
   calculateExtractTotals,
@@ -540,4 +542,116 @@ test('calculateComprehensiveLedger computes incoming from checks, persons, compa
   assert.equal(ledger.projectBreakdowns.length, 1);
   assert.equal(ledger.projectBreakdowns[0].projectName, 'مشروع مدينتي');
 });
+
+test('calculateDailyPocketSummary computes withdrawn 4000, fee 40, advances 3500 => 500 before fees and 460 net in pocket', () => {
+  const summary = calculateDailyPocketSummary({
+    withdrawnAmount: 4000,
+    withdrawalFee: 40,
+    advancesTotal: 3500,
+    settlementsTotal: 0,
+    otherExpensesTotal: 0,
+  });
+
+  assert.equal(summary.withdrawnAmount, 4000);
+  assert.equal(summary.totalWorkersPaid, 3500);
+  assert.equal(summary.remainingBeforeExpenses, 500);
+  assert.equal(summary.totalExternalExpenses, 40);
+  assert.equal(summary.netRemainingInPocket, 460);
+});
+
+test('calculateCheckFundBreakdowns links check to project, extract, advances, settlements, and fees', () => {
+  const breakdowns = calculateCheckFundBreakdowns({
+    checks: [
+      {
+        id: 10,
+        direction: 'وارد',
+        number: 'CHK-500',
+        bank: 'البنك الأهلي',
+        amount: 20000,
+        dueDate: '2026-10-18',
+        status: 'اتصرف',
+        projectId: 1,
+        extractId: 1,
+        withdrawnAmount: 4000,
+        withdrawalFee: 40,
+        notes: 'شيك مستخلص 1',
+      },
+    ],
+    projects: [
+      {
+        id: 1,
+        name: 'فيلا التجمع',
+        companyDayRate: 600,
+        companyNightRate: 300,
+        active: true,
+        notes: '',
+      },
+    ],
+    extracts: [
+      {
+        id: 1,
+        projectId: 1,
+        number: 3,
+        from: '2026-10-01',
+        to: '2026-10-15',
+        notes: '',
+      },
+    ],
+    workers: [
+      {
+        id: 1,
+        name: 'كريم محمود',
+        role: 'نحات',
+        workerDayRate: 450,
+        workerNightRate: 225,
+        phone: '',
+        active: true,
+        notes: '',
+      },
+    ],
+    attendances: [
+      {
+        id: 1,
+        date: '2026-10-10',
+        workerId: 1,
+        projectId: 1,
+        dayWorked: 1,
+        nightWorked: 0,
+        workerDayRateSnapshot: 5000,
+        workerNightRateSnapshot: 200,
+        companyDayRateSnapshot: 6000,
+        companyNightRateSnapshot: 300,
+        note: '',
+      },
+    ],
+    advances: [
+      {
+        id: 1,
+        date: '2026-10-18',
+        workerId: 1,
+        amount: 3500,
+        reason: 'سلفة من الشيك',
+        settlementId: null,
+        projectId: 1,
+        checkId: 10,
+        notes: '',
+      },
+    ],
+    deductions: [],
+    settlements: [],
+    expenses: [],
+  });
+
+  assert.equal(breakdowns.length, 1);
+  const b = breakdowns[0];
+  assert.equal(b.projectName, 'فيلا التجمع');
+  assert.equal(b.extractNumber, 3);
+  assert.equal(b.advancesSpentFromCheck, 3500);
+  assert.equal(b.expensesSpentFromCheck, 40);
+  assert.equal(b.remainingBeforeFees, 500);
+  assert.equal(b.remainingInPocketNet, 460);
+  assert.equal(b.remainingInCheck, 20000 - 3540);
+  assert.equal(b.projectOwedToWorkers, 1500); // 5000 gross - 3500 advance
+});
+
 

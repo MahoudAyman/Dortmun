@@ -49,7 +49,9 @@ import {
   INITIAL_WORKERS,
 } from './seed-data';
 import {
+  calculateCheckFundBreakdowns,
   calculateComprehensiveLedger,
+  calculateDailyPocketSummary,
   calculateDashboardSummary,
   compareDailyHeadcount,
   formatCurrency,
@@ -59,6 +61,8 @@ import {
   getPayday15CycleInfo,
   isBackupOverdue,
   toArabicDigits,
+  type CheckFundBreakdown,
+  type PocketCashSummary,
 } from '../calc/calculations';
 
 export interface SmartAlertItem {
@@ -69,6 +73,26 @@ export interface SmartAlertItem {
   icon: string;
   route: string;
   actionLabel: string;
+}
+
+export interface PageAdvisorTip {
+  id: string;
+  badge: string;
+  title: string;
+  description: string;
+  severity: 'warning' | 'info' | 'emerald' | 'amber';
+  icon: string;
+  actionLabel: string;
+  actionType:
+    | 'open_headcount'
+    | 'open_pocket'
+    | 'open_worker_sheet'
+    | 'open_check_sheet'
+    | 'open_project_sheet'
+    | 'navigate'
+    | 'open_zaki_caps';
+  targetRoute?: string;
+  targetId?: number | null;
 }
 
 const SUPABASE_PROJECT_URL = 'https://lmcxonnuzbamfqxbqshu.supabase.co';
@@ -174,6 +198,19 @@ export class StoreService {
   readonly showQuickHeadcountModal = signal<boolean>(false);
   readonly showZakiCapabilitiesModal = signal<boolean>(false);
 
+  // Universal Half-Page Overlay Sheet ("كل حاجة أدوس عليها تفتح صفحة نص فوق الصفحة بجميع التفاصيل")
+  readonly activeHalfSheet = signal<{
+    type: 'worker' | 'check' | 'project' | 'extract' | 'pocket';
+    id?: number | null;
+  } | null>(null);
+
+  // Daily Pocket & Check Withdrawal Session ("سحبت كام من فلوس الشيك اليوم مثلا 4000 ومصاريف سحب 40 وسلف 3500")
+  readonly pocketWithdrawnAmount = signal<number>(4000);
+  readonly pocketWithdrawalFee = signal<number>(40);
+  readonly pocketCustomAdvances = signal<number | null>(null);
+  readonly pocketSelectedCheckId = signal<number | null>(null);
+  readonly pocketSelectedProjectId = signal<number | null>(null);
+
   private pushUndo(op: UndoOperation): void {
     this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
     this.redoStack.set([]);
@@ -221,6 +258,54 @@ export class StoreService {
       selectedProjectId: null,
     })
   );
+
+  readonly checkFundBreakdowns = computed<CheckFundBreakdown[]>(() =>
+    calculateCheckFundBreakdowns({
+      checks: this.checks(),
+      projects: this.projects(),
+      extracts: this.extracts(),
+      workers: this.workers(),
+      attendances: this.attendances(),
+      advances: this.advances(),
+      deductions: this.deductions(),
+      settlements: this.settlements(),
+      expenses: this.expenses(),
+    })
+  );
+
+  readonly dailyPocketSummary = computed<PocketCashSummary>(() => {
+    const today = this.todayIso();
+    const chkId = this.pocketSelectedCheckId();
+    const todayAdvances = this.advances()
+      .filter((a) => (chkId ? a.checkId === chkId : a.date === today))
+      .reduce((s, a) => s + a.amount, 0);
+    const todaySettlements = this.settlements()
+      .filter((st) => (chkId ? st.checkId === chkId : st.date === today))
+      .reduce((s, st) => s + st.netPaid, 0);
+    const todayOtherExpenses = this.expenses()
+      .filter(
+        (e) =>
+          (chkId ? e.checkId === chkId : e.date === today) &&
+          e.category !== 'رسوم سحب شيك'
+      )
+      .reduce((s, e) => s + e.amount, 0);
+
+    const customAdv = this.pocketCustomAdvances();
+    const effectiveAdvances =
+      customAdv !== null && customAdv >= 0
+        ? customAdv
+        : todayAdvances > 0
+          ? todayAdvances
+          : 3500;
+
+    return calculateDailyPocketSummary({
+      withdrawnAmount: this.pocketWithdrawnAmount(),
+      withdrawalFee: this.pocketWithdrawalFee(),
+      advancesTotal: effectiveAdvances,
+      settlementsTotal: todaySettlements,
+      otherExpensesTotal: todayOtherExpenses,
+    });
+  });
 
   readonly totalOpenDeductions = computed(() =>
     this.deductions()
@@ -3227,5 +3312,467 @@ export class StoreService {
       this.showToast('فشل استيراد النسخة الاحتياطية: تأكد من صحة ملف JSON', 'error');
       return false;
     }
+  }
+
+  // ============================================================================
+  // UNIVERSAL HALF-PAGE INSPECTOR SHEET & FULL WORKER/CHECK/PROJECT OPERATIONS
+  // ============================================================================
+
+  openWorkerSheet(workerId: number): void {
+    this.activeHalfSheet.set({ type: 'worker', id: workerId });
+  }
+
+  openCheckSheet(checkId: number): void {
+    this.activeHalfSheet.set({ type: 'check', id: checkId });
+  }
+
+  openProjectSheet(projectId: number | null): void {
+    this.activeHalfSheet.set({ type: 'project', id: projectId });
+  }
+
+  openExtractSheet(extractId: number): void {
+    this.activeHalfSheet.set({ type: 'extract', id: extractId });
+  }
+
+  openPocketSheet(checkId?: number | null): void {
+    if (checkId !== undefined) {
+      this.pocketSelectedCheckId.set(checkId);
+    }
+    this.activeHalfSheet.set({ type: 'pocket', id: checkId ?? null });
+  }
+
+  closeHalfSheet(): void {
+    this.activeHalfSheet.set(null);
+  }
+
+  readonly inspectedWorkerDetails = computed(() => {
+    const sheet = this.activeHalfSheet();
+    if (!sheet || sheet.type !== 'worker' || !sheet.id) return null;
+    const worker = this.workers().find((w) => w.id === sheet.id);
+    if (!worker) return null;
+
+    const wAtt = this.attendances().filter((a) => a.workerId === worker.id);
+    const totalDays = wAtt.reduce((s, a) => s + a.dayWorked, 0);
+    const totalNights = wAtt.reduce((s, a) => s + a.nightWorked, 0);
+    const grossWages = wAtt.reduce(
+      (s, a) =>
+        s +
+        a.dayWorked * (a.workerDayRateSnapshot || worker.workerDayRate) +
+        a.nightWorked * (a.workerNightRateSnapshot || worker.workerNightRate),
+      0
+    );
+
+    const openAdvances = this.advances().filter(
+      (adv) => adv.workerId === worker.id && adv.settlementId === null
+    );
+    const openDeductions = this.deductions().filter(
+      (ded) => ded.workerId === worker.id && ded.settlementId === null
+    );
+    const settlementsList = this.settlements().filter(
+      (st) => st.workerId === worker.id
+    );
+    const nashList = this.extraCashes().filter((ec) => ec.workerId === worker.id);
+
+    const openAdvancesSum = openAdvances.reduce((s, a) => s + a.amount, 0);
+    const openDeductionsSum = openDeductions.reduce((s, d) => s + d.amount, 0);
+    const settlementsPaidSum = settlementsList.reduce((s, st) => s + st.netPaid, 0);
+    const unpaidNashSum = nashList.reduce(
+      (s, ec) => s + Math.max(0, ec.amount - ec.paidCash),
+      0
+    );
+
+    // Projects / Villas this worker worked in
+    const projectSummaryMap = new Map<
+      number,
+      { projectId: number; projectName: string; days: number; nights: number; wages: number }
+    >();
+    for (const a of wAtt) {
+      const existing = projectSummaryMap.get(a.projectId) || {
+        projectId: a.projectId,
+        projectName: this.projectName(a.projectId),
+        days: 0,
+        nights: 0,
+        wages: 0,
+      };
+      existing.days += a.dayWorked;
+      existing.nights += a.nightWorked;
+      existing.wages +=
+        a.dayWorked * (a.workerDayRateSnapshot || worker.workerDayRate) +
+        a.nightWorked * (a.workerNightRateSnapshot || worker.workerNightRate);
+      projectSummaryMap.set(a.projectId, existing);
+    }
+
+    const netDueNow = Math.max(
+      0,
+      grossWages + unpaidNashSum - openAdvancesSum - openDeductionsSum - settlementsPaidSum
+    );
+
+    return {
+      worker,
+      attendances: wAtt.slice().sort((a, b) => b.date.localeCompare(a.date)),
+      totalDays,
+      totalNights,
+      grossWages,
+      unpaidNashSum,
+      openAdvances,
+      openAdvancesSum,
+      openDeductions,
+      openDeductionsSum,
+      settlementsList,
+      settlementsPaidSum,
+      netDueNow,
+      projectsWorked: Array.from(projectSummaryMap.values()),
+    };
+  });
+
+  readonly inspectedCheckDetails = computed<CheckFundBreakdown | null>(() => {
+    const sheet = this.activeHalfSheet();
+    if (!sheet || sheet.type !== 'check' || !sheet.id) return null;
+    return (
+      this.checkFundBreakdowns().find((b) => b.check.id === sheet.id) || null
+    );
+  });
+
+  readonly inspectedProjectDetails = computed(() => {
+    const sheet = this.activeHalfSheet();
+    if (!sheet || sheet.type !== 'project') return null;
+    const pid = sheet.id ?? null;
+    const breakdown =
+      this.comprehensiveLedger().projectBreakdowns.find(
+        (b) => b.projectId === pid
+      ) || null;
+    const projectChecks = this.checkFundBreakdowns().filter(
+      (c) => c.check.projectId === pid
+    );
+    const projectExtracts = this.extracts().filter((e) => e.projectId === pid);
+    return {
+      breakdown,
+      projectChecks,
+      projectExtracts,
+    };
+  });
+
+  /**
+   * حذف العامل نهائياً مع كل تحضيره وسلفه وخصوماته وتسوياته ("احذفه خالص مع التحضير")
+   */
+  async deleteWorkerCompletelyWithAllRecords(workerId: number): Promise<void> {
+    const worker = this.workers().find((w) => w.id === workerId);
+    if (!worker) return;
+
+    const attIds = this.attendances()
+      .filter((a) => a.workerId === workerId && a.id !== undefined)
+      .map((a) => a.id!);
+    const advIds = this.advances()
+      .filter((a) => a.workerId === workerId && a.id !== undefined)
+      .map((a) => a.id!);
+    const dedIds = this.deductions()
+      .filter((d) => d.workerId === workerId && d.id !== undefined)
+      .map((d) => d.id!);
+    const setIds = this.settlements()
+      .filter((s) => s.workerId === workerId && s.id !== undefined)
+      .map((s) => s.id!);
+
+    if (this.db) {
+      await this.db.workers.delete(workerId);
+      if (attIds.length) await this.db.attendance.bulkDelete(attIds);
+      if (advIds.length) await this.db.advances.bulkDelete(advIds);
+      if (dedIds.length) await this.db.deductions.bulkDelete(dedIds);
+      if (setIds.length) await this.db.settlements.bulkDelete(setIds);
+    }
+
+    this.workers.update((list) => list.filter((w) => w.id !== workerId));
+    this.attendances.update((list) => list.filter((a) => a.workerId !== workerId));
+    this.advances.update((list) => list.filter((a) => a.workerId !== workerId));
+    this.deductions.update((list) => list.filter((d) => d.workerId !== workerId));
+    this.settlements.update((list) => list.filter((s) => s.workerId !== workerId));
+    this.extraCashes.update((list) => list.filter((ec) => ec.workerId !== workerId));
+
+    await this.logAudit(
+      'حذف عامل نهائياً مع التحضير',
+      'العمال',
+      `تم حذف العامل ${worker.name} مع جميع أيام تحضيره (${attIds.length} يوم) وسلفه وحركاته`
+    );
+    this.showToast(
+      `تم حذف العامل ${worker.name} نهائياً مع كل تحضيره وسلفه وحركاته`,
+      'warning'
+    );
+    if (this.activeHalfSheet()?.type === 'worker' && this.activeHalfSheet()?.id === workerId) {
+      this.closeHalfSheet();
+    }
+  }
+
+  /**
+   * إيقاف / أرشفة العامل من الفيلا أو إعادته للعمل
+   */
+  async toggleWorkerActiveStatus(workerId: number): Promise<void> {
+    const worker = this.workers().find((w) => w.id === workerId);
+    if (!worker) return;
+    await this.saveWorker({ ...worker, active: !worker.active });
+    this.showToast(
+      !worker.active
+        ? `تم تفعيل العامل ${worker.name} وإعادته للعمل`
+        : `تم إيقاف/أرشفة العامل ${worker.name} من الفيلا`,
+      'success'
+    );
+  }
+
+  /**
+   * تصفية حساب العامل بالكامل وإعطاؤه حسابه ("اديله حسابه") مع ربطه بالشيك والمشروع
+   */
+  async payOutWorkerFullBalance(
+    workerId: number,
+    options?: {
+      checkId?: number | null;
+      projectId?: number | null;
+      customNetPaid?: number;
+      notes?: string;
+    }
+  ): Promise<void> {
+    const worker = this.workers().find((w) => w.id === workerId);
+    if (!worker) return;
+
+    const wAtt = this.attendances().filter((a) => a.workerId === workerId);
+    const days = wAtt.reduce((s, a) => s + a.dayWorked, 0);
+    const nights = wAtt.reduce((s, a) => s + a.nightWorked, 0);
+    const grossWages = wAtt.reduce(
+      (s, a) =>
+        s +
+        a.dayWorked * (a.workerDayRateSnapshot || worker.workerDayRate) +
+        a.nightWorked * (a.workerNightRateSnapshot || worker.workerNightRate),
+      0
+    );
+
+    const openAdv = this.advances().filter(
+      (a) => a.workerId === workerId && a.settlementId === null
+    );
+    const openDed = this.deductions().filter(
+      (d) => d.workerId === workerId && d.settlementId === null
+    );
+    const prevSettled = this.settlements()
+      .filter((s) => s.workerId === workerId)
+      .reduce((sum, s) => sum + s.netPaid, 0);
+
+    const advSum = openAdv.reduce((s, a) => s + a.amount, 0);
+    const dedSum = openDed.reduce((s, d) => s + d.amount, 0);
+    const calculatedNet = Math.max(0, grossWages - advSum - dedSum - prevSettled);
+    const finalPaid =
+      options?.customNetPaid !== undefined && options.customNetPaid >= 0
+        ? options.customNetPaid
+        : calculatedNet;
+
+    const defaultProjId =
+      options?.projectId ??
+      (wAtt.length > 0 ? wAtt[0].projectId : this.selectedProjectId() || 1);
+
+    await this.createSettlement(
+      {
+        workerId,
+        from: `${this.selectedMonth()}-01`,
+        to: this.todayIso(),
+        days,
+        nights,
+        grossWages,
+        advancesDeducted: advSum,
+        deductionsDeducted: dedSum,
+        netPaid: finalPaid,
+        date: this.todayIso(),
+        projectId: defaultProjId,
+        checkId: options?.checkId ?? null,
+        notes:
+          options?.notes ||
+          (options?.checkId
+            ? `تقفيل وصرف حساب العامل بالكامل من شيك #${options.checkId}`
+            : 'تقفيل وصرف حساب العامل بالكامل (اديله حسابه)'),
+      },
+      openAdv.filter((a) => a.id !== undefined).map((a) => a.id!),
+      openDed.filter((d) => d.id !== undefined).map((d) => d.id!)
+    );
+
+    this.showToast(
+      `تم تقفيل وصرف حساب ${worker.name} بالكامل بمبلغ ${this.money(finalPaid)}`,
+      'success'
+    );
+  }
+
+  /**
+   * حفظ جلسة سحب الشيك النقدي اليومية (مثلاً سحبت 4000 ومصاريف سحب 40 ج) وربطها بالشيك والمصاريف
+   */
+  async savePocketWithdrawalToCheck(params: {
+    checkId: number | null;
+    projectId: number | null;
+    withdrawnAmount: number;
+    withdrawalFee: number;
+    recordFeeAsExpense?: boolean;
+  }): Promise<void> {
+    this.pocketWithdrawnAmount.set(params.withdrawnAmount);
+    this.pocketWithdrawalFee.set(params.withdrawalFee);
+    this.pocketSelectedCheckId.set(params.checkId);
+    this.pocketSelectedProjectId.set(params.projectId);
+
+    if (params.checkId) {
+      const chk = this.checks().find((c) => c.id === params.checkId);
+      if (chk) {
+        await this.saveCheck({
+          ...chk,
+          withdrawnAmount: params.withdrawnAmount,
+          withdrawalFee: params.withdrawalFee,
+          status: 'اتصرف',
+        });
+      }
+    }
+
+    if (params.recordFeeAsExpense && params.withdrawalFee > 0) {
+      await this.saveExpense({
+        date: this.todayIso(),
+        category: 'رسوم سحب شيك',
+        amount: params.withdrawalFee,
+        projectId: params.projectId,
+        checkId: params.checkId,
+        note: `مصاريف خارجية حق سحب شيك (${this.money(params.withdrawnAmount)})`,
+      });
+    }
+
+    this.showToast(
+      `تم تحديث عهدة الجيب: سحبت ${this.money(params.withdrawnAmount)} ومصاريف سحب ${this.money(params.withdrawalFee)}`,
+      'success'
+    );
+  }
+
+  /**
+   * رسائل التوجيه الذكية في كل صفحة ("المفروض أعمل كذا أو نسيت أعمل كذا")
+   */
+  getPageAdvisorTips(routePath: string): PageAdvisorTip[] {
+    const tips: PageAdvisorTip[] = [];
+    const hc = this.todayHeadcountMatch();
+    const ledger = this.comprehensiveLedger();
+    const unlinkedChecks = this.checks().filter(
+      (c) => c.direction === 'وارد' && (!c.projectId || !c.extractId)
+    );
+    const workersWithUnpaidBalance = this.workers().filter((w) => {
+      if (!w.id) return false;
+      const wAtt = this.attendances().filter((a) => a.workerId === w.id);
+      const gross = wAtt.reduce(
+        (s, a) => s + a.dayWorked * a.workerDayRateSnapshot + a.nightWorked * a.workerNightRateSnapshot,
+        0
+      );
+      const adv = this.advances()
+        .filter((a) => a.workerId === w.id && a.settlementId === null)
+        .reduce((s, a) => s + a.amount, 0);
+      const ded = this.deductions()
+        .filter((d) => d.workerId === w.id && d.settlementId === null)
+        .reduce((s, d) => s + d.amount, 0);
+      const paid = this.settlements()
+        .filter((st) => st.workerId === w.id)
+        .reduce((s, st) => s + st.netPaid, 0);
+      return gross - adv - ded - paid > 0;
+    });
+
+    // Global check if mandatory headcount is missing today
+    if (!hc.hasMandatoryRecord && (routePath.includes('dashboard') || routePath.includes('attendance') || routePath.includes('bulk'))) {
+      tips.push({
+        id: 'tip-missing-headcount',
+        badge: 'نسيت خطوة إجبارية اليوم',
+        title: 'لم تسجل العدد اليومي الإجباري النهارده!',
+        description:
+          'المفروض تسجل إجمالي عدد العمالة والنحاتية وعدد السهرة أولاً عشان النظام يطابقهم تلقائياً مع الأسماء.',
+        severity: 'warning',
+        icon: 'fact_check',
+        actionLabel: 'سجل العدد الإجباري الآن',
+        actionType: 'open_headcount',
+      });
+    } else if (!hc.isExactMatch && (routePath.includes('attendance') || routePath.includes('bulk'))) {
+      tips.push({
+        id: 'tip-headcount-mismatch',
+        badge: 'مراجعة مطلوبة',
+        title: `العدد المسجل بالأسماء (${this.num(hc.actualDays)}) لا يطابق العدد الإجباري (${this.num(hc.expectedDays)})`,
+        description:
+          'المفروض تضيف أو تراجع أسماء العمال الحاضرين النهارده حتى تتطابق اليوميات ١٠٠٪ قبل صرف أي سلف.',
+        severity: 'amber',
+        icon: 'compare_arrows',
+        actionLabel: 'فتح التحضير الجماعي السريع',
+        actionType: 'navigate',
+        targetRoute: '/bulk',
+      });
+    }
+
+    if (routePath.includes('workers') || routePath.includes('settlements')) {
+      if (workersWithUnpaidBalance.length > 0) {
+        const firstW = workersWithUnpaidBalance[0];
+        tips.push({
+          id: 'tip-workers-unpaid',
+          badge: 'ميزة سريعة غير مستغلة',
+          title: `عندك ${this.num(workersWithUnpaidBalance.length)} عامل ليهم حساب مستحق (إجمالي ${this.money(ledger.remainingOwedToWorkers)})`,
+          description:
+            'اضغط على أي عامل لتفتح لوحته النصفية فوق الصفحة: تقدر تضيف أو تخصم أيام، تديله حسابه بالكامل من شيك معين، أو تحذفه خالص مع تحضيره.',
+          severity: 'emerald',
+          icon: 'person_search',
+          actionLabel: `افتح لوحة ${firstW.name} الآن`,
+          actionType: 'open_worker_sheet',
+          targetId: firstW.id!,
+        });
+      }
+    }
+
+    if (routePath.includes('checks') || routePath.includes('my-ledger') || routePath.includes('dashboard')) {
+      tips.push({
+        id: 'tip-pocket-check-calc',
+        badge: 'حاسبة جيب المقاول والشيكات',
+        title: 'سحبت كام من الشيك النهارده وباقي في جيبك كام؟ (مثال: سحبت 4000 ومصاريف 40 وسلف 3500 = باقي 500 / صافي 460)',
+        description:
+          'استخدم دفتر عهدة الجيب اليومي لربط المبلغ اللي سحبته من الشيك بمصاريف السحب وسلف العمال عشان تعرف الفلوس المفروض تكون في جيبك بالظبط.',
+        severity: 'info',
+        icon: 'account_balance_wallet',
+        actionLabel: 'فتح حاسبة سحبة الشيك وجيب المقاول',
+        actionType: 'open_pocket',
+        targetId: this.checks()[0]?.id ?? null,
+      });
+    }
+
+    if (routePath.includes('checks') || routePath.includes('extracts')) {
+      if (unlinkedChecks.length > 0) {
+        tips.push({
+          id: 'tip-unlinked-checks',
+          badge: 'تنبيه ربط الشيكات بالمستخلصات',
+          title: `يوجد ${this.num(unlinkedChecks.length)} شيك غير مربوط بمستخلص أو مشروع!`,
+          description:
+            'المفروض تربط كل شيك بالمشروع والمستخلص بتاعه عشان لما تصرف سلف أو قبض يتخصم من الشيك وتعرف باقي فيه كام وعليك قبض كام.',
+          severity: 'warning',
+          icon: 'link',
+          actionLabel: 'عرض تفاصيل الشيك وربطه',
+          actionType: 'open_check_sheet',
+          targetId: unlinkedChecks[0].id!,
+        });
+      }
+    }
+
+    if (routePath.includes('advances') || routePath.includes('deductions')) {
+      tips.push({
+        id: 'tip-link-advance-to-check',
+        badge: 'نصيحة محاسبية ذكية',
+        title: 'اربط كل سلفة بالشيك والمشروع اللي اتصرفت منه!',
+        description:
+          'لما تختار الشيك اللي اتصرفت منه السلفة، النظام بيخصمها تلقائياً من رصيد الشيك ويقولك فاضل في الشيك كام وفي جيبك كام.',
+        severity: 'emerald',
+        icon: 'payments',
+        actionLabel: 'معاينة رصيد الشيكات والجيب',
+        actionType: 'open_pocket',
+      });
+    }
+
+    if (tips.length === 0) {
+      tips.push({
+        id: 'tip-general-half-sheet',
+        badge: 'ميزة اللوحة النصفية السريعة',
+        title: 'اضغط على أي عامل أو شيك أو مشروع لفتح لوحة التفاصيل النصفية فوق الصفحة!',
+        description:
+          'تقدر من نفس المكان تضيف أو تخصم أيام، تصرف سلفة من شيك، تدي العامل حسابه بالكامل، أو تراجع باقي الشيك والمستخلص بدون مغادرة صفحتك.',
+        severity: 'info',
+        icon: 'touch_app',
+        actionLabel: 'استعراض قدرات المساعد زكي',
+        actionType: 'open_zaki_caps',
+      });
+    }
+
+    return tips.slice(0, 2);
   }
 }

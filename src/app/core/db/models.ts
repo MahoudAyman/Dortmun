@@ -52,6 +52,8 @@ export interface Advance {
   amount: number;
   reason: string;
   settlementId: number | null;
+  projectId?: number | null; // المشروع المرتبط بالسلفة
+  checkId?: number | null; // الشيك الذي صُرفت منه السلفة
   notes: string;
 }
 
@@ -94,6 +96,8 @@ export interface Settlement {
   deductionsDeducted?: number;
   netPaid: number;
   date: string; // YYYY-MM-DD
+  projectId?: number | null; // المشروع المرتبط بالتصفية
+  checkId?: number | null; // الشيك الذي صُرف منه القبض
   notes: string;
 }
 
@@ -170,10 +174,18 @@ export interface CheckItem {
   status: CheckStatus;
   projectId: number | null;
   extractId: number | null;
+  withdrawnAmount?: number; // المبلغ المسحوب من الشيك في جيب المقاول
+  withdrawalFee?: number; // مصاريف خارجية / حق سحب الشيك
   notes: string;
 }
 
-export type ExpenseCategory = 'مواصلات' | 'أكل' | 'أدوات' | 'صيانة' | 'أخرى';
+export type ExpenseCategory =
+  | 'مواصلات'
+  | 'أكل'
+  | 'أدوات'
+  | 'صيانة'
+  | 'رسوم سحب شيك'
+  | 'أخرى';
 
 export interface Expense {
   id?: number;
@@ -181,6 +193,7 @@ export interface Expense {
   category: ExpenseCategory;
   amount: number;
   projectId: number | null;
+  checkId?: number | null; // الشيك المرتبط بالمصروف أو رسوم السحب
   note: string;
 }
 

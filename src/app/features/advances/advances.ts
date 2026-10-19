@@ -10,21 +10,31 @@ import type { Advance } from '../../core/db/models';
   imports: [ReactiveFormsModule, MatIconModule],
   template: `
     <div class="space-y-6">
-      <!-- Record New Advance Form -->
+      <!-- Record New Advance Form (with Check & Project linkage) -->
       <form
         [formGroup]="advanceForm"
         (ngSubmit)="saveAdvance()"
         class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4"
       >
-        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <mat-icon class="text-amber-500">payments</mat-icon>
-          <span>تسجيل سلفة جديدة</span>
-        </h2>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <mat-icon class="text-amber-500">payments</mat-icon>
+            <span>تسجيل سلفة جديدة وربطها بالشيك والمشروع</span>
+          </h2>
+          <button
+            type="button"
+            (click)="store.openPocketSheet()"
+            class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+          >
+            <mat-icon class="!w-4 !h-4 !text-[15px]">account_balance_wallet</mat-icon>
+            <span>معاينة سحبة الشيك وباقي جيبك ({{ store.money(store.dailyPocketSummary().remainingBeforeExpenses) }})</span>
+          </button>
+        </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 items-end">
           <div>
             <label for="adv-worker" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">العامل *</label>
-            <select id="adv-worker" formControlName="workerId" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm">
+            <select id="adv-worker" formControlName="workerId" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
               @for (w of store.activeWorkers(); track w.id) {
                 <option [value]="w.id">{{ w.name }} ({{ w.role }})</option>
               }
@@ -33,7 +43,30 @@ import type { Advance } from '../../core/db/models';
 
           <div>
             <label for="adv-amount" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">المبلغ (ج.م) *</label>
-            <input id="adv-amount" type="number" min="1" formControlName="amount" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm tabular-nums" placeholder="300" />
+            <input id="adv-amount" type="number" min="1" formControlName="amount" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums" placeholder="300" />
+          </div>
+
+          <div>
+            <label for="adv-check" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">اتصرفت من شيك إيه؟</label>
+            <select id="adv-check" formControlName="checkId" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold">
+              <option [ngValue]="null">عهدة الجيب / الخزنة العامة</option>
+              @for (cb of store.checkFundBreakdowns(); track cb.check.id) {
+                @if (cb.check.direction === 'وارد') {
+                  <option [ngValue]="cb.check.id">
+                    شيك #{{ cb.check.number }} (باقي: {{ store.money(cb.remainingInCheck) }})
+                  </option>
+                }
+              }
+            </select>
+          </div>
+
+          <div>
+            <label for="adv-proj" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">المشروع / الفيلا</label>
+            <select id="adv-proj" formControlName="projectId" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold">
+              @for (p of store.projects(); track p.id) {
+                <option [ngValue]="p.id">{{ p.name }}</option>
+              }
+            </select>
           </div>
 
           <div>
@@ -45,21 +78,16 @@ import type { Advance } from '../../core/db/models';
             <label for="adv-reason" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">السبب</label>
             <input id="adv-reason" type="text" formControlName="reason" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" placeholder="مصاريف شخصية / أكل" />
           </div>
-
-          <div>
-            <label for="adv-notes" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">ملاحظات حرة</label>
-            <input id="adv-notes" type="text" formControlName="notes" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" placeholder="نقداً أو فودافون كاش..." />
-          </div>
         </div>
 
         <div class="flex justify-end">
           <button
             type="submit"
             [disabled]="advanceForm.invalid"
-            class="min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm disabled:opacity-50"
+            class="min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm disabled:opacity-50 cursor-pointer"
           >
             <mat-icon class="!text-lg !w-5 !h-5">add_circle</mat-icon>
-            <span>تسجيل السلفة</span>
+            <span>تسجيل السلفة وخصمها من الشيك</span>
           </button>
         </div>
       </form>
@@ -68,10 +96,13 @@ import type { Advance } from '../../core/db/models';
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Per-Worker Totals -->
         <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-          <h3 class="text-sm font-bold text-slate-900 dark:text-white">إجمالي السلف لكل عامل والمتبقي</h3>
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">إجمالي السلف لكل عامل (اضغط لفتح لوحة العامل)</h3>
           <div class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
             @for (ws of workerAdvanceSummaries(); track ws.worker.id) {
-              <div class="py-3 flex items-center justify-between">
+              <div
+                (click)="store.openWorkerSheet(ws.worker.id!)"
+                class="py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 px-2 rounded-xl transition-colors"
+              >
                 <div>
                   <div class="font-bold text-slate-900 dark:text-white">{{ ws.worker.name }}</div>
                   <div class="text-xs text-slate-500">
@@ -103,21 +134,26 @@ import type { Advance } from '../../core/db/models';
                   <th class="py-3 px-4 font-semibold">التاريخ</th>
                   <th class="py-3 px-3 font-semibold">العامل</th>
                   <th class="py-3 px-3 font-semibold">المبلغ</th>
-                  <th class="py-3 px-3 font-semibold">السبب والملاحظات</th>
+                  <th class="py-3 px-3 font-semibold">الشيك / المشروع المرتبط</th>
                   <th class="py-3 px-3 font-semibold">الحالة</th>
                   <th class="py-3 px-4 font-semibold">إجراء</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                 @for (adv of store.advances(); track adv.id) {
-                  <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                  <tr
+                    (click)="store.openWorkerSheet(adv.workerId)"
+                    class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer"
+                  >
                     <td class="py-3 px-4 tabular-nums text-xs">{{ store.digits(adv.date) }}</td>
                     <td class="py-3 px-3 font-bold text-slate-900 dark:text-white">{{ store.workerName(adv.workerId) }}</td>
                     <td class="py-3 px-3 font-bold tabular-nums text-rose-600">{{ store.money(adv.amount) }}</td>
                     <td class="py-3 px-3 text-xs text-slate-600 dark:text-slate-300">
-                      {{ adv.reason }}
-                      @if (adv.notes) {
-                        <span class="text-slate-400"> · {{ adv.notes }}</span>
+                      <div>{{ adv.reason }}</div>
+                      @if (adv.checkId) {
+                        <span class="inline-block mt-0.5 px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 font-bold text-[10px]">
+                          مصروفة من شيك #{{ store.num(adv.checkId) }}
+                        </span>
                       }
                     </td>
                     <td class="py-3 px-3 text-xs">
@@ -127,11 +163,11 @@ import type { Advance } from '../../core/db/models';
                         <span class="text-amber-600 font-semibold">متبقية (مفتوحة)</span>
                       }
                     </td>
-                    <td class="py-3 px-4">
+                    <td class="py-3 px-4" (click)="$event.stopPropagation()">
                       <button
                         type="button"
                         (click)="confirmDelete(adv)"
-                        class="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600"
+                        class="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
                         [attr.aria-label]="'حذف سلفة ' + store.workerName(adv.workerId)"
                       >
                         <mat-icon class="!text-base !w-4 !h-4">delete</mat-icon>
@@ -169,9 +205,11 @@ export class AdvancesPage {
 
   readonly advanceToDelete = signal<Advance | null>(null);
 
-  readonly advanceForm = this.fb.nonNullable.group({
+  readonly advanceForm = this.fb.group({
     workerId: [1, Validators.required],
     amount: [250, [Validators.required, Validators.min(1)]],
+    checkId: [1 as number | null],
+    projectId: [1 as number | null],
     date: [this.store.todayIso(), Validators.required],
     reason: ['مصاريف شخصية'],
     notes: [''],
@@ -207,12 +245,14 @@ export class AdvancesPage {
     await this.store.addAdvance({
       workerId: Number(val.workerId),
       amount: Number(val.amount),
-      date: val.date,
+      checkId: val.checkId ? Number(val.checkId) : null,
+      projectId: val.projectId ? Number(val.projectId) : 1,
+      date: val.date || this.store.todayIso(),
       reason: val.reason || 'سلفة نقدية',
       settlementId: null,
-      notes: val.notes,
+      notes: val.notes || '',
     });
-    this.store.showToast('تم تسجيل السلفة بنجاح', 'success');
+    this.store.showToast('تم تسجيل السلفة وربطها بالشيك والمشروع بنجاح', 'success');
     this.advanceForm.patchValue({ amount: 200, notes: '' });
   }
 
@@ -228,3 +268,4 @@ export class AdvancesPage {
     this.advanceToDelete.set(null);
   }
 }
+

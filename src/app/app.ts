@@ -18,7 +18,7 @@ import {
 } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { filter, Subscription } from 'rxjs';
-import { StoreService } from './core/db/store';
+import { StoreService, type PageAdvisorTip } from './core/db/store';
 import type {
   DeductionMode,
   ExpenseCategory,
@@ -659,5 +659,129 @@ export class App implements AfterViewInit, OnDestroy {
     } else {
       this.showPwaGuideModal.set(true);
     }
+  }
+
+  // ============================================================================
+  // CONTEXTUAL PAGE ADVISOR & UNIVERSAL HALF-PAGE INSPECTOR SHEET HANDLERS
+  // ============================================================================
+  readonly dismissedTipIds = signal<string[]>([]);
+  readonly currentPageAdvisorTips = computed(() =>
+    this.store.getPageAdvisorTips(this.currentRoutePath())
+  );
+  readonly visibleAdvisorTips = computed(() =>
+    this.currentPageAdvisorTips().filter((t) => !this.dismissedTipIds().includes(t.id))
+  );
+
+  // Worker Half-Page Sheet local controls
+  readonly sheetProjectId = signal<number>(1);
+  readonly sheetCheckId = signal<number | null>(null);
+  readonly sheetAdvanceAmount = signal<number>(500);
+  readonly sheetDeductionReason = signal<string>('تأخير / غياب');
+  readonly confirmFullDeleteWorkerId = signal<number | null>(null);
+
+  dismissAdvisorTip(id: string): void {
+    this.dismissedTipIds.update((list) => [...list, id]);
+  }
+
+  executeAdvisorAction(tip: PageAdvisorTip): void {
+    if (tip.actionType === 'open_headcount') {
+      this.openHeadcountModal();
+    } else if (tip.actionType === 'open_pocket') {
+      this.store.openPocketSheet(tip.targetId ?? null);
+    } else if (tip.actionType === 'open_worker_sheet' && tip.targetId) {
+      this.store.openWorkerSheet(tip.targetId);
+    } else if (tip.actionType === 'open_check_sheet' && tip.targetId) {
+      this.store.openCheckSheet(tip.targetId);
+    } else if (tip.actionType === 'open_project_sheet') {
+      this.store.openProjectSheet(tip.targetId ?? null);
+    } else if (tip.actionType === 'open_zaki_caps') {
+      this.store.showZakiCapabilitiesModal.set(true);
+    } else if (tip.actionType === 'navigate' && tip.targetRoute) {
+      void this.router.navigateByUrl(tip.targetRoute);
+    }
+  }
+
+  async quickAddWorkerAttendanceInSheet(
+    workerId: number,
+    dayWorked: 0 | 1,
+    nightWorked: 0 | 1
+  ): Promise<void> {
+    const projectId =
+      this.sheetProjectId() ||
+      this.store.selectedProjectId() ||
+      this.store.projects()[0]?.id ||
+      1;
+    await this.store.recordAttendance({
+      date: this.store.todayIso(),
+      workerId,
+      projectId,
+      dayWorked,
+      nightWorked,
+      note: 'مسجل من لوحة العامل السريعة',
+      mode: 'merge',
+    });
+  }
+
+  async quickDeductWorkerInSheet(
+    workerId: number,
+    mode: 'quarter_day' | 'half_day' | 'day'
+  ): Promise<void> {
+    const worker = this.store.workers().find((w) => w.id === workerId);
+    if (!worker) return;
+    const daysDeducted = mode === 'day' ? 1 : mode === 'half_day' ? 0.5 : 0.25;
+    const amount = Math.round(worker.workerDayRate * daysDeducted);
+    await this.store.addDeduction({
+      date: this.store.todayIso(),
+      workerId,
+      projectId: this.sheetProjectId() || this.store.selectedProjectId() || 1,
+      mode,
+      daysDeducted,
+      amount,
+      reason: this.sheetDeductionReason() || 'خصم من لوحة العامل',
+      notes: 'مسجل من اللوحة النصفية للعامل',
+      settlementId: null,
+    });
+  }
+
+  async quickGiveAdvanceInSheet(workerId: number): Promise<void> {
+    const amt = Math.max(0, Number(this.sheetAdvanceAmount()) || 0);
+    if (amt <= 0) {
+      this.store.showToast('أدخل مبلغ السلفة أولاً', 'warning');
+      return;
+    }
+    const checkId = this.sheetCheckId();
+    const projectId = this.sheetProjectId() || this.store.selectedProjectId() || 1;
+    await this.store.addAdvance({
+      date: this.store.todayIso(),
+      workerId,
+      amount: amt,
+      reason: checkId ? `سلفة من شيك #${checkId}` : 'سلفة من لوحة العامل',
+      settlementId: null,
+      projectId,
+      checkId,
+      notes: checkId ? `مصروفة من شيك #${checkId}` : 'سلفة سريعة',
+    });
+  }
+
+  async quickPayFullBalanceInSheet(workerId: number): Promise<void> {
+    await this.store.payOutWorkerFullBalance(workerId, {
+      checkId: this.sheetCheckId(),
+      projectId: this.sheetProjectId() || this.store.selectedProjectId() || 1,
+    });
+  }
+
+  async executeFullDeleteWorkerWithRecords(workerId: number): Promise<void> {
+    await this.store.deleteWorkerCompletelyWithAllRecords(workerId);
+    this.confirmFullDeleteWorkerId.set(null);
+  }
+
+  async savePocketWithdrawalFromSheet(recordFeeAsExpense: boolean): Promise<void> {
+    await this.store.savePocketWithdrawalToCheck({
+      checkId: this.store.pocketSelectedCheckId(),
+      projectId: this.store.pocketSelectedProjectId() ?? this.store.selectedProjectId() ?? 1,
+      withdrawnAmount: this.store.pocketWithdrawnAmount(),
+      withdrawalFee: this.store.pocketWithdrawalFee(),
+      recordFeeAsExpense,
+    });
   }
 }

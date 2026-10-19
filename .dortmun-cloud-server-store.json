@@ -569,6 +569,18 @@
       "operationsCount": 0,
       "isOnline": true,
       "syncMode": "cloud"
+    },
+    "dev-mvftds90-oeri": {
+      "deviceId": "dev-mvftds90-oeri",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-19 22:16",
+      "lastActiveAt": "2026-10-19 22:16",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
     }
   },
   "backups": []

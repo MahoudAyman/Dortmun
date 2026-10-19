@@ -156,10 +156,15 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                   <tr
                     class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     [class.bg-amber-50/50]="selectedWorkerId() === item.worker.id"
-                    (click)="selectedWorkerId.set(item.worker.id!)"
+                    (click)="selectedWorkerId.set(item.worker.id!); store.openWorkerSheet(item.worker.id!)"
                   >
                     <td class="py-3 px-4">
-                      <div class="font-extrabold text-slate-900 dark:text-white">{{ item.worker.name }}</div>
+                      <div class="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>{{ item.worker.name }}</span>
+                        <span class="px-2 py-0.5 rounded-md bg-[#3390EC]/10 text-[#3390EC] text-[10px] font-bold">
+                          اضغط للتفاصيل الكاملة
+                        </span>
+                      </div>
                       <div class="text-xs text-slate-500">
                         <span class="font-bold text-amber-600 dark:text-amber-400">{{ item.worker.role }}</span>
                         @if (item.worker.notes) {
@@ -190,10 +195,10 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                       <div class="flex items-center gap-1">
                         <button
                           type="button"
-                          (click)="selectedWorkerId.set(item.worker.id!)"
+                          (click)="selectedWorkerId.set(item.worker.id!); store.openWorkerSheet(item.worker.id!)"
                           class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
                           [attr.aria-label]="'عرض ملف ' + item.worker.name"
-                          title="عرض كشف الحساب"
+                          title="فتح لوحة العامل النصفية الكاملة"
                         >
                           <mat-icon class="!text-base !w-4 !h-4">visibility</mat-icon>
                         </button>
@@ -223,7 +228,7 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                             (click)="openWorkerMenuId.set(null)"
                           ></div>
                           <div
-                            class="absolute left-4 top-11 w-56 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2 z-50 space-y-1 text-right"
+                            class="absolute left-4 top-11 w-60 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2 z-50 space-y-1 text-right"
                             (click)="$event.stopPropagation()"
                           >
                             <div class="px-2.5 py-1 text-[10px] font-extrabold text-amber-400 border-b border-slate-800 truncate">
@@ -231,11 +236,19 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                             </div>
                             <button
                               type="button"
-                              (click)="selectedWorkerId.set(item.worker.id!); openWorkerMenuId.set(null)"
+                              (click)="selectedWorkerId.set(item.worker.id!); store.openWorkerSheet(item.worker.id!); openWorkerMenuId.set(null)"
                               class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold cursor-pointer"
                             >
-                              <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-400">receipt_long</mat-icon>
-                              <span>عرض كشف الحساب المفصل</span>
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-400">layers</mat-icon>
+                              <span>فتح لوحة التحكم الكاملة للعامل</span>
+                            </button>
+                            <button
+                              type="button"
+                              (click)="store.payOutWorkerFullBalance(item.worker.id!); openWorkerMenuId.set(null)"
+                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-emerald-950/60 text-emerald-300 text-xs font-bold cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">paid</mat-icon>
+                              <span>اديله حسابه بالكامل ({{ store.money(item.netBalance) }})</span>
                             </button>
                             <button
                               type="button"
@@ -253,29 +266,13 @@ import type { Worker, WorkerRole } from '../../core/db/models';
                               <mat-icon class="!w-4 !h-4 !text-[16px] text-blue-400">edit</mat-icon>
                               <span>تعديل اليومية والبيانات</span>
                             </button>
-                            <a
-                              routerLink="/deductions"
-                              (click)="openWorkerMenuId.set(null)"
-                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold"
-                            >
-                              <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">gavel</mat-icon>
-                              <span>تسجيل خصم أو جزاء</span>
-                            </a>
-                            <a
-                              routerLink="/settlements"
-                              (click)="openWorkerMenuId.set(null)"
-                              class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold"
-                            >
-                              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">payments</mat-icon>
-                              <span>تصفية وقبض يوم ١٥</span>
-                            </a>
                             <button
                               type="button"
-                              (click)="confirmDelete(item.worker); openWorkerMenuId.set(null)"
+                              (click)="store.deleteWorkerCompletelyWithAllRecords(item.worker.id!); openWorkerMenuId.set(null)"
                               class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-rose-950/60 text-rose-300 text-xs font-bold cursor-pointer"
                             >
-                              <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">delete</mat-icon>
-                              <span>حذف العامل</span>
+                              <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">delete_forever</mat-icon>
+                              <span>حذفه خالص مع التحضير والسلف</span>
                             </button>
                           </div>
                         }
@@ -349,8 +346,32 @@ import type { Worker, WorkerRole } from '../../core/db/models';
               </div>
             </div>
 
-            <!-- Quick Links for Selected Worker -->
+            <!-- Quick Links & Direct Control Actions for Selected Worker -->
             <div class="flex flex-wrap gap-2 no-print">
+              <button
+                type="button"
+                (click)="store.openWorkerSheet(profile.worker.id!)"
+                class="w-full py-2.5 px-3 rounded-xl bg-[#3390EC] text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">layers</mat-icon>
+                <span>فتح لوحة التحكم الكاملة للعامل (إضافة/خصم أيام · سلفة · تصفية · حذف)</span>
+              </button>
+              <button
+                type="button"
+                (click)="store.payOutWorkerFullBalance(profile.worker.id!)"
+                class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">paid</mat-icon>
+                <span>اديله حسابه بالكامل ({{ store.money(profile.netBalance) }})</span>
+              </button>
+              <button
+                type="button"
+                (click)="store.deleteWorkerCompletelyWithAllRecords(profile.worker.id!)"
+                class="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">delete_forever</mat-icon>
+                <span>احذفه خالص مع التحضير</span>
+              </button>
               <a
                 routerLink="/deductions"
                 class="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-bold inline-flex items-center gap-1"

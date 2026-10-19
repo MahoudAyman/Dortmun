@@ -41,6 +41,15 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
 
             <button
               type="button"
+              (click)="store.openPocketSheet()"
+              class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm transition-all cursor-pointer"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[18px]">account_balance_wallet</mat-icon>
+              <span>سحبة الشيك وباقي جيبك ({{ store.money(store.dailyPocketSummary().remainingBeforeExpenses) }})</span>
+            </button>
+
+            <button
+              type="button"
               (click)="store.showZakiCapabilitiesModal.set(true)"
               class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/15 transition-all cursor-pointer"
             >

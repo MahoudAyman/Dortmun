@@ -1508,5 +1508,254 @@ export function calculateComprehensiveLedger(params: {
   };
 }
 
+export interface CheckFundBreakdown {
+  check: CheckItem;
+  projectName: string;
+  extractNumber: number | null;
+  withdrawnAmount: number;
+  withdrawalFee: number;
+  linkedAdvances: {
+    id?: number;
+    workerId: number;
+    workerName: string;
+    amount: number;
+    date: string;
+    reason: string;
+  }[];
+  linkedSettlements: {
+    id?: number;
+    workerId: number;
+    workerName: string;
+    netPaid: number;
+    date: string;
+    days: number;
+    nights: number;
+  }[];
+  linkedExpenses: {
+    id?: number;
+    category: string;
+    amount: number;
+    date: string;
+    note: string;
+  }[];
+  advancesSpentFromCheck: number;
+  settlementsPaidFromCheck: number;
+  expensesSpentFromCheck: number;
+  totalSpentFromCheck: number;
+  remainingInCheck: number;
+  remainingBeforeFees: number;
+  remainingInPocketNet: number;
+  projectOwedToWorkers: number;
+}
+
+export interface PocketCashSummary {
+  withdrawnAmount: number;
+  withdrawalFee: number;
+  advancesTotal: number;
+  settlementsTotal: number;
+  otherExpensesTotal: number;
+  totalWorkersPaid: number;
+  remainingBeforeExpenses: number; // الباقي في الجيب بعد السلف والقبض قبل مصاريف السحب (مثلاً 4000 - 3500 = 500)
+  totalExternalExpenses: number; // مصاريف السحب والمصاريف الخارجية (مثلاً 40 ج)
+  netRemainingInPocket: number; // الصافي الفعلي المتبقي في الجيب بعد كل شيء (مثلاً 460 ج)
+}
+
+export function calculateDailyPocketSummary(params: {
+  withdrawnAmount: number;
+  withdrawalFee: number;
+  advancesTotal: number;
+  settlementsTotal?: number;
+  otherExpensesTotal?: number;
+}): PocketCashSummary {
+  const withdrawnAmount = Math.max(0, Number(params.withdrawnAmount) || 0);
+  const withdrawalFee = Math.max(0, Number(params.withdrawalFee) || 0);
+  const advancesTotal = Math.max(0, Number(params.advancesTotal) || 0);
+  const settlementsTotal = Math.max(0, Number(params.settlementsTotal) || 0);
+  const otherExpensesTotal = Math.max(0, Number(params.otherExpensesTotal) || 0);
+
+  const totalWorkersPaid = advancesTotal + settlementsTotal;
+  const remainingBeforeExpenses = withdrawnAmount - totalWorkersPaid;
+  const totalExternalExpenses = withdrawalFee + otherExpensesTotal;
+  const netRemainingInPocket = remainingBeforeExpenses - totalExternalExpenses;
+
+  return {
+    withdrawnAmount,
+    withdrawalFee,
+    advancesTotal,
+    settlementsTotal,
+    otherExpensesTotal,
+    totalWorkersPaid,
+    remainingBeforeExpenses,
+    totalExternalExpenses,
+    netRemainingInPocket,
+  };
+}
+
+export function calculateCheckFundBreakdowns(params: {
+  checks: CheckItem[];
+  projects: Project[];
+  extracts: Extract[];
+  workers: Worker[];
+  attendances: Attendance[];
+  advances: Advance[];
+  deductions: Deduction[];
+  settlements: Settlement[];
+  expenses: Expense[];
+}): CheckFundBreakdown[] {
+  const workerMap = new Map<number, Worker>();
+  for (const w of params.workers) {
+    if (w.id !== undefined) workerMap.set(w.id, w);
+  }
+  const projectMap = new Map<number, Project>();
+  for (const p of params.projects) {
+    if (p.id !== undefined) projectMap.set(p.id, p);
+  }
+  const extractMap = new Map<number, Extract>();
+  for (const ex of params.extracts) {
+    if (ex.id !== undefined) extractMap.set(ex.id, ex);
+  }
+
+  // Find primary incoming check per project so unlinked project advances/settlements can also be attributed if only 1 check exists for that project
+  const primaryCheckIdByProject = new Map<number, number>();
+  for (const c of params.checks) {
+    if (c.direction === 'وارد' && c.projectId && c.id !== undefined) {
+      if (!primaryCheckIdByProject.has(c.projectId)) {
+        primaryCheckIdByProject.set(c.projectId, c.id);
+      }
+    }
+  }
+
+  // Worker primary project helper
+  const workerPrimaryProject = new Map<number, number>();
+  for (const att of params.attendances) {
+    if (!workerPrimaryProject.has(att.workerId)) {
+      workerPrimaryProject.set(att.workerId, att.projectId);
+    }
+  }
+
+  return params.checks.map((check) => {
+    const projectName = check.projectId
+      ? projectMap.get(check.projectId)?.name || `مشروع #${check.projectId}`
+      : 'الخزنة العامة';
+    const extractNumber = check.extractId
+      ? extractMap.get(check.extractId)?.number ?? check.extractId
+      : null;
+
+    const isPrimaryForProject =
+      check.projectId != null &&
+      check.id !== undefined &&
+      primaryCheckIdByProject.get(check.projectId) === check.id;
+
+    const linkedAdvances = params.advances
+      .filter((adv) => {
+        if (adv.checkId !== undefined && adv.checkId !== null) {
+          return adv.checkId === check.id;
+        }
+        const advProj = adv.projectId ?? workerPrimaryProject.get(adv.workerId) ?? null;
+        return isPrimaryForProject && advProj === check.projectId;
+      })
+      .map((adv) => ({
+        id: adv.id,
+        workerId: adv.workerId,
+        workerName: workerMap.get(adv.workerId)?.name || `عامل #${adv.workerId}`,
+        amount: adv.amount,
+        date: adv.date,
+        reason: adv.reason || 'سلفة من الشيك',
+      }));
+
+    const linkedSettlements = params.settlements
+      .filter((st) => {
+        if (st.checkId !== undefined && st.checkId !== null) {
+          return st.checkId === check.id;
+        }
+        const stProj = st.projectId ?? workerPrimaryProject.get(st.workerId) ?? null;
+        return isPrimaryForProject && stProj === check.projectId;
+      })
+      .map((st) => ({
+        id: st.id,
+        workerId: st.workerId,
+        workerName: workerMap.get(st.workerId)?.name || `عامل #${st.workerId}`,
+        netPaid: st.netPaid,
+        date: st.date,
+        days: st.days,
+        nights: st.nights,
+      }));
+
+    const linkedExpenses = params.expenses
+      .filter((exp) => {
+        if (exp.checkId !== undefined && exp.checkId !== null) {
+          return exp.checkId === check.id;
+        }
+        return false;
+      })
+      .map((exp) => ({
+        id: exp.id,
+        category: exp.category,
+        amount: exp.amount,
+        date: exp.date,
+        note: exp.note,
+      }));
+
+    const advancesSpentFromCheck = linkedAdvances.reduce((s, a) => s + a.amount, 0);
+    const settlementsPaidFromCheck = linkedSettlements.reduce((s, st) => s + st.netPaid, 0);
+    const withdrawalFee = Math.max(0, Number(check.withdrawalFee) || 0);
+    const expensesSpentFromCheck =
+      linkedExpenses.reduce((s, e) => s + e.amount, 0) + withdrawalFee;
+
+    const withdrawnAmount =
+      check.withdrawnAmount !== undefined && check.withdrawnAmount !== null && check.withdrawnAmount > 0
+        ? check.withdrawnAmount
+        : check.amount;
+
+    const totalSpentFromCheck =
+      advancesSpentFromCheck + settlementsPaidFromCheck + expensesSpentFromCheck;
+    const remainingInCheck = check.amount - totalSpentFromCheck;
+    const remainingBeforeFees =
+      withdrawnAmount - advancesSpentFromCheck - settlementsPaidFromCheck;
+    const remainingInPocketNet = remainingBeforeFees - expensesSpentFromCheck;
+
+    // Project remaining owed to workers
+    let projectOwedToWorkers = 0;
+    if (check.projectId) {
+      const projAtt = params.attendances.filter((a) => a.projectId === check.projectId);
+      const gross = projAtt.reduce(
+        (s, a) =>
+          s +
+          a.dayWorked * a.workerDayRateSnapshot +
+          a.nightWorked * a.workerNightRateSnapshot,
+        0
+      );
+      const projWorkerIds = new Set(projAtt.map((a) => a.workerId));
+      const ded = params.deductions
+        .filter((d) => d.projectId === check.projectId || (d.projectId == null && projWorkerIds.has(d.workerId)))
+        .reduce((s, d) => s + d.amount, 0);
+      projectOwedToWorkers = Math.max(
+        0,
+        gross - ded - advancesSpentFromCheck - settlementsPaidFromCheck
+      );
+    }
+
+    return {
+      check,
+      projectName,
+      extractNumber,
+      withdrawnAmount,
+      withdrawalFee,
+      linkedAdvances,
+      linkedSettlements,
+      linkedExpenses,
+      advancesSpentFromCheck,
+      settlementsPaidFromCheck,
+      expensesSpentFromCheck,
+      totalSpentFromCheck,
+      remainingInCheck,
+      remainingBeforeFees,
+      remainingInPocketNet,
+      projectOwedToWorkers,
+    };
+  });
+}
+
+
 
 
