@@ -414,6 +414,51 @@ export class ExcelService {
     return count;
   }
 
+  exportFilteredReport(params: {
+    title: string;
+    dateFrom?: string;
+    dateTo?: string;
+    projectName?: string;
+    workerName?: string;
+    summaryRows?: Record<string, unknown>[];
+    attendanceRows?: Record<string, unknown>[];
+    advancesRows?: Record<string, unknown>[];
+    expensesRows?: Record<string, unknown>[];
+    checksRows?: Record<string, unknown>[];
+    extractsRows?: Record<string, unknown>[];
+    workerStatementRows?: Record<string, unknown>[];
+  }): void {
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+
+    if (params.summaryRows && params.summaryRows.length > 0) {
+      this.appendRtlSheet(wb, 'الملخص المالي', params.summaryRows);
+    }
+    if (params.attendanceRows && params.attendanceRows.length > 0) {
+      this.appendRtlSheet(wb, 'كشف الحضور واليوميات', params.attendanceRows);
+    }
+    if (params.advancesRows && params.advancesRows.length > 0) {
+      this.appendRtlSheet(wb, 'كشف السلف والخصومات', params.advancesRows);
+    }
+    if (params.expensesRows && params.expensesRows.length > 0) {
+      this.appendRtlSheet(wb, 'المصاريف الخارجية', params.expensesRows);
+    }
+    if (params.checksRows && params.checksRows.length > 0) {
+      this.appendRtlSheet(wb, 'الشيكات والبنك', params.checksRows);
+    }
+    if (params.extractsRows && params.extractsRows.length > 0) {
+      this.appendRtlSheet(wb, 'المستخلصات', params.extractsRows);
+    }
+    if (params.workerStatementRows && params.workerStatementRows.length > 0) {
+      this.appendRtlSheet(wb, 'كشف حساب العامل', params.workerStatementRows);
+    }
+
+    const safeTitle = (params.title || 'تقرير_مخصص').replace(/[^\w\u0600-\u06FF]/g, '_');
+    const fileName = `${safeTitle}_${this.store.todayIso()}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    this.store.showToast(`تم تنزيل ملف الإكسل المخصص: ${fileName}`, 'success');
+  }
+
   private appendRtlSheet(
     wb: XLSX.WorkBook,
     sheetName: string,

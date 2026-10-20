@@ -6,8 +6,8 @@ import {
   parseSmartSiteCommand,
 } from './supabase-sql-schema.ts';
 
-test('FULL_SUPABASE_SQL_SCHEMA includes all 18 Dortmun relational tables, RPC, and Views', () => {
-  assert.equal(SUPABASE_TABLES_LIST.length, 18);
+test('FULL_SUPABASE_SQL_SCHEMA includes all 19 Dortmun relational tables, RPC, and Views', () => {
+  assert.equal(SUPABASE_TABLES_LIST.length, 19);
   for (const tbl of SUPABASE_TABLES_LIST) {
     assert.ok(
       FULL_SUPABASE_SQL_SCHEMA.includes(`CREATE TABLE IF NOT EXISTS public.${tbl.name}`),

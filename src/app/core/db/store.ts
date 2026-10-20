@@ -99,6 +99,14 @@ const SUPABASE_PROJECT_URL = 'https://lmcxonnuzbamfqxbqshu.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7A5T6fhkfAp0IApJMArKuA_Zk8hkPdj';
 const REALTIME_CHANNEL_NAME = 'dortmun-live-sync-v1';
 
+export function getSystemTodayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -117,7 +125,26 @@ export class StoreService {
   private lastSyncedUpdatedAtIso = '';
 
   readonly supabaseUrl = SUPABASE_PROJECT_URL;
-  readonly todayIso = signal<string>('2026-10-18');
+  readonly systemActualToday = signal<string>(getSystemTodayIso());
+  readonly todayIso = signal<string>(getSystemTodayIso());
+
+  // Smart Date State: Indicates whether the user is working on yesterday or a custom date
+  readonly isCustomDateActive = computed(() => this.todayIso() !== this.systemActualToday());
+  readonly dateDifferenceLabel = computed(() => {
+    const current = this.todayIso();
+    const actual = this.systemActualToday();
+    if (current === actual) return 'اليوم';
+
+    const curMs = new Date(current + 'T12:00:00Z').getTime();
+    const actMs = new Date(actual + 'T12:00:00Z').getTime();
+    if (isNaN(curMs) || isNaN(actMs)) return current;
+
+    const diffDays = Math.round((curMs - actMs) / (1000 * 60 * 60 * 24));
+    if (diffDays === -1) return 'أمس';
+    if (diffDays === 1) return 'غداً';
+    if (diffDays < -1) return `قبل ${Math.abs(diffDays)} أيام (${current})`;
+    return `بعد ${diffDays} أيام (${current})`;
+  });
 
   // Reactive Signals initialized to 0 / empty arrays so user starts from zero with real data
   readonly settings = signal<AppSettings>({ ...INITIAL_SETTINGS });
@@ -185,18 +212,57 @@ export class StoreService {
 
   // Global UI state
   readonly selectedProjectId = signal<number | null>(null);
-  readonly selectedMonth = signal<string>('2026-10');
+  readonly selectedMonth = signal<string>(getSystemTodayIso().slice(0, 7));
   readonly undoStack = signal<UndoOperation[]>([]);
   readonly redoStack = signal<UndoOperation[]>([]);
   readonly lastUndo = computed<UndoOperation | null>(() => this.undoStack()[0] || null);
   readonly lastRedo = computed<UndoOperation | null>(() => this.redoStack()[0] || null);
-  readonly toastMessage = signal<{ text: string; type: 'success' | 'warning' | 'error' } | null>(
+  readonly toastMessage = signal<{ text: string; type: 'success' | 'warning' | 'error' | 'info' } | null>(
     null
   );
   readonly isLockedByPin = signal<boolean>(false);
   readonly globalSearchQuery = signal<string>('');
   readonly showQuickHeadcountModal = signal<boolean>(false);
   readonly showZakiCapabilitiesModal = signal<boolean>(false);
+  readonly showDateSelectorModal = signal<boolean>(false);
+
+  getYesterdayIso(): string {
+    const act = new Date(this.systemActualToday() + 'T12:00:00Z');
+    act.setDate(act.getDate() - 1);
+    const y = act.getFullYear();
+    const m = String(act.getMonth() + 1).padStart(2, '0');
+    const d = String(act.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  setWorkingDate(dateIso: string): void {
+    if (!dateIso) return;
+    this.todayIso.set(dateIso);
+    // Keep selectedMonth aligned if date is in different month
+    const newMonth = dateIso.slice(0, 7);
+    if (newMonth && newMonth !== this.selectedMonth()) {
+      this.selectedMonth.set(newMonth);
+    }
+    if (dateIso !== this.systemActualToday()) {
+      const isYesterday = this.dateDifferenceLabel() === 'أمس';
+      this.showToast(
+        isYesterday
+          ? `⚠️ خلي بالك: أنت الآن بتسجل وتعدل على يوم أمس (${this.digits(dateIso)})!`
+          : `⚠️ خلي بالك: أنت الآن بتسجل وتعدل على تاريخ (${this.digits(dateIso)}) وليس تاريخ اليوم!`,
+        'info'
+      );
+    } else {
+      this.showToast(`تم الرجوع لتاريخ اليوم (${this.digits(dateIso)}) بنجاح`, 'success');
+    }
+  }
+
+  resetToSystemToday(): void {
+    this.setWorkingDate(this.systemActualToday());
+  }
+
+  setYesterday(): void {
+    this.setWorkingDate(this.getYesterdayIso());
+  }
 
   // Universal Half-Page Overlay Sheet ("كل حاجة أدوس عليها تفتح صفحة نص فوق الصفحة بجميع التفاصيل")
   readonly activeHalfSheet = signal<{
@@ -292,14 +358,18 @@ export class StoreService {
         const linkedSettlements = this.settlements().filter((s) => s.checkId === chkId || (resolvedPid && s.projectId === resolvedPid));
         const linkedExpenses = this.expenses().filter((e) => e.checkId === chkId || (resolvedPid && e.projectId === resolvedPid));
 
+        const effectiveWithdrawn = manualWithdrawn > 0 ? manualWithdrawn : cb.withdrawnAmount;
+        const effectiveRemainingInBank = Math.max(0, (Number(cb.check.amount) || 0) - effectiveWithdrawn);
+
         return calculateDailyPocketSummary({
-          withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : cb.withdrawnAmount,
+          withdrawnAmount: effectiveWithdrawn,
           withdrawalFee: manualFee > 0 ? manualFee : cb.withdrawalFee,
           advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : cb.advancesSpentFromCheck,
           settlementsTotal: cb.settlementsPaidFromCheck,
           otherExpensesTotal: otherExp,
           checksIncomingTotal: cb.check.amount,
-          remainingInCheck: cb.remainingInCheck,
+          remainingInCheck: effectiveRemainingInBank,
+          remainingInBank: effectiveRemainingInBank,
           projectChecks: [cb.check],
           recordedAdvances: linkedAdvances,
           recordedSettlements: linkedSettlements,
@@ -319,7 +389,7 @@ export class StoreService {
 
       const projTotalChecksAmount = projChecks.reduce((s, c) => s + c.amount, 0);
       const projWithdrawnChecksAmount = projChecks.reduce(
-        (s, c) => s + ((c.withdrawnAmount ?? 0) > 0 || c.status === 'اتصرف' ? (c.withdrawnAmount ?? c.amount) : c.amount),
+        (s, c) => s + ((c.withdrawnAmount ?? 0) > 0 || c.status === 'اتصرف' ? (c.withdrawnAmount ?? c.amount) : 0),
         0
       );
 
@@ -335,15 +405,18 @@ export class StoreService {
               : pb.totalReceivedForProject;
         const recFee = pb.withdrawalFeesSpent ?? 0;
         const otherExp = Math.max(0, pb.expensesSpent - recFee);
+        const effectiveWithdrawn = manualWithdrawn > 0 ? manualWithdrawn : recWithdrawn;
+        const effectiveRemainingInBank = Math.max(0, projTotalChecksAmount - effectiveWithdrawn);
 
         return calculateDailyPocketSummary({
-          withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : recWithdrawn,
+          withdrawnAmount: effectiveWithdrawn,
           withdrawalFee: manualFee > 0 ? manualFee : recFee,
           advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : pb.advancesSpent,
           settlementsTotal: pb.settlementsPaid + pb.nashPaid,
           otherExpensesTotal: otherExp,
           checksIncomingTotal: projTotalChecksAmount,
-          remainingInCheck: Math.max(0, projTotalChecksAmount - (pb.advancesSpent + pb.settlementsPaid + pb.expensesSpent)),
+          remainingInCheck: effectiveRemainingInBank,
+          remainingInBank: effectiveRemainingInBank,
           projectChecks: projChecks,
           recordedAdvances: linkedAdvances,
           recordedSettlements: linkedSettlements,
@@ -361,7 +434,7 @@ export class StoreService {
         s +
         ((b.check.withdrawnAmount ?? 0) > 0 || b.check.status === 'اتصرف'
           ? b.withdrawnAmount
-          : b.check.amount),
+          : 0),
       0
     );
     const ledger = this.comprehensiveLedger();
@@ -380,15 +453,18 @@ export class StoreService {
     const manualWithdrawn = this.pocketWithdrawnAmount();
     const manualFee = this.pocketWithdrawalFee();
     const manualAdv = this.pocketCustomAdvances();
+    const effectiveWithdrawn = manualWithdrawn > 0 ? manualWithdrawn : baseWithdrawn;
+    const effectiveRemainingInBank = Math.max(0, totalIncomingChecksAmount - effectiveWithdrawn);
 
     return calculateDailyPocketSummary({
-      withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : baseWithdrawn,
+      withdrawnAmount: effectiveWithdrawn,
       withdrawalFee: manualFee > 0 ? manualFee : effectiveRecordedFee,
       advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : ledger.totalAdvancesPaid,
       settlementsTotal: ledger.totalSettlementsPaid + ledger.totalNashCashPaid,
       otherExpensesTotal: otherExpenses,
       checksIncomingTotal: totalIncomingChecksAmount,
-      remainingInCheck: Math.max(0, totalIncomingChecksAmount - ledger.totalSpentAll),
+      remainingInCheck: effectiveRemainingInBank,
+      remainingInBank: effectiveRemainingInBank,
       projectChecks: incomingChecks,
       recordedAdvances: this.advances(),
       recordedSettlements: this.settlements(),
@@ -2095,7 +2171,7 @@ export class StoreService {
     return formatCurrency(val, this.settings().numeralMode);
   }
 
-  num(val: number | undefined | null, decimals = 0): string {
+  num(val: number | string | undefined | null, decimals = 0): string {
     return formatNumber(val, this.settings().numeralMode, decimals);
   }
 
@@ -2118,7 +2194,7 @@ export class StoreService {
     return (this.settings().lockedMonths || []).includes(month);
   }
 
-  showToast(text: string, type: 'success' | 'warning' | 'error' = 'success'): void {
+  showToast(text: string, type: 'success' | 'warning' | 'error' | 'info' = 'success'): void {
     this.toastMessage.set({ text, type });
     if (this.isBrowser) {
       setTimeout(() => {
@@ -2288,6 +2364,26 @@ export class StoreService {
     );
     this.showToast(`تم تسجيل الخصم على ${this.workerName(deduction.workerId)}`, 'success');
     return id;
+  }
+
+  async saveDeduction(deduction: Deduction): Promise<number> {
+    if (deduction.id) {
+      const prev = this.deductions().find((d) => d.id === deduction.id);
+      if (this.db) await this.db.deductions.put(deduction);
+      this.deductions.update((list) => list.map((d) => (d.id === deduction.id ? deduction : d)));
+      this.pushUndo({
+        description: `تعديل خصم ${this.workerName(deduction.workerId)}`,
+        table: 'deductions',
+        type: 'update',
+        recordId: deduction.id,
+        previousData: prev,
+        newData: deduction,
+      });
+      return deduction.id;
+    } else {
+      const { id, ...data } = deduction;
+      return this.addDeduction(data);
+    }
   }
 
   async deleteDeduction(id: number): Promise<void> {
@@ -2539,6 +2635,50 @@ export class StoreService {
     return created;
   }
 
+  async deleteAttendance(id: number): Promise<void> {
+    const existing = this.attendances().find((a) => a.id === id);
+    if (!existing) return;
+    if (this.db) await this.db.attendance.delete(id);
+    this.attendances.update((list) => list.filter((a) => a.id !== id));
+    this.pushUndo({
+      description: `حذف حضور ${this.workerName(existing.workerId)} ليوم ${existing.date}`,
+      table: 'attendance',
+      type: 'delete',
+      recordId: id,
+      previousData: existing,
+    });
+    this.showToast('تم حذف سجل الحضور', 'warning');
+  }
+
+  async saveAttendance(record: Attendance): Promise<number> {
+    if (record.id) {
+      const prev = this.attendances().find((a) => a.id === record.id);
+      if (this.db) await this.db.attendance.put(record);
+      this.attendances.update((list) =>
+        list.map((a) => (a.id === record.id ? record : a))
+      );
+      this.pushUndo({
+        description: `تعديل حضور ${this.workerName(record.workerId)} ليوم ${record.date}`,
+        table: 'attendance',
+        type: 'update',
+        recordId: record.id,
+        previousData: prev,
+        newData: record,
+      });
+      return record.id;
+    } else {
+      const res = await this.recordAttendance({
+        date: record.date,
+        workerId: record.workerId,
+        projectId: record.projectId,
+        dayWorked: record.dayWorked,
+        nightWorked: record.nightWorked,
+        note: record.note,
+      });
+      return res?.id || 0;
+    }
+  }
+
   // Advances
   async addAdvance(advance: Omit<Advance, 'id'>): Promise<number> {
     let id = Math.max(0, ...this.advances().map((a) => a.id || 0)) + 1;
@@ -2560,6 +2700,28 @@ export class StoreService {
       `سلفة بمبلغ ${advance.amount} ج.م للعامل ${this.workerName(advance.workerId)}`
     );
     return id;
+  }
+
+  async saveAdvance(advance: Advance): Promise<number> {
+    if (advance.id) {
+      const prev = this.advances().find((a) => a.id === advance.id);
+      if (this.db) await this.db.advances.put(advance);
+      this.advances.update((list) =>
+        list.map((a) => (a.id === advance.id ? advance : a))
+      );
+      this.pushUndo({
+        description: `تعديل سلفة ${this.workerName(advance.workerId)}`,
+        table: 'advances',
+        type: 'update',
+        recordId: advance.id,
+        previousData: prev,
+        newData: advance,
+      });
+      return advance.id;
+    } else {
+      const { id, ...data } = advance;
+      return this.addAdvance(data);
+    }
   }
 
   async deleteAdvance(id: number): Promise<void> {

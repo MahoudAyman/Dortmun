@@ -808,16 +808,50 @@ export const ZAKI_CAPABILITIES_GUIDE: ZakiCapabilitySection[] = [
       },
     ],
   },
+  {
+    id: 'bank_audit_and_period_reports',
+    title: '٧. تدقيق البنك والشيكات وتقارير الفترات والأمس',
+    subtitle: 'فصل حساب البنك عن كاش الجيب وسلف العمال، تقارير محددة بالأيام ومطابقة العدد الإجباري',
+    icon: 'account_balance',
+    badge: 'فائق الذكاء',
+    colorClass: 'emerald',
+    examples: [
+      {
+        phrase: 'سحبت 4000 سلف من شيك 100000.. قولي باقي كام في البنك وباقي كام في جيبي؟',
+        explanation: 'يدقق فصلاً كاملاً بين رصيد الشيك في البنك وبين الكاش المصروف سلف ونثريات في جيبك',
+      },
+      {
+        phrase: 'تقرير اليوم  أو  تقرير يوم أمس (امبارح)',
+        explanation: 'يعطيك ملخصاً فورياً ليوميات اليوم أو أمس والمصاريف والسلف بدون الحاجة لدخول الجداول',
+      },
+      {
+        phrase: 'مطابقة كشف العدد اليومي',
+        explanation: 'يقارن بين دفتر العدد الإجباري وكشف الحضور ويكشف أي فارق في العمالة أو السهرات',
+      },
+      {
+        phrase: 'مين عليه سلف مفتوحة ومخصمتهاش؟',
+        explanation: 'يحصر جميع العمال اللي عليهم سلف معلقة لم تُخصم بعد لتسويتها في كشف القبض',
+      },
+      {
+        phrase: 'نصيحة زكي لإدارة السيولة والمقاولات',
+        explanation: 'يقدم استشارات مالية وإدارية ذكية مبنية على خبرة إدارة مواقع المقاولات',
+      },
+    ],
+  },
 ];
 
 const DEFAULT_FALLBACK_COMMANDS = [
+  'سحبت 4000 سلف من شيك 100000.. باقي كام في البنك وفي جيبي؟',
+  'تقرير اليوم وإحصائيات الحضور والسلف والمصاريف',
   'حسابي الشامل كام؟ وصلني كام وليا كام وعليا كام؟',
   'اشرح مناهج وقواعد إدارة المقاولات الذكية',
+  'مطابقة كشف العدد اليومي مع الحضور الفعلي',
   'قارن أرباح المشاريع وقولي انهي مشروع بيكسب اكتر',
+  'مين عليه سلف مفتوحة ومخصمتهاش لحد دلوقتي؟',
   'وصلني 50000 من شركة إعمار لمشروع التجمع',
   'العدد النهارده 10 يومية و 4 سهرة',
   'احسب قبض يوم 15 لكل العمال',
-  'اعمل مستخلص جديد للمشروع',
+  'نصيحة زكي لإدارة السيولة والمقاولات',
   'اخصم نص يوم من كريم بسبب تأخير',
   'تقدر تعمل ايه يا ذكي؟',
 ];
@@ -1056,6 +1090,31 @@ export function processZakiMessage(
       clientEffect: 'navigate_bulk',
       actionRoute: '/bulk',
       actionLabel: 'تحويل للإضافة الجماعية',
+    };
+  }
+
+  if (
+    norm.includes('شيت اكسل المباشر') ||
+    norm.includes('شيت اكسيل المباشر') ||
+    norm.includes('صفحه الاكسل') ||
+    norm.includes('صفحة الاكسل') ||
+    norm.includes('افتح الاكسل') ||
+    norm.includes('افتح اكسل') ||
+    norm.includes('شيت الموقع') ||
+    norm.includes('جدول اكسل') ||
+    norm.includes('شيت مباشر')
+  ) {
+    return {
+      reply:
+        'عيوني يا هندسة! فتحتلك شيت إكسيل الموقع المباشر (Live Excel Studio). تقدر تسجل وتعدل فيه على أي خلية فورياً زي برنامج إكسيل بالظبط (يوميات، عمال، سلف، مصاريف، شيكات)، وتنزله Excel حقيقي أو تنسخه للذاكرة.',
+      actionRoute: '/live-excel',
+      actionLabel: 'فتح شيت إكسيل المباشر',
+      quickCommands: [
+        'افتح شيت إكسيل المباشر',
+        'تصدير الإكسل',
+        'تقرير اليوم',
+        'حسابي الشامل',
+      ],
     };
   }
 
@@ -1806,7 +1865,7 @@ export function processZakiMessage(
 
       if (!todayHc) {
         return {
-          reply: `لسه متسجلش العدد الإجباري ليوم ${formatArabicDateShort(date)}! المسجل بالأسماء حالياً: ${formatNumber(actualDays, numMode)} يومية و ${formatNumber(actualNights, numMode)} سهرة. تقدر تقولي مثلاً: "العدد النهارده 10 يومية و 4 سهرة".`,
+          reply: `لسه متسجلش في دفتر العدد اليومي الإجباري ليوم ${formatArabicDateShort(date)}! المسجل بالأسماء حالياً: ${formatNumber(actualDays, numMode)} يومية و ${formatNumber(actualNights, numMode)} سهرة. تقدر تقولي مثلاً: "العدد النهارده 10 يومية و 4 سهرة".`,
           actionRoute: '/attendance',
           actionLabel: 'تحويل لتسجيل العدد اليومي الإجباري',
         };
@@ -2690,10 +2749,211 @@ export function processZakiMessage(
     }
   }
 
+  // 19. Bank Checks vs Pocket Cash Systematic Audit ("تدقيق الشيكات والبنك" / "سحبت 4000 وباقي كام")
+  if (
+    (norm.includes('شيك') && (norm.includes('بنك') || norm.includes('سحب') || norm.includes('جيب') || norm.includes('سلف') || norm.includes('باقي') || norm.includes('تدقيق'))) ||
+    norm.includes('تدقيق الشيكات') ||
+    norm.includes('فلوس البنك') ||
+    norm.includes('فلوس الشيك') ||
+    norm.includes('حساب البنك') ||
+    norm.includes('سحبت من البنك')
+  ) {
+    const totalChecks = ctx.checks.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const withdrawnCash = ctx.checks.reduce((s, c) => {
+      const w = c.withdrawnAmount !== undefined && c.withdrawnAmount !== null && c.withdrawnAmount > 0
+        ? Number(c.withdrawnAmount)
+        : (c.status === 'اتصرف' ? Number(c.amount) || 0 : 0);
+      return s + w;
+    }, 0);
+    const remainingInBank = Math.max(0, totalChecks - withdrawnCash);
+    const totalAdvances = ctx.advances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const totalExpenses = (ctx.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const netPocketCash = Math.max(0, withdrawnCash - totalAdvances - totalExpenses);
+
+    return {
+      reply: [
+        `🏦 **تدقيق الشيكات والبنك وكاش الجيب بنظام الحسابين المنفصلين:**`,
+        `─────────────`,
+        `🔹 **المستوى الأول: حساب الشركة والشيكات في البنك**`,
+        `• إجمالي الشيكات المودعة: **${formatCurrency(totalChecks, numMode)}**`,
+        `• المسحوب نقداً من البنك: **${formatCurrency(withdrawnCash, numMode)}**`,
+        `• **المتبقي الصافي في حساب البنك:** **${formatCurrency(remainingInBank, numMode)}**`,
+        `─────────────`,
+        `🔸 **المستوى الثاني: فلوس العهدة وسلف العمال في جيبك**`,
+        `• الكاش اللي سحبته واستلمته في يدك: **${formatCurrency(withdrawnCash, numMode)}**`,
+        `• المنصرف سلف للعمال: **${formatCurrency(totalAdvances, numMode)}**`,
+        `• المنصرف مصاريف ونثريات: **${formatCurrency(totalExpenses, numMode)}**`,
+        `• **المتبقي الصافي في جيبك (العهدة الحالية):** **${formatCurrency(netPocketCash, numMode)}**`,
+        `─────────────`,
+        `💡 مفيش أي تداخل: فلوس الشيك في البنك محفوظة ومتبقي فيها ${formatCurrency(remainingInBank, numMode)}، وفلوس السلف في جيبك محسوبة ومتبقي فيها ${formatCurrency(netPocketCash, numMode)}!`,
+      ].join('\n'),
+      actionRoute: '/my-ledger',
+      actionLabel: 'فتح بطاقات الخزنة وحساب البنك',
+    };
+  }
+
+  // 20. Smart Period & Daily Reports ("تقرير اليوم" / "تقرير امبارح" / "تقرير الفترة")
+  if (
+    norm.includes('تقرير اليوم') ||
+    norm.includes('تقرير امس') ||
+    norm.includes('تقرير امبارح') ||
+    norm.includes('حساب النهارده') ||
+    norm.includes('حساب امبارح') ||
+    norm.includes('تقرير الفتره') ||
+    norm.includes('تقرير المشاريع')
+  ) {
+    const isYesterday = norm.includes('امس') || norm.includes('امبارح');
+    let targetDate = ctx.todayIso;
+    if (isYesterday) {
+      const act = new Date(ctx.todayIso + 'T12:00:00Z');
+      act.setDate(act.getDate() - 1);
+      const y = act.getFullYear();
+      const m = String(act.getMonth() + 1).padStart(2, '0');
+      const d = String(act.getDate()).padStart(2, '0');
+      targetDate = `${y}-${m}-${d}`;
+    }
+
+    const dayAtts = ctx.attendances.filter((a) => a.date === targetDate);
+    const dayAdvs = ctx.advances.filter((a) => a.date === targetDate);
+    const dayExps = (ctx.expenses || []).filter((e) => e.date === targetDate);
+
+    const daysCount = dayAtts.reduce((s, a) => s + (a.dayWorked || 0), 0);
+    const nightsCount = dayAtts.reduce((s, a) => s + (a.nightWorked || 0), 0);
+    const wagesTotal = dayAtts.reduce(
+      (s, a) =>
+        s +
+        (a.dayWorked ? a.workerDayRateSnapshot : 0) +
+        (a.nightWorked ? a.workerNightRateSnapshot : 0),
+      0
+    );
+    const advsTotal = dayAdvs.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const expsTotal = dayExps.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+    const title = isYesterday ? `يوم أمس (${formatArabicDateShort(targetDate)})` : `اليوم (${formatArabicDateShort(targetDate)})`;
+
+    return {
+      reply: [
+        `📊 **تقرير وإحصائيات ${title}:**`,
+        `• عدد العمالة الحاضرة: **${formatNumber(dayAtts.length, numMode)}** عمال (${formatNumber(daysCount, numMode)} يومية و ${formatNumber(nightsCount, numMode)} سهرة)`,
+        `• إجمالي أجور اليوميات: **${formatCurrency(wagesTotal, numMode)}**`,
+        `• إجمالي السلف المنصرفة: **${formatCurrency(advsTotal, numMode)}** (${formatNumber(dayAdvs.length, numMode)} سلفة)`,
+        `• إجمالي المصاريف المسجلة: **${formatCurrency(expsTotal, numMode)}**`,
+        `• إجمالي المدفوعات النقدية الخارجة اليوم: **${formatCurrency(advsTotal + expsTotal, numMode)}**`,
+        `─────────────`,
+        `📑 يمكنك استعراض وفلترة وطباعة جميع التقارير من لوحة التقارير الشاملة الجديدة.`,
+      ].join('\n'),
+      actionRoute: '/reports',
+      actionLabel: 'فتح لوحة التقارير والتصدير الشاملة',
+    };
+  }
+
+  // 21. Daily Headcount Audit ("مطابقة كشف العدد اليومي" / "فحص العدد")
+  if (
+    norm.includes('مطابقه العدد') ||
+    norm.includes('فحص العدد') ||
+    norm.includes('دفتر العدد') ||
+    norm.includes('كشف العدد')
+  ) {
+    const allHc = ctx.dailyHeadcounts || [];
+    const todayHeadcounts = allHc.filter((h) => h.date === ctx.todayIso);
+    const todayAtt = ctx.attendances.filter((a) => a.date === ctx.todayIso);
+    const actualDays = todayAtt.reduce((s, a) => s + (a.dayWorked || 0), 0);
+    const actualNights = todayAtt.reduce((s, a) => s + (a.nightWorked || 0), 0);
+
+    if (todayHeadcounts.length === 0) {
+      return {
+        reply: `⚠️ **دفتر العدد اليومي لم يُسجل بعد ليوم ${formatArabicDateShort(ctx.todayIso)}!**\nسجلت حضور بالأسماء لـ ${formatNumber(todayAtt.length, numMode)} عمال (${formatNumber(actualDays, numMode)} يومية و ${formatNumber(actualNights, numMode)} سهرة)، بس لازم تسجل إجمالي العدد الإجباري في الدفتر علشان نضمن مطابقة الموقع مع المهندس.`,
+        actionRoute: '/attendance',
+        actionLabel: 'تسجيل العدد اليومي الإجباري',
+      };
+    }
+
+    const hc = todayHeadcounts[0];
+    const expectedDays = (hc.sculptorsCount || 0) + (hc.workersCount || 0);
+    const expectedNights = hc.expectedNightCount || 0;
+    const isMatch = actualDays === expectedDays && actualNights === expectedNights;
+
+    if (isMatch) {
+      return {
+        reply: `✅ **تطابق كامل ومثالي في دفتر العدد ليوم ${formatArabicDateShort(ctx.todayIso)}!**\n• اليوميات: المسجل بالأسماء (${formatNumber(actualDays, numMode)}) مطابق تماماً للدفتر (${formatNumber(expectedDays, numMode)}).\n• السهرات: المسجل (${formatNumber(actualNights, numMode)}) مطابق للدفتر (${formatNumber(expectedNights, numMode)}).\nشغلك مظبوط ١٠٠٪ يا هندسة ولا يوجد أي فوارق.`,
+        actionRoute: '/attendance',
+        actionLabel: 'عرض كشف الحضور',
+      };
+    } else {
+      return {
+        reply: `⚠️ **يوجد فارق وعدم تطابق بين دفتر العدد وكشف الحضور ليوم ${formatArabicDateShort(ctx.todayIso)}:**\n• اليوميات: في الدفتر **${formatNumber(expectedDays, numMode)}** بينما المسجل بالأسماء **${formatNumber(actualDays, numMode)}** (فارق: ${formatNumber(Math.abs(expectedDays - actualDays), numMode)})\n• السهرات: في الدفتر **${formatNumber(expectedNights, numMode)}** بينما المسجل **${formatNumber(actualNights, numMode)}**\nراجع الأسماء في كشف الحضور لضبط الفارق قبل نهاية اليوم.`,
+        actionRoute: '/attendance',
+        actionLabel: 'ضبط كشف الحضور لمطابقة الدفتر',
+      };
+    }
+  }
+
+  // 22. Unsettled Advances Audit ("مين عليه سلف" / "السلف المفتوحة")
+  if (
+    norm.includes('مين عليه سلف') ||
+    norm.includes('السلف المفتوحه') ||
+    norm.includes('السلف المعلقه') ||
+    norm.includes('سلف مخصمتهاش')
+  ) {
+    const openAdvances = ctx.advances.filter((a) => a.settlementId === null);
+    if (openAdvances.length === 0) {
+      return {
+        reply: '👏 كل السلف مسواة ومخصومة بالكامل، مفيش أي سلف معلقة على العمال حالياً!',
+        actionRoute: '/advances',
+        actionLabel: 'عرض سجل السلف',
+      };
+    }
+
+    const workerAdvMap = new Map<number, { name: string; total: number; count: number }>();
+    for (const a of openAdvances) {
+      const prev = workerAdvMap.get(a.workerId) || {
+        name: ctx.workers.find((w) => w.id === a.workerId)?.name || `عامل #${a.workerId}`,
+        total: 0,
+        count: 0,
+      };
+      prev.total += a.amount;
+      prev.count += 1;
+      workerAdvMap.set(a.workerId, prev);
+    }
+
+    const lines = Array.from(workerAdvMap.values()).map(
+      (w) => `• **${w.name}**: عليه سلف مفتوحة بإجمالي **${formatCurrency(w.total, numMode)}** (${formatNumber(w.count, numMode)} سلفة)`
+    );
+
+    const grandTotal = openAdvances.reduce((s, a) => s + a.amount, 0);
+
+    return {
+      reply: `⚠️ **كشف السلف المفتوحة التي لم تُخصم بعد (${formatNumber(openAdvances.length, numMode)} سلفة بإجمالي ${formatCurrency(grandTotal, numMode)}):**\n${lines.join('\n')}\n💡 سيتم خصم هذه السلف تلقائياً عند إجراء التسوية أو تصفية الحساب في كشف قبض يوم 15.`,
+      actionRoute: '/settlements',
+      actionLabel: 'فتح كشف التسويات والقبض',
+    };
+  }
+
+  // 23. Pro Construction & Cashflow Advice ("نصيحة المقاولات" / "نصيحة زكي")
+  if (
+    norm.includes('نصيحه') ||
+    norm.includes('نصايح') ||
+    norm.includes('ازاي ادير') ||
+    norm.includes('قواعد المقاولات')
+  ) {
+    return {
+      reply: [
+        `💡 **نصائح زكي الذهبية لإدارة سيولة وحسابات المقاولات الذكية:**`,
+        `1. **فصل حساب البنك عن كاش الجيب:** شيك الشركة ينزل البنك، تسحب منه المبلغ المطلوب فقط للعهدة، وباقي قيمة الشيك تفضل في البنك كاحتياطي.`,
+        `2. **قاعدة الـ 30% للسلف:** لا تصرف للعامل سلفة تتجاوز ثلث مستحقاته المسجلة حتى لا يتراكم عليه عجز وقت التصفية.`,
+        `3. **المطابقة اليومية الإجبارية:** لا تنم قبل مطابقة دفتر العدد مع الحضور الفعلي بالأسماء، لتجنب نسيان أي يومية أو سهرة.`,
+        `4. **تسجيل المصروف في لحظته:** أي نثريات أو نقل أو خامات سجلها فوراً من زر التسجيل السريع (+ وصلني / صرفت) لتبقى الخزنة متطابقة بالقرش.`,
+        `5. **التسوية الدورية يوم 15:** إغلاق حسابات العمال بانتظام يرفع الإنتاجية ويمنع تراكم الفروقات.`,
+      ].join('\n'),
+      actionRoute: '/reports',
+      actionLabel: 'عرض التقارير الشاملة',
+    };
+  }
+
   // Fallback
   return {
     reply:
-      'أنا معاك يا هندسة! أقدر بالعامية المصرية أسجلك أي فلوس وصلتك (شيكات أو من شركة أو شخص)، أحسبلك حسابك الشامل والربح في كل مشروع، أشرحلك مناهج وقواعد إدارة المقاولات، أحضّر العمال والنحاتية، أعمل مستخلصات، أصرف سلف وأوقع خصومات، أو أضيف وأحذف أي حاجة في الموقع. جرب واحد من الأوامر دي أو اضغط على "قدرات ذكي الشاملة":',
+      'أنا معاك يا هندسة! أقدر بالعامية المصرية أسجلك أي فلوس وصلتك (شيكات أو من شركة أو شخص)، أحسبلك حسابك الشامل والربح في كل مشروع، أعملك تقرير أي فترة من كذا إلى كذا، أدقق حساب الشيكات والبنك والكاش في جيبك، أطابق دفتر العدد، أشرحلك قواعد المقاولات، أحضّر العمال والنحاتية، أعمل مستخلصات، وأصرف سلف وأوقع خصومات. جرب تسألني أو اضغط على "ماذا يمكن للبوت فعله؟":',
     quickCommands: DEFAULT_FALLBACK_COMMANDS,
     actionRoute: '/my-ledger',
     actionLabel: 'فتح صفحة حسابي الشامل والخزنة',

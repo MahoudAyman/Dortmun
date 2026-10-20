@@ -646,12 +646,39 @@ test('calculateCheckFundBreakdowns links check to project, extract, advances, se
   const b = breakdowns[0];
   assert.equal(b.projectName, 'فيلا التجمع');
   assert.equal(b.extractNumber, 3);
+  assert.equal(b.checkAmount, 20000);
+  assert.equal(b.withdrawnAmount, 4000);
+  assert.equal(b.remainingInBank, 16000); // 20000 check - 4000 withdrawn = 16000 in bank
+  assert.equal(b.remainingInCheck, 16000);
   assert.equal(b.advancesSpentFromCheck, 3500);
   assert.equal(b.expensesSpentFromCheck, 40);
-  assert.equal(b.remainingBeforeFees, 500);
-  assert.equal(b.remainingInPocketNet, 460);
-  assert.equal(b.remainingInCheck, 20000 - 3540);
+  assert.equal(b.remainingBeforeFees, 500); // 4000 - 3500 = 500
+  assert.equal(b.remainingInPocketNet, 460); // 500 - 40 = 460 in pocket
   assert.equal(b.projectOwedToWorkers, 1500); // 5000 gross - 3500 advance
+});
+
+test('Contractor Exact Scenario: 100,000 company check deposited in bank, withdrew 4,000 cash for advances, 3,500 advances given, 40 fee => 96,000 remains in bank, 460 remains in pocket', () => {
+  const summary = calculateDailyPocketSummary({
+    checksIncomingTotal: 100000,
+    withdrawnAmount: 4000,
+    withdrawalFee: 40,
+    advancesTotal: 3500,
+    settlementsTotal: 0,
+    otherExpensesTotal: 0,
+  });
+
+  // المستوى الأول: حساب البنك وفلوس الشيك من الشركة
+  assert.equal(summary.checksIncomingTotal, 100000);
+  assert.equal(summary.withdrawnAmount, 4000);
+  assert.equal(summary.remainingInBank, 96000); // 100,000 - 4,000 = 96,000 في حساب البنك
+  assert.equal(summary.remainingInCheck, 96000);
+
+  // المستوى الثاني: عهدة الكاش في جيبك للسلف والمصاريف
+  assert.equal(summary.cashInPocket, 4000);
+  assert.equal(summary.advancesTotal, 3500);
+  assert.equal(summary.remainingBeforeExpenses, 500); // 4,000 - 3,500 = 500 ج.م قبل مصاريف السحب
+  assert.equal(summary.withdrawalFee, 40);
+  assert.equal(summary.netRemainingInPocket, 460); // 500 - 40 = 460 ج.م صافي في الجيب
 });
 
 

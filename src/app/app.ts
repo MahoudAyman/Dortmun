@@ -183,6 +183,7 @@ export class App implements AfterViewInit, OnDestroy {
     { path: '/checks', label: 'الشيكات', icon: 'account_balance' },
     { path: '/expenses', label: 'المصاريف الخارجية', icon: 'receipt_long' },
     { path: '/reports', label: 'التقارير والتصدير', icon: 'table_view' },
+    { path: '/live-excel', label: 'شيت إكسيل المباشر (Excel)', icon: 'grid_on' },
     { path: '/settings', label: 'الإعدادات والمشاريع', icon: 'settings' },
     { path: '/zaki', label: 'المساعد زكي الذكي', icon: 'smart_toy' },
   ];

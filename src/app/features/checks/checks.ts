@@ -90,51 +90,136 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
           </div>
         </div>
 
-        <!-- 5 Data-Driven Summary Boxes -->
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
-            <div class="text-[11px] font-bold text-slate-500">إجمالي شيكات المشروع</div>
-            <div class="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5 tabular-nums">
-              {{ store.money(pk.checksIncomingTotal) }}
+        <!-- Methodological Explanatory Banner: نظام الحسابين المنفصلين -->
+        <div class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs">
+          <mat-icon class="!w-5 !h-5 !text-[20px] text-amber-600 shrink-0 mt-0.5">account_balance</mat-icon>
+          <div class="leading-relaxed">
+            <strong class="text-amber-900 dark:text-amber-300">نظام الحسابين المنفصلين:</strong>
+            <span class="text-slate-700 dark:text-slate-300 mr-1">
+              شيك الشركة وحساب البنك مستقل تماماً عن عهدة كاش السلف في جيبك؛ عشان تعرف بالضبط باقي كام في البنك من الشيك، وباقي كام في جيبك بعد صرف السلف والمصاريف الخارجية.
+            </span>
+          </div>
+        </div>
+
+        <!-- TWO SYSTEMATIC TIERS: TIER 1 (BANK & CHECK) vs TIER 2 (CASH IN POCKET & ADVANCES) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- المستوى الأول: حساب البنك ورصيد شيك الشركة -->
+          <div class="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border-2 border-blue-400/40 space-y-3">
+            <div class="flex items-center justify-between pb-2 border-b border-blue-200/60 dark:border-blue-900/60">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <mat-icon class="!w-4 !h-4 !text-[18px]">account_balance</mat-icon>
+                </div>
+                <div>
+                  <h3 class="text-xs sm:text-sm font-black text-blue-950 dark:text-blue-100">
+                    ١. حساب البنك وشيك الشركة
+                  </h3>
+                  <div class="text-[10px] text-blue-600 dark:text-blue-300 font-bold">
+                    رصيد الشيك المصروف في البنك
+                  </div>
+                </div>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full bg-blue-600/15 text-blue-700 dark:text-blue-300 text-[10px] font-black">
+                دورة شيك البنك
+              </span>
             </div>
-            <div class="text-[10px] text-slate-400 mt-0.5">{{ store.num(pk.projectChecks.length) }} شيك وارد</div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800">
+                <div class="text-[10px] font-bold text-slate-500">قيمة الشيك بالبنك</div>
+                <div class="text-sm sm:text-base font-black text-slate-900 dark:text-white tabular-nums mt-0.5">
+                  {{ store.money(pk.checksIncomingTotal) }}
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">{{ store.num(pk.projectChecks.length) }} شيك وارد</div>
+              </div>
+
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800">
+                <div class="text-[10px] font-bold text-blue-700 dark:text-blue-300">سحبت كاش منه</div>
+                <div class="text-sm sm:text-base font-black text-blue-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.withdrawnAmount) }}
+                </div>
+                <div class="text-[9px] text-slate-500 mt-0.5">خرج لسلف العمال</div>
+              </div>
+
+              <div class="p-2.5 rounded-xl bg-blue-600 text-white shadow-xs">
+                <div class="text-[10px] font-bold text-blue-100">باقي بالشيك في البنك</div>
+                <div class="text-sm sm:text-base font-black tabular-nums mt-0.5">
+                  {{ store.money(pk.remainingInBank) }}
+                </div>
+                <div class="text-[9px] text-blue-100 mt-0.5">في حساب الشركة</div>
+              </div>
+            </div>
+
+            <!-- Live Formula Badge for Bank -->
+            <div class="p-2 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-blue-200/70 dark:border-blue-800/70 text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center justify-between">
+              <span>حساب البنك:</span>
+              <span class="tabular-nums font-black" dir="ltr">
+                {{ store.money(pk.checksIncomingTotal) }} - {{ store.money(pk.withdrawnAmount) }} = {{ store.money(pk.remainingInBank) }}
+              </span>
+            </div>
           </div>
 
-          <div class="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-            <div class="text-[11px] font-bold text-blue-700 dark:text-blue-300">ما تم سحبه من الشيك</div>
-            <div class="text-base sm:text-lg font-black text-blue-600 mt-0.5 tabular-nums">
-              {{ store.money(pk.withdrawnAmount) }}
+          <!-- المستوى الثاني: عهدة الكاش في جيبك (فلوس السلف والمصاريف) -->
+          <div class="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border-2 border-emerald-400/40 space-y-3">
+            <div class="flex items-center justify-between pb-2 border-b border-emerald-200/60 dark:border-emerald-900/60">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <mat-icon class="!w-4 !h-4 !text-[18px]">payments</mat-icon>
+                </div>
+                <div>
+                  <h3 class="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-100">
+                    ٢. عهدة الكاش في جيبك
+                  </h3>
+                  <div class="text-[10px] text-emerald-600 dark:text-emerald-300 font-bold">
+                    فلوس السلف والمصاريف بعد السحب من البنك
+                  </div>
+                </div>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-black">
+                دورة كاش الجيب
+              </span>
             </div>
-            <div class="text-[10px] text-slate-500 mt-0.5">متبقي بالشيك: {{ store.money(pk.remainingInCheck) }}</div>
-          </div>
 
-          <div class="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-            <div class="text-[11px] font-bold text-amber-800 dark:text-amber-300">مدفوع سلف وقبض للعمال</div>
-            <div class="text-base sm:text-lg font-black text-amber-600 mt-0.5 tabular-nums">
-              {{ store.money(pk.totalWorkersPaid) }}
-            </div>
-            <div class="text-[10px] text-slate-500 mt-0.5">
-              سلف {{ store.money(pk.advancesTotal) }} + قبض {{ store.money(pk.settlementsTotal) }}
-            </div>
-          </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800">
+                <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">الكاش في جيبك</div>
+                <div class="text-sm sm:text-base font-black text-emerald-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.withdrawnAmount) }}
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">عهدة نقدية بيدك</div>
+              </div>
 
-          <div class="p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
-            <div class="text-[11px] font-bold text-rose-700 dark:text-rose-300">مصاريف خارجية ورسوم سحب</div>
-            <div class="text-base sm:text-lg font-black text-rose-600 mt-0.5 tabular-nums">
-              {{ store.money(pk.totalExternalExpenses) }}
-            </div>
-            <div class="text-[10px] text-slate-500 mt-0.5">
-              مصاريف {{ store.money(pk.externalExpensesTotal) }} + رسوم {{ store.money(pk.withdrawalFee) }}
-            </div>
-          </div>
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800">
+                <div class="text-[10px] font-bold text-amber-700 dark:text-amber-300">سلف وقبض عمال</div>
+                <div class="text-sm sm:text-base font-black text-amber-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.totalWorkersPaid) }}
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">سلف: {{ store.money(pk.advancesTotal) }}</div>
+              </div>
 
-          <div class="p-3.5 rounded-2xl bg-emerald-600 text-white col-span-2 sm:col-span-1">
-            <div class="text-[11px] font-bold text-emerald-100">المفروض قاعد معاك الآن</div>
-            <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums">
-              {{ store.money(pk.netRemainingInPocket) }}
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800">
+                <div class="text-[10px] font-bold text-rose-700 dark:text-rose-300">مصاريف خارجية ورسوم</div>
+                <div class="text-sm sm:text-base font-black text-rose-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.totalExternalExpenses) }}
+                </div>
+                <div class="text-[9px] text-slate-400 mt-0.5">سحب: {{ store.money(pk.withdrawalFee) }}</div>
+              </div>
+
+              <div class="p-2.5 rounded-xl bg-emerald-600 text-white shadow-xs">
+                <div class="text-[10px] font-bold text-emerald-100">باقي في جيبك الآن</div>
+                <div class="text-sm sm:text-base font-black tabular-nums mt-0.5">
+                  {{ store.money(pk.netRemainingInPocket) }}
+                </div>
+                <div class="text-[9px] text-emerald-100 mt-0.5">قبل المصاريف: {{ store.money(pk.remainingBeforeExpenses) }}</div>
+              </div>
             </div>
-            <div class="text-[10px] text-emerald-100 mt-0.5">
-              قبل المصاريف: {{ store.money(pk.remainingBeforeExpenses) }}
+
+            <!-- Live Formula Badge for Pocket -->
+            <div class="p-2 rounded-xl bg-white/70 dark:bg-slate-900/60 border border-emerald-200/70 dark:border-emerald-800/70 text-[11px] font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+              <span>كاش الجيب:</span>
+              <span class="tabular-nums font-black" dir="ltr">
+                {{ store.money(pk.withdrawnAmount) }} - {{ store.money(pk.totalWorkersPaid) }} - {{ store.money(pk.totalExternalExpenses) }} = {{ store.money(pk.netRemainingInPocket) }}
+              </span>
             </div>
           </div>
         </div>

@@ -74,6 +74,11 @@ export const routes: Routes = [
       import('./features/reports/reports').then((m) => m.ReportsPage),
   },
   {
+    path: 'live-excel',
+    loadComponent: () =>
+      import('./features/live-excel/live-excel').then((m) => m.LiveExcelPage),
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings').then((m) => m.SettingsPage),

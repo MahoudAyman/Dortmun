@@ -32,11 +32,15 @@ export function toEnglishDigits(input: string): string {
 }
 
 export function formatNumber(
-  value: number | undefined | null,
+  value: number | string | undefined | null,
   mode: NumeralMode = 'ar',
   decimals = 0
 ): string {
-  const safeVal = Number.isFinite(value) ? Number(value) : 0;
+  const numVal = typeof value === 'string' ? parseFloat(value) : value;
+  const safeVal = Number.isFinite(numVal) ? Number(numVal) : (typeof value === 'string' ? value : 0);
+  if (typeof safeVal === 'string') {
+    return mode === 'ar' ? toArabicDigits(safeVal) : safeVal;
+  }
   const formatted = safeVal.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -1656,9 +1660,25 @@ export function calculateComprehensiveLedger(params: {
 export interface CheckFundBreakdown {
   check: CheckItem;
   projectName: string;
-  extractNumber: number | null;
-  withdrawnAmount: number;
-  withdrawalFee: number;
+  extractNumber: string | number | null;
+  // --- المستوى الأول: حساب البنك وشيك الشركة ---
+  checkAmount: number; // قيمة الشيك المودع بالبنك (مثلاً 100,000 ج.م)
+  withdrawnAmount: number; // المسحوب نقداً كاش من البنك للجيب (مثلاً 4,000 ج.م)
+  remainingInBank: number; // باقي من فلوس الشيك في البنك = 100,000 - 4,000 = 96,000 ج.م
+  remainingInCheck: number; // مساوٍ لـ remainingInBank
+
+  // --- المستوى الثاني: عهدة الكاش في جيبك (فلوس السلف والمصاريف) ---
+  cashInPocket: number; // الكاش في جيبك (4,000 ج.م)
+  advancesSpentFromCheck: number; // سلف ناس متسجلة (مثلاً 3,500 ج.م)
+  settlementsPaidFromCheck: number; // قبض عمال مسجل (مثلاً 0 ج.م)
+  totalWorkersPaid: number; // إجمالي ما استلمه العمال (سلف + قبض) = 3,500 ج.م
+  expensesSpentFromCheck: number; // مصاريف خارجية + رسوم السحب (مثلاً 40 ج.م)
+  withdrawalFee: number; // رسوم / مصاريف السحب (مثلاً 40 ج.م)
+  totalSpentFromPocket: number; // إجمالي المنصرف من الكاش في الجيب (3,540 ج.م)
+  remainingBeforeFees: number; // باقي في الجيب قبل المصاريف الخارجية = 4,000 - 3,500 = 500 ج.م
+  remainingInPocketNet: number; // باقي في جيبك كاش بعد خصم السلف والمصاريف = 500 - 40 = 460 ج.م
+
+  // كشوفات تفصيلية بالسجلات
   linkedAdvances: {
     id?: number;
     workerId: number;
@@ -1683,29 +1703,32 @@ export interface CheckFundBreakdown {
     date: string;
     note: string;
   }[];
-  advancesSpentFromCheck: number;
-  settlementsPaidFromCheck: number;
-  expensesSpentFromCheck: number;
   totalSpentFromCheck: number;
-  remainingInCheck: number;
-  remainingBeforeFees: number;
-  remainingInPocketNet: number;
   projectOwedToWorkers: number;
 }
 
 export interface PocketCashSummary {
-  withdrawnAmount: number;
-  withdrawalFee: number;
-  advancesTotal: number;
-  settlementsTotal: number;
-  otherExpensesTotal: number;
-  totalWorkersPaid: number;
-  remainingBeforeExpenses: number; // الباقي في الجيب بعد السلف والقبض قبل مصاريف السحب (مثلاً 4000 - 3500 = 500)
-  totalExternalExpenses: number; // مصاريف السحب والمصاريف الخارجية (مثلاً 40 ج)
-  netRemainingInPocket: number; // الصافي الفعلي المتبقي في الجيب بعد كل شيء (مثلاً 460 ج)
-  checksIncomingTotal: number;
-  remainingInCheck: number;
-  externalExpensesTotal: number;
+  // المستوى الأول: حساب البنك ورصيد الشيك من الشركة
+  checksIncomingTotal: number; // إجمالي قيمة الشيكات المودعة بالبنك (مثلاً 100,000 ج.م)
+  checkAmount?: number;
+  withdrawnAmount: number; // المسحوب نقداً من البنك للجيب (مثلاً 4,000 ج.م)
+  withdrawnFromBank?: number;
+  remainingInBank: number; // باقي من فلوس الشيك في البنك (مثلاً 100,000 - 4,000 = 96,000 ج.م)
+  remainingInCheck: number; // مساوٍ لـ remainingInBank
+
+  // المستوى الثاني: حركة الكاش والعهدة في جيبك (فلوس السلف والمصاريف)
+  cashInPocket: number; // الكاش في جيبك (4,000 ج.م)
+  advancesTotal: number; // سلف ناس متسجلة فعلياً (مثلاً 3,500 ج.م)
+  settlementsTotal: number; // قبض وتسويات متسجلة (مثلاً 0 ج.م)
+  totalWorkersPaid: number; // إجمالي ما أخذه العمال (3,500 ج.م)
+  withdrawalFee: number; // رسوم / مصاريف سحب الكاش (مثلاً 40 ج.م)
+  otherExpensesTotal: number; // مصاريف خارجية أخرى (مثلاً 0 ج.م)
+  totalExternalExpenses: number; // إجمالي المصاريف الخارجية ورسوم السحب (40 ج.م)
+  externalExpensesTotal: number; // مساوٍ لـ totalExternalExpenses
+  remainingBeforeExpenses: number; // باقي في جيبك قبل المصاريف (4,000 - 3,500 = 500 ج.م)
+  netRemainingInPocket: number; // باقي في جيبك كاش بعد خصم السلف والمصاريف (500 - 40 = 460 ج.م)
+
+  // السجلات الفعلية المربوطة
   projectChecks: CheckItem[];
   recordedAdvances: Advance[];
   recordedSettlements: Settlement[];
@@ -1720,6 +1743,7 @@ export function calculateDailyPocketSummary(params: {
   otherExpensesTotal?: number;
   checksIncomingTotal?: number;
   remainingInCheck?: number;
+  remainingInBank?: number;
   projectChecks?: CheckItem[];
   recordedAdvances?: Advance[];
   recordedSettlements?: Settlement[];
@@ -1730,25 +1754,43 @@ export function calculateDailyPocketSummary(params: {
   const advancesTotal = Math.max(0, Number(params.advancesTotal) || 0);
   const settlementsTotal = Math.max(0, Number(params.settlementsTotal) || 0);
   const otherExpensesTotal = Math.max(0, Number(params.otherExpensesTotal) || 0);
+  const checksIncomingTotal = Math.max(0, Number(params.checksIncomingTotal) || 0);
 
+  // المستوى الأول: حساب البنك وشيك الشركة
+  // باقي من فلوس الشيك في البنك = إجمالي الشيكات - المسحوب نقداً من البنك (مثلاً 100,000 - 4,000 = 96,000)
+  const remainingInBank =
+    params.remainingInBank !== undefined
+      ? params.remainingInBank
+      : params.remainingInCheck !== undefined
+        ? params.remainingInCheck
+        : Math.max(0, checksIncomingTotal - withdrawnAmount);
+
+  // المستوى الثاني: عهدة الكاش في جيبك للسلف والمصاريف
+  // كاش في الجيب = المسحوب نقداً (4,000)
+  // باقي في الجيب قبل المصاريف = 4,000 - 3,500 = 500
+  // باقي في الجيب صافي = 500 - 40 = 460
   const totalWorkersPaid = advancesTotal + settlementsTotal;
   const remainingBeforeExpenses = withdrawnAmount - totalWorkersPaid;
   const totalExternalExpenses = withdrawalFee + otherExpensesTotal;
   const netRemainingInPocket = remainingBeforeExpenses - totalExternalExpenses;
 
   return {
+    checksIncomingTotal,
+    checkAmount: checksIncomingTotal,
     withdrawnAmount,
-    withdrawalFee,
+    withdrawnFromBank: withdrawnAmount,
+    remainingInBank,
+    remainingInCheck: remainingInBank,
+    cashInPocket: withdrawnAmount,
     advancesTotal,
     settlementsTotal,
-    otherExpensesTotal,
     totalWorkersPaid,
-    remainingBeforeExpenses,
+    withdrawalFee,
+    otherExpensesTotal,
     totalExternalExpenses,
-    netRemainingInPocket,
-    checksIncomingTotal: params.checksIncomingTotal ?? 0,
-    remainingInCheck: params.remainingInCheck ?? 0,
     externalExpensesTotal: totalExternalExpenses,
+    remainingBeforeExpenses,
+    netRemainingInPocket,
     projectChecks: params.projectChecks ?? [],
     recordedAdvances: params.recordedAdvances ?? [],
     recordedSettlements: params.recordedSettlements ?? [],
@@ -1880,16 +1922,22 @@ export function calculateCheckFundBreakdowns(params: {
     const expensesSpentFromCheck =
       linkedExpenses.reduce((s, e) => s + e.amount, 0) + extraFeeNotYetInExpenses;
 
+    const checkAmount = Number(check.amount) || 0;
     const withdrawnAmount =
       check.withdrawnAmount !== undefined && check.withdrawnAmount !== null && check.withdrawnAmount > 0
         ? Number(check.withdrawnAmount)
-        : Number(check.amount) || 0;
+        : check.status === 'اتصرف'
+          ? checkAmount
+          : 0;
 
-    const totalSpentFromCheck =
-      advancesSpentFromCheck + settlementsPaidFromCheck + expensesSpentFromCheck;
-    const remainingInCheck = (Number(check.amount) || 0) - totalSpentFromCheck;
-    const remainingBeforeFees =
-      withdrawnAmount - advancesSpentFromCheck - settlementsPaidFromCheck;
+    // المستوى الأول: حساب البنك وشيك الشركة
+    // باقي من فلوس الشيك في البنك = قيمة الشيك - ما تم سحبه نقداً من البنك (مثلاً 100,000 - 4,000 = 96,000 ج.م)
+    const remainingInBank = Math.max(0, checkAmount - withdrawnAmount);
+
+    // المستوى الثاني: عهدة الكاش في جيبك (فلوس السلف والمصاريف)
+    const totalWorkersPaid = advancesSpentFromCheck + settlementsPaidFromCheck;
+    const totalSpentFromPocket = totalWorkersPaid + expensesSpentFromCheck;
+    const remainingBeforeFees = withdrawnAmount - totalWorkersPaid;
     const remainingInPocketNet = remainingBeforeFees - expensesSpentFromCheck;
 
     // Project remaining owed to workers
@@ -1917,16 +1965,21 @@ export function calculateCheckFundBreakdowns(params: {
       check,
       projectName,
       extractNumber,
+      checkAmount,
       withdrawnAmount,
       withdrawalFee,
+      remainingInBank,
+      remainingInCheck: remainingInBank,
+      cashInPocket: withdrawnAmount,
       linkedAdvances,
       linkedSettlements,
       linkedExpenses,
       advancesSpentFromCheck,
       settlementsPaidFromCheck,
       expensesSpentFromCheck,
-      totalSpentFromCheck,
-      remainingInCheck,
+      totalWorkersPaid,
+      totalSpentFromPocket,
+      totalSpentFromCheck: totalSpentFromPocket,
       remainingBeforeFees,
       remainingInPocketNet,
       projectOwedToWorkers,

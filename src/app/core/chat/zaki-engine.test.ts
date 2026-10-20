@@ -372,4 +372,45 @@ test('Zaki returns detailed worker statement ("كشف حساب تفصيلي لك
   assert.equal(res.actionRoute, '/workers');
 });
 
+test('Zaki audits bank check balance vs pocket cash advances ("سحبت 4000 سلف من شيك.. باقي كام في البنك وباقي كام في جيبي")', () => {
+  const res = processZakiMessage(
+    'سحبت 4000 سلف من شيك.. قولي باقي كام في البنك وباقي كام في جيبي',
+    mockContext
+  );
+  assert.ok(res.reply.includes('المستوى الأول: حساب الشركة والشيكات في البنك'));
+  assert.ok(res.reply.includes('المستوى الثاني: فلوس العهدة وسلف العمال في جيبك'));
+  assert.equal(res.actionRoute, '/my-ledger');
+});
+
+test('Zaki generates daily and period report ("تقرير اليوم")', () => {
+  const res = processZakiMessage('تقرير اليوم', mockContext);
+  assert.ok(res.reply.includes('تقرير وإحصائيات'));
+  assert.equal(res.actionRoute, '/reports');
+});
+
+test('Zaki audits mandatory daily headcount match ("مطابقة كشف العدد اليومي")', () => {
+  const res = processZakiMessage('مطابقة كشف العدد اليومي', mockContext);
+  assert.ok(res.reply.includes('دفتر العدد') || res.reply.includes('تطابق'));
+  assert.equal(res.actionRoute, '/attendance');
+});
+
+test('Zaki audits unsettled advances ("مين عليه سلف مفتوحة ومخصمتهاش؟")', () => {
+  const res = processZakiMessage('مين عليه سلف مفتوحة ومخصمتهاش؟', mockContext);
+  assert.ok(res.reply.includes('السلف'));
+  assert.equal(res.actionRoute, '/settlements');
+});
+
+test('Zaki provides pro construction advice ("نصيحة المقاولات")', () => {
+  const res = processZakiMessage('نصيحة المقاولات لإدارة السيولة', mockContext);
+  assert.ok(res.reply.includes('نصائح زكي الذهبية'));
+  assert.equal(res.actionRoute, '/reports');
+});
+
+test('Zaki navigates to live Excel studio ("افتح شيت اكسيل المباشر")', () => {
+  const res = processZakiMessage('افتح شيت اكسيل المباشر للموقع', mockContext);
+  assert.ok(res.reply.includes('Live Excel Studio') || res.reply.includes('شيت إكسيل'));
+  assert.equal(res.actionRoute, '/live-excel');
+});
+
+
 

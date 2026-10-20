@@ -766,17 +766,33 @@ END $$;
 `;
 
 export interface SmartParsedCommand {
-  kind: 'deduction' | 'advance' | 'expense' | 'headcount' | 'worker' | 'unknown';
+  kind:
+    | 'deduction'
+    | 'advance'
+    | 'expense'
+    | 'headcount'
+    | 'worker'
+    | 'check_withdrawal'
+    | 'attendance'
+    | 'settlement'
+    | 'change_date'
+    | 'navigate'
+    | 'unknown';
   summary: string;
   workerNameHint?: string;
   workerRole?: 'نحات' | 'صنايعي' | 'عامل' | 'مشرف';
   deductionMode?: 'day' | 'half_day' | 'quarter_day' | 'money';
   amount?: number;
+  fee?: number;
   expenseCategory?: 'مواصلات' | 'أكل' | 'أدوات' | 'صيانة' | 'أخرى';
   reason?: string;
   workersCount?: number;
   sculptorsCount?: number;
   nightsCount?: number;
+  dayWorked?: 0 | 1;
+  nightWorked?: 0 | 1;
+  targetDate?: 'today' | 'yesterday' | string;
+  targetRoute?: string;
 }
 
 /**
@@ -784,6 +800,10 @@ export interface SmartParsedCommand {
  * Examples:
  * - "خصم نص يوم على أحمد بسبب تأخير"
  * - "سلفة 500 لمحمود"
+ * - "سحبت 4000 من الشيك ومصاريف 40"
+ * - "حضور كريم يوم وسهرة"
+ * - "قفل حساب مصطفى اديله حسابه"
+ * - "غير التاريخ لأمس" / "تاريخ اليوم"
  * - "مصروف مواصلات 250 عربية نقل"
  * - "العدد اليومي 10 عمال و 4 نحات و 3 سهرة"
  * - "عامل جديد إبراهيم نحات يومية 600"
@@ -794,7 +814,107 @@ export function parseSmartSiteCommand(rawInput: string): SmartParsedCommand {
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
   if (!normalized) {
-    return { kind: 'unknown', summary: 'اكتب أمراً ذكياً مثل: "خصم نص يوم على أحمد" أو "سلفة 500 لعلي"' };
+    return {
+      kind: 'unknown',
+      summary: 'اكتب أو انطق أمراً ذكياً مثل: "سلفة 500 لمحمد" أو "سحبت 4000 من الشيك ومصاريف 40" أو "حضور كريم يوم وسهرة"',
+    };
+  }
+
+  // 0. Date Change Command ("غير التاريخ لأمس", "تاريخ امبارح", "تاريخ اليوم", "النهارده")
+  if (
+    normalized.includes('امبارح') ||
+    normalized.includes('أمس') ||
+    normalized.includes('تاريخ امس') ||
+    normalized.includes('غير لامس')
+  ) {
+    return {
+      kind: 'change_date',
+      targetDate: 'yesterday',
+      summary: 'التحويل إلى تاريخ أمس (خلي بالك: أنت تعدل وتسجل على إمبارح)',
+    };
+  }
+
+  if (
+    normalized.includes('النهارده') ||
+    normalized.includes('تاريخ اليوم') ||
+    normalized.includes('رجعني لليوم') ||
+    normalized.includes('ارجع لليوم')
+  ) {
+    return {
+      kind: 'change_date',
+      targetDate: 'today',
+      summary: 'الرجوع إلى تاريخ اليوم الفعلي وتحديث كافة التسجيلات',
+    };
+  }
+
+  // 0.1 Navigation / Report Shortcuts ("التقارير", "افتح التقارير", "تقرير الشهر", "الخزنة", "الشيكات")
+  if (normalized.includes('تقرير') || normalized.includes('تقارير')) {
+    return {
+      kind: 'navigate',
+      targetRoute: '/reports',
+      summary: 'فتح صفحة التقارير والتصدير الشاملة',
+    };
+  }
+
+  // 0.2 Check Withdrawal Command ("سحبت 4000 من الشيك ورسوم 40" / "سحب 4000 شيك ومصاريف 40")
+  if (
+    (normalized.includes('سحب') || normalized.includes('سحبت')) &&
+    (normalized.includes('شيك') || normalized.includes('الشيك') || normalized.includes('بنك'))
+  ) {
+    const numMatch = normalized.match(/(\d+(?:\.\d+)?)/);
+    const amount = numMatch ? Number(numMatch[1]) : 0;
+    const feeMatch = normalized.match(/(?:رسوم|مصاريف|حق السحب|مصروف)\s*(\d+(?:\.\d+)?)/);
+    const fee = feeMatch ? Number(feeMatch[1]) : 0;
+
+    return {
+      kind: 'check_withdrawal',
+      amount,
+      fee,
+      summary: `تسجيل سحبة كاش ${amount} ج.م من شيك المشروع ورسوم سحب ${fee} ج.م`,
+    };
+  }
+
+  // 0.3 Worker Settlement Command ("قفل حساب كريم", "اديله حسابه", "تصفية حساب أحمد")
+  if (
+    normalized.includes('قفل حساب') ||
+    normalized.includes('اديله حسابه') ||
+    normalized.includes('اديلو حسابه') ||
+    normalized.includes('تصفية حساب') ||
+    normalized.includes('صفي حساب')
+  ) {
+    const workerNameHint = normalized
+      .replace(/^(?:قفل حساب|اديله حسابه|اديلو حسابه|تصفية حساب|صفي حساب)\s*/, '')
+      .replace(/^(?:لـ|ل|على)\s*/, '')
+      .trim();
+
+    return {
+      kind: 'settlement',
+      workerNameHint,
+      summary: `تقفيل وصرف كامل حساب العامل المستحق ${workerNameHint ? '"' + workerNameHint + '"' : ''}`,
+    };
+  }
+
+  // 0.4 Worker Attendance Command ("حضور كريم يوم وسهرة", "سجل حضور محمد", "حضر علي يوم")
+  if (
+    normalized.startsWith('حضور') ||
+    normalized.startsWith('سجل حضور') ||
+    normalized.startsWith('حضر')
+  ) {
+    const hasNight = normalized.includes('سهرة') || normalized.includes('سهره') || normalized.includes('سهرتين');
+    const dayWorked: 0 | 1 = normalized.includes('نص') ? 0 : 1;
+    const nightWorked: 0 | 1 = hasNight ? 1 : 0;
+    const workerNameHint = normalized
+      .replace(/^(?:سجل حضور|حضور|حضر)\s*/, '')
+      .replace(/\s+(?:يوم|يومية|وسهرة|وسهره|سهرة|سهره).*$/, '')
+      .trim();
+
+    return {
+      kind: 'attendance',
+      workerNameHint,
+      dayWorked,
+      nightWorked,
+      summary: `تسجيل حضور العامل "${workerNameHint}" (${dayWorked ? 'يوم' : ''}${nightWorked ? ' + سهرة' : ''})`,
+    };
   }
 
   // 1. Check for Daily Headcount command ("العدد اليومي 10 عمال و 4 نحات و 3 سهرة")
