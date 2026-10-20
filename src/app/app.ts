@@ -170,23 +170,52 @@ export class App implements AfterViewInit, OnDestroy {
   );
 
   readonly navItems = [
-    { path: '/dashboard', label: 'الرئيسية', icon: 'dashboard' },
-    { path: '/my-ledger', label: 'حسابي الشامل والخزنة', icon: 'account_balance_wallet' },
-    { path: '/attendance', label: 'العدد والحضور', icon: 'fact_check' },
-    { path: '/bulk', label: 'الإضافة الجماعية', icon: 'playlist_add_check' },
-    { path: '/workers', label: 'العمال والنحاتية', icon: 'groups' },
-    { path: '/deductions', label: 'الخصومات والجزاءات', icon: 'gavel' },
-    { path: '/advances', label: 'السلف', icon: 'payments' },
-    { path: '/settlements', label: 'قبض يوم ١٥ والتسويات', icon: 'event_repeat' },
-    { path: '/extracts', label: 'المستخلصات', icon: 'receipt' },
-    { path: '/extras', label: 'الإضافي والناش', icon: 'add_task' },
-    { path: '/checks', label: 'الشيكات', icon: 'account_balance' },
-    { path: '/expenses', label: 'المصاريف الخارجية', icon: 'receipt_long' },
-    { path: '/reports', label: 'التقارير والتصدير', icon: 'table_view' },
-    { path: '/live-excel', label: 'شيت إكسيل المباشر (Excel)', icon: 'grid_on' },
-    { path: '/settings', label: 'الإعدادات والمشاريع', icon: 'settings' },
-    { path: '/zaki', label: 'المساعد زكي الذكي', icon: 'smart_toy' },
+    {
+      category: '📊 الرئيسية والحساب الشامل',
+      items: [
+        { path: '/dashboard', label: 'الرئيسية', icon: 'dashboard', description: 'نظرة شمولية حية ومؤشرات الأداء المالي' },
+        { path: '/my-ledger', label: 'حسابي الشامل والخزنة', icon: 'account_balance_wallet', description: 'تحليل الخزنة، كاش الجيب، ورصيد البنك' },
+      ],
+    },
+    {
+      category: '👷 الحضور والعمالة والموقع',
+      items: [
+        { path: '/attendance', label: 'العدد والحضور', icon: 'fact_check', description: 'تسجيل الحضور والسهرات ومطابقة العدد' },
+        { path: '/bulk', label: 'الإضافة الجماعية', icon: 'playlist_add_check', description: 'تحضير الورش والمجموعات بضغطة واحدة' },
+        { path: '/workers', label: 'العمال والنحاتية', icon: 'groups', description: 'دليل الصنايعية واليوميات والتقييمات' },
+      ],
+    },
+    {
+      category: '💸 السلف والخصومات والقبض',
+      items: [
+        { path: '/advances', label: 'السلف', icon: 'payments', description: 'تسجيل سلف العمالة وربطها بالشيكات' },
+        { path: '/deductions', label: 'الخصومات والجزاءات', icon: 'gavel', description: 'جزاءات التأخير واقتطاعات الساعات' },
+        { path: '/settlements', label: 'قبض يوم ١٥ والتسويات', icon: 'event_repeat', description: 'تصفية مستحقات العمال وقبض النصف شهر' },
+        { path: '/extras', label: 'الإضافي والناش', icon: 'add_task', description: 'ساعات الإضافي والناش وأوامر المهندسين' },
+      ],
+    },
+    {
+      category: '🏢 العقود والشيكات والمصاريف',
+      items: [
+        { path: '/extracts', label: 'المستخلصات', icon: 'receipt', description: 'مستخلصات الشركات والمطالبات والمحصولات' },
+        { path: '/checks', label: 'الشيكات وحساب البنك', icon: 'account_balance', description: 'حركة الشيكات ومسحوبات الكاش للسيولة' },
+        { path: '/expenses', label: 'المصاريف الخارجية', icon: 'receipt_long', description: 'مصاريف الانتقالات والبوفيه والعدد' },
+      ],
+    },
+    {
+      category: '🛠️ الإكسيل والتقارير والذكاء',
+      items: [
+        { path: '/live-excel', label: 'شيت إكسيل المباشر (Excel)', icon: 'grid_on', description: 'جداول بيانات تفاعلية مباشرة كبرنامج إكسيل', badge: 'LIVE' },
+        { path: '/reports', label: 'التقارير والتصدير', icon: 'table_view', description: 'تقارير معتمدة للطباعة وWhatsApp وPDF' },
+        { path: '/zaki', label: 'المساعد زكي الذكي', icon: 'smart_toy', description: 'المساعد الذكي للأوامر الصوتية والنصية', badge: 'AI' },
+        { path: '/settings', label: 'الإعدادات والمشاريع', icon: 'settings', description: 'إدارة المشاريع، الإغلاق، والنسخ الاحتياطي' },
+      ],
+    },
   ];
+
+  readonly flatNavItems = computed(() =>
+    this.navItems.flatMap((group) => group.items)
+  );
 
   readonly searchResults = computed(() => {
     const q = this.store.globalSearchQuery().trim().toLowerCase();
@@ -281,7 +310,7 @@ export class App implements AfterViewInit, OnDestroy {
 
   readonly currentPageTitle = computed(() => {
     const path = this.currentRoutePath();
-    const found = this.navItems.find((i) => path.startsWith(i.path));
+    const found = this.flatNavItems().find((i) => path.startsWith(i.path));
     return found ? found.label : 'الرئيسية';
   });
 

@@ -87,113 +87,40 @@
       </button>
     </div>
 
-    <!-- Navigation Links -->
-    <nav class="flex-1 p-3.5 space-y-1 overflow-y-auto" aria-label="القائمة الرئيسية">
-      @for (item of navItems; track item.path) {
-        <a
-          [routerLink]="item.path"
-          routerLinkActive="sidebar-nav-active"
-          class="sidebar-nav-item flex items-center gap-3 px-4 py-2.5 text-sm font-medium whitespace-nowrap"
-        >
-          @switch (item.path) {
-            @case ('/dashboard') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect width="7" height="9" x="3" y="3" rx="1"></rect>
-                <rect width="7" height="5" x="14" y="3" rx="1"></rect>
-                <rect width="7" height="9" x="14" y="12" rx="1"></rect>
-                <rect width="7" height="5" x="3" y="16" rx="1"></rect>
-              </svg>
-            }
-            @case ('/attendance') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="4" width="18" height="18" rx="2"></rect>
-                <path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"></path>
-              </svg>
-            }
-            @case ('/bulk') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M11 12H3M16 6H3M16 18H3M18 9v6M21 12h-6"></path>
-              </svg>
-            }
-            @case ('/workers') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-            }
-            @case ('/deductions') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M8 12h8"></path>
-              </svg>
-            }
-            @case ('/advances') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect width="20" height="14" x="2" y="5" rx="2"></rect>
-                <line x1="2" x2="22" y1="10" y2="10"></line>
-              </svg>
-            }
-            @case ('/settlements') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-              </svg>
-            }
-            @case ('/extracts') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
-              </svg>
-            }
-            @case ('/extras') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 8v8M8 12h8"></path>
-              </svg>
-            }
-            @case ('/checks') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect width="20" height="14" x="2" y="5" rx="2"></rect>
-                <path d="M6 9h4M6 13h8"></path>
-              </svg>
-            }
-            @case ('/expenses') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path>
-                <path d="M14 8H8M16 12H8M13 16H8"></path>
-              </svg>
-            }
-            @case ('/reports') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 3v18h18"></path>
-                <path d="M18 17V9M13 17V5M8 17v-3"></path>
-              </svg>
-            }
-            @case ('/live-excel') {
-              <svg class="w-5 h-5 shrink-0 text-[#107c41]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="3" y1="9" x2="21" y2="9"></line>
-                <line x1="3" y1="15" x2="21" y2="15"></line>
-                <line x1="9" y1="3" x2="9" y2="21"></line>
-                <line x1="15" y1="3" x2="15" y2="21"></line>
-              </svg>
-            }
-            @case ('/settings') {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-            }
-            @default {
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 8V4H8"></path>
-                <rect width="16" height="12" x="4" y="8" rx="2"></rect>
-                <path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path>
-              </svg>
-            }
+    <!-- Categorized Navigation Links with Descriptions & Badges -->
+    <nav class="flex-1 p-3 space-y-3.5 overflow-y-auto" aria-label="القائمة الرئيسية">
+      @for (group of navItems; track group.category) {
+        <div class="space-y-1">
+          <div class="px-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]/90 flex items-center justify-between">
+            <span>{{ group.category }}</span>
+          </div>
+          @for (item of group.items; track item.path) {
+            <a
+              [routerLink]="item.path"
+              routerLinkActive="sidebar-nav-active"
+              [title]="item.description"
+              class="sidebar-nav-item flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all group hover:bg-[var(--bg-subtle)]"
+            >
+              <div class="flex items-center gap-2.5 min-w-0">
+                <mat-icon class="!w-4 !h-4 !text-[18px] text-[var(--text-secondary)] group-hover:text-[#3390EC] shrink-0">
+                  {{ item.icon }}
+                </mat-icon>
+                <div class="flex flex-col min-w-0">
+                  <span class="truncate font-bold text-[var(--text-heading)] text-[12px]">{{ item.label }}</span>
+                  <span class="text-[10px] text-[var(--text-secondary)] truncate font-normal max-w-[160px] opacity-80 group-hover:opacity-100">
+                    {{ item.description }}
+                  </span>
+                </div>
+              </div>
+
+              @if (item.badge) {
+                <span class="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                  {{ item.badge }}
+                </span>
+              }
+            </a>
           }
-          <span>{{ item.label }}</span>
-        </a>
+        </div>
       }
     </nav>
 
@@ -1024,17 +951,34 @@
               <mat-icon>close</mat-icon>
             </button>
           </div>
-          <nav class="py-3 space-y-1 flex-1" aria-label="قائمة الموبايل الجانبية">
-            @for (item of navItems; track item.path) {
-              <a
-                [routerLink]="item.path"
-                (click)="mobileMenuOpen.set(false)"
-                routerLinkActive="sidebar-nav-active"
-                class="sidebar-nav-item flex items-center gap-3 px-4 py-2.5 rounded-full text-sm"
-              >
-                <mat-icon class="!text-lg !w-5 !h-5">{{ item.icon }}</mat-icon>
-                <span>{{ item.label }}</span>
-              </a>
+          <nav class="py-3 px-1 space-y-4 flex-1 overflow-y-auto" aria-label="قائمة الموبايل الجانبية">
+            @for (group of navItems; track group.category) {
+              <div class="space-y-1">
+                <div class="px-3 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]/90">
+                  {{ group.category }}
+                </div>
+                @for (item of group.items; track item.path) {
+                  <a
+                    [routerLink]="item.path"
+                    (click)="mobileMenuOpen.set(false)"
+                    routerLinkActive="sidebar-nav-active"
+                    class="sidebar-nav-item flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all"
+                  >
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <mat-icon class="!text-lg !w-5 !h-5 text-[#3390EC] shrink-0">{{ item.icon }}</mat-icon>
+                      <div class="flex flex-col min-w-0">
+                        <span class="truncate font-bold text-[var(--text-heading)]">{{ item.label }}</span>
+                        <span class="text-[10px] text-[var(--text-secondary)] font-normal truncate opacity-80">{{ item.description }}</span>
+                      </div>
+                    </div>
+                    @if (item.badge) {
+                      <span class="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-500/15 text-emerald-600 shrink-0">
+                        {{ item.badge }}
+                      </span>
+                    }
+                  </a>
+                }
+              </div>
             }
           </nav>
         </div>

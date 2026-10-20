@@ -114,6 +114,16 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
 
           <button
             type="button"
+            (click)="showImportModal.set(true)"
+            class="px-2.5 py-1 rounded bg-emerald-900/60 hover:bg-emerald-800 text-white border border-emerald-300/30 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+            title="استيراد بيانات نصية من شيت خارجي"
+          >
+            <mat-icon class="!text-xs !w-3.5 !h-3.5">publish</mat-icon>
+            <span class="hidden sm:inline">استيراد TSV</span>
+          </button>
+
+          <button
+            type="button"
             (click)="downloadRealExcel()"
             class="px-2.5 py-1 rounded bg-white text-[#107c41] hover:bg-emerald-50 text-[11px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
             title="تنزيل كملف Excel حقيقي .xlsx"
@@ -216,8 +226,8 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
               </button>
             </div>
 
-            <!-- Font / Formatting Group -->
-            <div class="ribbon-group flex items-center gap-1 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
+            <!-- Font / Formatting Group & Cell Fill Color Picker -->
+            <div class="ribbon-group flex items-center gap-1.5 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
               <button
                 type="button"
                 (click)="toggleCellBold()"
@@ -238,11 +248,40 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
               >
                 I
               </button>
-              <div
-                class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 text-[11px]"
-                title="حجم الخط"
-              >
-                <span>خط 11</span>
+
+              <!-- Color Fill Palette -->
+              <div class="flex items-center gap-1 pl-1 border-r border-gray-200 dark:border-slate-700">
+                <span class="text-[10px] text-gray-500 font-bold">تعبئة:</span>
+                <button
+                  type="button"
+                  (click)="setCellFillColor('')"
+                  class="w-4 h-4 rounded border border-gray-300 bg-white"
+                  title="تعبئة أصلية (بدون)"
+                ></button>
+                <button
+                  type="button"
+                  (click)="setCellFillColor('#d1fae5')"
+                  class="w-4 h-4 rounded bg-emerald-200 border border-emerald-400"
+                  title="تمييز تم السداد / أخضر"
+                ></button>
+                <button
+                  type="button"
+                  (click)="setCellFillColor('#fee2e2')"
+                  class="w-4 h-4 rounded bg-rose-200 border border-rose-400"
+                  title="تمييز هام / أحمر"
+                ></button>
+                <button
+                  type="button"
+                  (click)="setCellFillColor('#fef3c7')"
+                  class="w-4 h-4 rounded bg-amber-200 border border-amber-400"
+                  title="تمييز معلق / أصفر"
+                ></button>
+                <button
+                  type="button"
+                  (click)="setCellFillColor('#dbeafe')"
+                  class="w-4 h-4 rounded bg-blue-200 border border-blue-400"
+                  title="تمييز معتمد / أزرق"
+                ></button>
               </div>
             </div>
 
@@ -321,6 +360,14 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
               >
                 <mat-icon class="!text-sm !w-4 !h-4">table_rows</mat-icon>
                 <span>إدراج صف بيانات جديد</span>
+              </button>
+              <button
+                type="button"
+                (click)="showImportModal.set(true)"
+                class="px-3 py-1.5 rounded border border-emerald-600 text-[#107c41] hover:bg-emerald-50 font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">publish</mat-icon>
+                <span>استيراد نصي من شيت إكسيل خارجي</span>
               </button>
               <button
                 type="button"
@@ -506,6 +553,28 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
         </div>
       }
 
+      <!-- 4B. CONTEXTUAL CELL INSPECTOR BANNER (شريط تعريف ودليل الخلية النشطة - مع كل دوسة معلومات أكتر تعريفية) -->
+      @if (activeCellDescription()) {
+        <div
+          class="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-blue-500/10 border-b border-emerald-500/20 px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-800 dark:text-slate-200 transition-all"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-5 h-5 rounded bg-[#107c41] text-white flex items-center justify-center shrink-0 font-bold text-[10px]">
+              i
+            </span>
+            <span class="font-bold text-[#107c41] dark:text-emerald-400 shrink-0">
+              [دليل الخلية {{ selectedCellLabel() }}]:
+            </span>
+            <span class="truncate font-medium">
+              {{ activeCellDescription() }}
+            </span>
+          </div>
+          <span class="text-[10px] text-gray-400 font-mono shrink-0 pl-2">
+            مزامنة مباشرة ⚡
+          </span>
+        </div>
+      }
+
       <!-- 5. THE EXCEL CELL GRID WORKSPACE (المربعات وخلايا الإكسيل الحقيقية بالكامل) -->
       <div
         class="excel-grid-viewport overflow-auto min-h-[460px] max-h-[720px] bg-white dark:bg-[#0f172a] relative"
@@ -555,6 +624,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- A. Date -->
                   <td
                     class="excel-cell"
+                    [style.background-color]="cellFillColors()['A' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
                     (click)="focusCell('A', rowIdx + 1, item.date, item.id)"
                   >
@@ -572,6 +642,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- B. Worker Name -->
                   <td
                     class="excel-cell"
+                    [style.background-color]="cellFillColors()['B' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
                     (click)="focusCell('B', rowIdx + 1, store.workerName(item.workerId), item.id)"
                   >
@@ -592,6 +663,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- C. Role (Computed) -->
                   <td
                     class="excel-cell text-gray-500 font-medium"
+                    [style.background-color]="cellFillColors()['C' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
                     (click)="focusCell('C', rowIdx + 1, getWorkerRole(item.workerId), item.id)"
                   >
@@ -601,6 +673,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- D. Project -->
                   <td
                     class="excel-cell"
+                    [style.background-color]="cellFillColors()['D' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
                     (click)="focusCell('D', rowIdx + 1, store.projectName(item.projectId), item.id)"
                   >
@@ -621,6 +694,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- E. Day Worked -->
                   <td
                     class="excel-cell text-center"
+                    [style.background-color]="cellFillColors()['E' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
                     (click)="focusCell('E', rowIdx + 1, item.dayWorked + '', item.id)"
                   >
@@ -639,6 +713,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- F. Night Worked -->
                   <td
                     class="excel-cell text-center"
+                    [style.background-color]="cellFillColors()['F' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
                     (click)="focusCell('F', rowIdx + 1, item.nightWorked + '', item.id)"
                   >
@@ -657,6 +732,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- G. Worker Day Rate Snapshot -->
                   <td
                     class="excel-cell text-left font-mono"
+                    [style.background-color]="cellFillColors()['G' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
                     (click)="focusCell('G', rowIdx + 1, item.workerDayRateSnapshot + '', item.id)"
                   >
@@ -671,6 +747,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- H. Worker Night Rate Snapshot -->
                   <td
                     class="excel-cell text-left font-mono"
+                    [style.background-color]="cellFillColors()['H' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
                     (click)="focusCell('H', rowIdx + 1, item.workerNightRateSnapshot + '', item.id)"
                   >
@@ -684,7 +761,8 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
 
                   <!-- I. Worker Gross (Formula Cell) -->
                   <td
-                    class="excel-cell text-left font-mono font-bold bg-emerald-50/40 dark:bg-emerald-950/20 text-[#107c41]"
+                    class="excel-cell text-left font-mono font-bold text-[#107c41]"
+                    [style.background-color]="cellFillColors()['I' + (rowIdx + 1)] || '#f0fdf4'"
                     [class.cell-selected]="selectedCellLabel() === ('I' + (rowIdx + 1))"
                     (click)="focusCell('I', rowIdx + 1, (item.dayWorked * item.workerDayRateSnapshot + item.nightWorked * item.workerNightRateSnapshot) + '', item.id)"
                   >
@@ -693,7 +771,8 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
 
                   <!-- J. Company Gross (Formula Cell) -->
                   <td
-                    class="excel-cell text-left font-mono font-bold bg-blue-50/40 dark:bg-blue-950/20 text-blue-600"
+                    class="excel-cell text-left font-mono font-bold text-blue-600"
+                    [style.background-color]="cellFillColors()['J' + (rowIdx + 1)] || '#eff6ff'"
                     [class.cell-selected]="selectedCellLabel() === ('J' + (rowIdx + 1))"
                     (click)="focusCell('J', rowIdx + 1, (item.dayWorked * item.companyDayRateSnapshot + item.nightWorked * item.companyNightRateSnapshot) + '', item.id)"
                   >
@@ -703,6 +782,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                   <!-- K. Notes -->
                   <td
                     class="excel-cell"
+                    [style.background-color]="cellFillColors()['K' + (rowIdx + 1)] || null"
                     [class.cell-selected]="selectedCellLabel() === ('K' + (rowIdx + 1))"
                     (click)="focusCell('K', rowIdx + 1, item.note || '', item.id)"
                   >
@@ -776,7 +856,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     {{ rowIdx + 1 }}
                   </td>
 
-                  <!-- A. ID -->
                   <td
                     class="excel-cell font-mono text-gray-400 font-bold"
                     [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
@@ -785,7 +864,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     #{{ w.id }}
                   </td>
 
-                  <!-- B. Name -->
                   <td
                     class="excel-cell"
                     [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
@@ -802,7 +880,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     }
                   </td>
 
-                  <!-- C. Role -->
                   <td
                     class="excel-cell"
                     [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
@@ -816,7 +893,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     />
                   </td>
 
-                  <!-- D. Day Rate -->
                   <td
                     class="excel-cell text-left font-mono"
                     [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
@@ -830,7 +906,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     />
                   </td>
 
-                  <!-- E. Night Rate -->
                   <td
                     class="excel-cell text-left font-mono"
                     [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
@@ -844,7 +919,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     />
                   </td>
 
-                  <!-- F. Phone -->
                   <td
                     class="excel-cell font-mono"
                     [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
@@ -859,7 +933,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     />
                   </td>
 
-                  <!-- G. Active -->
                   <td
                     class="excel-cell text-center"
                     [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
@@ -878,7 +951,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     </button>
                   </td>
 
-                  <!-- H. Gross -->
                   <td
                     class="excel-cell text-left font-mono font-bold bg-emerald-50/40 text-[#107c41]"
                     [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
@@ -887,7 +959,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     {{ formatMoney(stat.gross) }}
                   </td>
 
-                  <!-- I. Advances -->
                   <td
                     class="excel-cell text-left font-mono font-bold bg-rose-50/40 text-rose-600"
                     [class.cell-selected]="selectedCellLabel() === ('I' + (rowIdx + 1))"
@@ -896,7 +967,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     {{ formatMoney(stat.advances) }}
                   </td>
 
-                  <!-- J. Net -->
                   <td
                     class="excel-cell text-left font-mono font-black bg-blue-50/40 text-blue-700"
                     [class.cell-selected]="selectedCellLabel() === ('J' + (rowIdx + 1))"
@@ -905,7 +975,6 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
                     {{ formatMoney(stat.net) }}
                   </td>
 
-                  <!-- K. Notes -->
                   <td
                     class="excel-cell"
                     [class.cell-selected]="selectedCellLabel() === ('K' + (rowIdx + 1))"
@@ -1771,6 +1840,63 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
         </div>
       </div>
     </div>
+
+    <!-- 8. CSV / TSV TEXT IMPORT MODAL (نافذة استيراد بيانات نصية من شيت إكسيل خارجي) -->
+    @if (showImportModal()) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+          <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                <mat-icon class="!w-4 !h-4 !text-[18px]">publish</mat-icon>
+              </span>
+              <div>
+                <h3 class="font-black text-sm text-[var(--text-heading)]">استيراد نصي من إكسيل (TSV / CSV)</h3>
+                <p class="text-[11px] text-[var(--text-secondary)]">انسخ أي صفوف من ملف إكسيل خارجي والصقها هنا لإدراجها تلقائياً</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              (click)="showImportModal.set(false)"
+              class="p-1 rounded-lg text-gray-400 hover:text-slate-800"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-xs font-bold text-[var(--text-heading)]">
+              الصق الأسطر المنسوخة من إكسيل هنا:
+            </label>
+            <textarea
+              [value]="importTextRaw()"
+              (input)="importTextRaw.set($any($event.target).value)"
+              rows="6"
+              placeholder="مثال:\nاحمد محمود\tنحات\t500\t250\nمحمود علي\tعامل\t400\t200"
+              class="w-full p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-xs font-mono focus:outline-none focus:border-[#107c41]"
+            ></textarea>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
+            <button
+              type="button"
+              (click)="showImportModal.set(false)"
+              class="px-4 py-2 rounded-xl text-xs font-bold border border-[var(--border-subtle)] hover:bg-gray-100"
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              (click)="processImportRawText()"
+              class="px-5 py-2 rounded-xl text-xs font-black bg-[#107c41] hover:bg-[#0c5c30] text-white flex items-center gap-1.5 shadow-sm"
+            >
+              <mat-icon class="!text-sm !w-4 !h-4">add_task</mat-icon>
+              <span>معاينة واستيراد في الشيت</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: `
     .excel-app-window {
@@ -1889,12 +2015,10 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
     .cell-selected {
       outline: 2px solid #107c41 !important;
       outline-offset: -2px;
-      background-color: #f0fdf4 !important;
       z-index: 5;
     }
     :host-context(.dark) .cell-selected {
       outline-color: #34d399 !important;
-      background-color: #064e3b/30 !important;
     }
     .excel-fill-handle {
       position: absolute;
@@ -1987,6 +2111,10 @@ export class LiveExcelPage {
   readonly filterMonth = signal<string>('');
   readonly sortDescending = signal<boolean>(true);
 
+  // Import Modal State
+  readonly showImportModal = signal<boolean>(false);
+  readonly importTextRaw = signal<string>('');
+
   // View Options
   readonly showGridlines = signal<boolean>(true);
   readonly showFormulaBar = signal<boolean>(true);
@@ -1996,6 +2124,7 @@ export class LiveExcelPage {
   readonly isCellBold = signal<boolean>(false);
   readonly isCellItalic = signal<boolean>(false);
   readonly textAlignMode = signal<'right' | 'center' | 'left'>('right');
+  readonly cellFillColors = signal<Record<string, string>>({});
 
   // Selected cell & Formula bar state
   readonly selectedCellLabel = signal<string>('A1');
@@ -2019,6 +2148,65 @@ export class LiveExcelPage {
       ? this.store.projectName(this.selectedProjectId()!)
       : 'كافة_المشاريع';
     return `دفتر_موقع_${projName}_${this.store.todayIso()}`;
+  });
+
+  // Contextual Cell Inspector Banner (مع كل دوسة معلومات أكتر حتى لو تعريفية)
+  readonly activeCellDescription = computed(() => {
+    const cell = this.selectedCellLabel();
+    if (!cell) return null;
+    const col = this.activeColLetter();
+    const row = this.selectedRowNumber();
+    const tab = this.activeTab();
+
+    switch (tab) {
+      case 'attendance': {
+        const descriptions: Record<string, string> = {
+          A: `الصف #${row} — تاريخ تسجيل اليومية. يحدد الفترة التصفوية لمستحقات العامل ونصف الشهر.`,
+          B: `الصف #${row} — اسم العامل / الصنايعي الحاضر. تغيير الاسم يحدث أسعار الوردية واليوميات آلياً.`,
+          C: `الصف #${row} — المهنة / الصنعة المسجلة للعامل (نحات، أسطى، عامل، نقاش...).`,
+          D: `الصف #${row} — المشروع المسجل عليه هذا الحضور لحساب تكاليف هذا الموقع تحديداً.`,
+          E: `الصف #${row} — وردية النهار الصباحية (1 = حاضر يومية كاملة، 0 = غياب).`,
+          F: `الصف #${row} — وردية السهرة المسائية (1 = سهرة إضافية، 0 = بدون).`,
+          G: `الصف #${row} — سعر اليومية الصباحية المعتمدة وقت تسجيل القسيمة (Snapshot).`,
+          H: `الصف #${row} — سعر يومية السهرة المعتمدة وقت تسجيل القسيمة (Snapshot).`,
+          I: `الصف #${row} — إجمالي استحقاق العامل الصافي = (النهار × السعر) + (السهرة × السعر).`,
+          J: `الصف #${row} — القيمة المحسوبة لصالح الشركة المقابلة لوارد المستخلصات.`,
+          K: `الصف #${row} — ملاحظات وتفاصيل عملية الموقع الخاصة بهذا الحضور.`,
+        };
+        return descriptions[col] || `الصف #${row} — خلية محددة في شيت اليوميات والحضور [العمود ${col}]. التعديل المباشر يحفظ فوراً.`;
+      }
+      case 'workers': {
+        const descriptions: Record<string, string> = {
+          A: `كود العامل الفريد في الداتا بيز.`,
+          B: `اسم العامل بالكامل. التعديل هنا يضمن توحيد الاسم في كافة سجلات النظام.`,
+          C: `الصنعة / التخصص الرئيسي للعامل في الموقع.`,
+          D: `السعر الافتراضي ليومية النهار الصباحية للعامل عند تسجيل حضور جديد.`,
+          E: `السعر الافتراضي ليومية السهرة المسائية للعامل عند تسجيل سهرة جديدة.`,
+          F: `رقم هاتف التواصل المباشر مع العامل.`,
+          G: `حالة العامل (نشط بالموقع / إجازة).`,
+          H: `إجمالي المستحق المالي المجمع للعامل من كافة اليوميات المسجلة.`,
+          I: `إجمالي السلف النقدية المسحوبة بواسطة هذا العامل.`,
+          J: `صافي المتبقي للقبض = (إجمالي المستحق - إجمالي السلف المسحوبة).`,
+        };
+        return descriptions[col] || `الصف #${row} — خلية محددة في دليل العمال [العمود ${col}].`;
+      }
+      case 'checks': {
+        const descriptions: Record<string, string> = {
+          A: `اتجاه الشيك (وارد من شركة أو عميل / صادر لمورد).`,
+          B: `رقم الشيك البنكي المكتوب على الورقة.`,
+          C: `اسم البنك الصادر منه الشيك والفرع.`,
+          D: `تاريخ استحقاق وصرف الشيك في البنك.`,
+          E: `إجمالي قيمة الشيك الاسمية بالجنيه المصري.`,
+          F: `حالة الشيك (اتصرف في البنك / معلق / مرتجع).`,
+          G: `المبلغ المسحوب كاش كـ عُهدة في جيب المقاول لسداد سلف العمالة واليوميات.`,
+          H: `المتبقي في حساب البنك = (قيمة الشيك الإجمالية - المسحوب كاش للسيولة).`,
+          I: `صافي كاش الجيب المتبقي بعد صرف السلف ومصاريف السحب الخارجية.`,
+        };
+        return descriptions[col] || `الصف #${row} — خلية محددة في شيت الشيكات وحساب البنك [العمود ${col}].`;
+      }
+      default:
+        return `الصف #${row} — خلية محددة في [العمود ${col}]. التعديل المباشر يحفظ فوراً في الداتا بيز.`;
+    }
   });
 
   setActiveTab(tab: ExcelSheetTab): void {
@@ -2050,6 +2238,13 @@ export class LiveExcelPage {
 
   toggleCellItalic(): void {
     this.isCellItalic.set(!this.isCellItalic());
+  }
+
+  setCellFillColor(colorHex: string): void {
+    const cell = this.selectedCellLabel();
+    if (!cell) return;
+    this.cellFillColors.update((map) => ({ ...map, [cell]: colorHex }));
+    this.store.showToast(`تم تعيين لون تعبئة الخلية ${cell}`, 'info');
   }
 
   focusCell(col: string, rowNum: number, value: string, rowId?: number): void {
@@ -2563,6 +2758,58 @@ export class LiveExcelPage {
       case 'master':
         break;
     }
+  }
+
+  // Parse Raw Tabbed/CSV Text and Batch Insert
+  async processImportRawText(): Promise<void> {
+    const raw = this.importTextRaw().trim();
+    if (!raw) {
+      this.store.showToast('يرجى لصق نص البيانات أولاً', 'warning');
+      return;
+    }
+
+    const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+    let insertedCount = 0;
+    const defaultProjId = this.selectedProjectId() || this.store.projects()[0]?.id || 1;
+
+    for (const line of lines) {
+      const cols = line.split(/[\t,;]/).map((c) => c.trim());
+      if (cols.length === 0) continue;
+
+      if (this.activeTab() === 'workers') {
+        const name = cols[0] || 'عامل جديد';
+        const role = cols[1] || 'عامل';
+        const dayRate = parseFloat(cols[2]) || 500;
+        const nightRate = parseFloat(cols[3]) || 250;
+        const phone = cols[4] || '';
+        await this.store.saveWorker({
+          name,
+          role,
+          workerDayRate: dayRate,
+          workerNightRate: nightRate,
+          phone,
+          active: true,
+          notes: 'مستورد من نص إكسيل خارجي',
+        });
+        insertedCount++;
+      } else if (this.activeTab() === 'expenses') {
+        const cat = cols[0] || 'مواصلات';
+        const amount = parseFloat(cols[1]) || 100;
+        const note = cols[2] || 'مصروف مستورد';
+        await this.store.saveExpense({
+          date: this.store.todayIso(),
+          category: cat as any,
+          amount,
+          projectId: defaultProjId,
+          note,
+        });
+        insertedCount++;
+      }
+    }
+
+    this.showImportModal.set(false);
+    this.importTextRaw.set('');
+    this.store.showToast(`تم استيراد ${insertedCount} صف بنجاح إلى الشيت!`, 'success');
   }
 
   // Real Excel Download (.xlsx)
