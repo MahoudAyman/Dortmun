@@ -204,9 +204,9 @@ export class StoreService {
     id?: number | null;
   } | null>(null);
 
-  // Daily Pocket & Check Withdrawal Session ("سحبت كام من فلوس الشيك اليوم مثلا 4000 ومصاريف سحب 40 وسلف 3500")
-  readonly pocketWithdrawnAmount = signal<number>(4000);
-  readonly pocketWithdrawalFee = signal<number>(40);
+  // Daily Pocket & Check Withdrawal Session (محسوب تلقائياً من السجلات الفعلية بدون أرقام عشوائية)
+  readonly pocketWithdrawnAmount = signal<number>(0);
+  readonly pocketWithdrawalFee = signal<number>(0);
   readonly pocketCustomAdvances = signal<number | null>(null);
   readonly pocketSelectedCheckId = signal<number | null>(null);
   readonly pocketSelectedProjectId = signal<number | null>(null);
@@ -274,36 +274,125 @@ export class StoreService {
   );
 
   readonly dailyPocketSummary = computed<PocketCashSummary>(() => {
-    const today = this.todayIso();
     const chkId = this.pocketSelectedCheckId();
-    const todayAdvances = this.advances()
-      .filter((a) => (chkId ? a.checkId === chkId : a.date === today))
-      .reduce((s, a) => s + a.amount, 0);
-    const todaySettlements = this.settlements()
-      .filter((st) => (chkId ? st.checkId === chkId : st.date === today))
-      .reduce((s, st) => s + st.netPaid, 0);
-    const todayOtherExpenses = this.expenses()
-      .filter(
-        (e) =>
-          (chkId ? e.checkId === chkId : e.date === today) &&
-          e.category !== 'رسوم سحب شيك'
-      )
-      .reduce((s, e) => s + e.amount, 0);
+    const projId = this.pocketSelectedProjectId();
+    const allBreakdowns = this.checkFundBreakdowns();
 
-    const customAdv = this.pocketCustomAdvances();
-    const effectiveAdvances =
-      customAdv !== null && customAdv >= 0
-        ? customAdv
-        : todayAdvances > 0
-          ? todayAdvances
-          : 3500;
+    // 1. If a specific Check is selected, pull 100% from that Check's recorded breakdown
+    if (chkId) {
+      const cb = allBreakdowns.find((b) => b.check.id === chkId);
+      if (cb) {
+        const manualWithdrawn = this.pocketWithdrawnAmount();
+        const manualFee = this.pocketWithdrawalFee();
+        const manualAdv = this.pocketCustomAdvances();
+        const otherExp = Math.max(0, cb.expensesSpentFromCheck - cb.withdrawalFee);
+        const resolvedPid = cb.check.projectId;
+
+        const linkedAdvances = this.advances().filter((a) => a.checkId === chkId || (resolvedPid && a.projectId === resolvedPid));
+        const linkedSettlements = this.settlements().filter((s) => s.checkId === chkId || (resolvedPid && s.projectId === resolvedPid));
+        const linkedExpenses = this.expenses().filter((e) => e.checkId === chkId || (resolvedPid && e.projectId === resolvedPid));
+
+        return calculateDailyPocketSummary({
+          withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : cb.withdrawnAmount,
+          withdrawalFee: manualFee > 0 ? manualFee : cb.withdrawalFee,
+          advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : cb.advancesSpentFromCheck,
+          settlementsTotal: cb.settlementsPaidFromCheck,
+          otherExpensesTotal: otherExp,
+          checksIncomingTotal: cb.check.amount,
+          remainingInCheck: cb.remainingInCheck,
+          projectChecks: [cb.check],
+          recordedAdvances: linkedAdvances,
+          recordedSettlements: linkedSettlements,
+          recordedExpenses: linkedExpenses,
+        });
+      }
+    }
+
+    // 2. If a specific Project is selected, pull 100% from that Project's recorded breakdown
+    if (projId) {
+      const pb = this.comprehensiveLedger().projectBreakdowns.find((b) => b.projectId === projId);
+      const projChecks = this.checks().filter((c) => c.direction === 'وارد' && c.projectId === projId);
+      const projCheckIds = new Set(projChecks.map((c) => c.id).filter((id): id is number => typeof id === 'number'));
+      const linkedAdvances = this.advances().filter((a) => a.projectId === projId || (a.checkId && projCheckIds.has(a.checkId)));
+      const linkedSettlements = this.settlements().filter((s) => s.projectId === projId || (s.checkId && projCheckIds.has(s.checkId)));
+      const linkedExpenses = this.expenses().filter((e) => e.projectId === projId || (e.checkId && projCheckIds.has(e.checkId)));
+
+      const projTotalChecksAmount = projChecks.reduce((s, c) => s + c.amount, 0);
+      const projWithdrawnChecksAmount = projChecks.reduce(
+        (s, c) => s + ((c.withdrawnAmount ?? 0) > 0 || c.status === 'اتصرف' ? (c.withdrawnAmount ?? c.amount) : c.amount),
+        0
+      );
+
+      if (pb) {
+        const manualWithdrawn = this.pocketWithdrawnAmount();
+        const manualFee = this.pocketWithdrawalFee();
+        const manualAdv = this.pocketCustomAdvances();
+        const recWithdrawn =
+          (pb.checksWithdrawnAmount ?? 0) > 0
+            ? pb.checksWithdrawnAmount!
+            : projWithdrawnChecksAmount > 0
+              ? projWithdrawnChecksAmount
+              : pb.totalReceivedForProject;
+        const recFee = pb.withdrawalFeesSpent ?? 0;
+        const otherExp = Math.max(0, pb.expensesSpent - recFee);
+
+        return calculateDailyPocketSummary({
+          withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : recWithdrawn,
+          withdrawalFee: manualFee > 0 ? manualFee : recFee,
+          advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : pb.advancesSpent,
+          settlementsTotal: pb.settlementsPaid + pb.nashPaid,
+          otherExpensesTotal: otherExp,
+          checksIncomingTotal: projTotalChecksAmount,
+          remainingInCheck: Math.max(0, projTotalChecksAmount - (pb.advancesSpent + pb.settlementsPaid + pb.expensesSpent)),
+          projectChecks: projChecks,
+          recordedAdvances: linkedAdvances,
+          recordedSettlements: linkedSettlements,
+          recordedExpenses: linkedExpenses,
+        });
+      }
+    }
+
+    // 3. Otherwise, aggregate across all recorded incoming checks & treasury records
+    const incomingCheckBreakdowns = allBreakdowns.filter((b) => b.check.direction === 'وارد');
+    const incomingChecks = this.checks().filter((c) => c.direction === 'وارد');
+    const totalIncomingChecksAmount = incomingChecks.reduce((s, c) => s + c.amount, 0);
+    const recordedChecksWithdrawn = incomingCheckBreakdowns.reduce(
+      (s, b) =>
+        s +
+        ((b.check.withdrawnAmount ?? 0) > 0 || b.check.status === 'اتصرف'
+          ? b.withdrawnAmount
+          : b.check.amount),
+      0
+    );
+    const ledger = this.comprehensiveLedger();
+    const baseWithdrawn =
+      recordedChecksWithdrawn > 0 ? recordedChecksWithdrawn : ledger.totalReceivedAllSources;
+    const recordedWithdrawalFees = incomingCheckBreakdowns.reduce(
+      (s, b) => s + b.withdrawalFee,
+      0
+    );
+    const allFeeExpenses = this.expenses()
+      .filter((e) => e.category === 'رسوم سحب شيك')
+      .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const effectiveRecordedFee = Math.max(recordedWithdrawalFees, allFeeExpenses);
+    const otherExpenses = Math.max(0, ledger.totalExternalExpenses - effectiveRecordedFee);
+
+    const manualWithdrawn = this.pocketWithdrawnAmount();
+    const manualFee = this.pocketWithdrawalFee();
+    const manualAdv = this.pocketCustomAdvances();
 
     return calculateDailyPocketSummary({
-      withdrawnAmount: this.pocketWithdrawnAmount(),
-      withdrawalFee: this.pocketWithdrawalFee(),
-      advancesTotal: effectiveAdvances,
-      settlementsTotal: todaySettlements,
-      otherExpensesTotal: todayOtherExpenses,
+      withdrawnAmount: manualWithdrawn > 0 ? manualWithdrawn : baseWithdrawn,
+      withdrawalFee: manualFee > 0 ? manualFee : effectiveRecordedFee,
+      advancesTotal: manualAdv !== null && manualAdv >= 0 ? manualAdv : ledger.totalAdvancesPaid,
+      settlementsTotal: ledger.totalSettlementsPaid + ledger.totalNashCashPaid,
+      otherExpensesTotal: otherExpenses,
+      checksIncomingTotal: totalIncomingChecksAmount,
+      remainingInCheck: Math.max(0, totalIncomingChecksAmount - ledger.totalSpentAll),
+      projectChecks: incomingChecks,
+      recordedAdvances: this.advances(),
+      recordedSettlements: this.settlements(),
+      recordedExpenses: this.expenses(),
     });
   });
 
@@ -3334,11 +3423,25 @@ export class StoreService {
     this.activeHalfSheet.set({ type: 'extract', id: extractId });
   }
 
-  openPocketSheet(checkId?: number | null): void {
-    if (checkId !== undefined) {
+  openPocketSheet(checkId?: number | null, projectId?: number | null): void {
+    this.pocketCustomAdvances.set(null);
+    if (checkId !== undefined && checkId !== null) {
       this.pocketSelectedCheckId.set(checkId);
+      const chk = this.checks().find((c) => c.id === checkId);
+      if (chk) {
+        this.pocketSelectedProjectId.set(chk.projectId ?? null);
+        this.pocketWithdrawnAmount.set(chk.withdrawnAmount || chk.amount || 0);
+        this.pocketWithdrawalFee.set(chk.withdrawalFee || 0);
+      }
+    } else {
+      this.pocketSelectedCheckId.set(null);
+      if (projectId !== undefined) {
+        this.pocketSelectedProjectId.set(projectId);
+      }
+      this.pocketWithdrawnAmount.set(0);
+      this.pocketWithdrawalFee.set(0);
     }
-    this.activeHalfSheet.set({ type: 'pocket', id: checkId ?? null });
+    this.activeHalfSheet.set({ type: 'pocket', id: checkId ?? projectId ?? null });
   }
 
   closeHalfSheet(): void {
@@ -3374,7 +3477,7 @@ export class StoreService {
     const nashList = this.extraCashes().filter((ec) => ec.workerId === worker.id);
 
     const openAdvancesSum = openAdvances.reduce((s, a) => s + a.amount, 0);
-    const openDeductionsSum = openDeductions.reduce((s, d) => s + d.amount, 0);
+    const openDeductionsSum = openDeductions.reduce((s, d) => d.amount + s, 0);
     const settlementsPaidSum = settlementsList.reduce((s, st) => s + st.netPaid, 0);
     const unpaidNashSum = nashList.reduce(
       (s, ec) => s + Math.max(0, ec.amount - ec.paidCash),
@@ -3437,18 +3540,152 @@ export class StoreService {
     const sheet = this.activeHalfSheet();
     if (!sheet || sheet.type !== 'project') return null;
     const pid = sheet.id ?? null;
+    const ledger = this.comprehensiveLedger();
     const breakdown =
-      this.comprehensiveLedger().projectBreakdowns.find(
-        (b) => b.projectId === pid
-      ) || null;
+      ledger.projectBreakdowns.find((b) => b.projectId === pid) || null;
+    const project = pid ? this.projects().find((p) => p.id === pid) || null : null;
+
     const projectChecks = this.checkFundBreakdowns().filter(
-      (c) => c.check.projectId === pid
+      (c) => (c.check.projectId ?? null) === pid
     );
-    const projectExtracts = this.extracts().filter((e) => e.projectId === pid);
+    const projectExtracts = this.extracts().filter(
+      (e) => (e.projectId ?? null) === pid
+    );
+    const projectMovements = ledger.movements.filter(
+      (m) => (m.projectId ?? null) === pid
+    );
+
+    // Build per-worker breakdown in this project
+    const projAtt = this.attendances().filter((a) => (a.projectId ?? null) === pid);
+    const workerSummaryMap = new Map<
+      number,
+      {
+        workerId: number;
+        workerName: string;
+        role: string;
+        days: number;
+        nights: number;
+        grossWages: number;
+        advancesPaid: number;
+        settlementsPaid: number;
+        deductions: number;
+        netRemaining: number;
+      }
+    >();
+
+    const ensureWorkerEntry = (wId: number) => {
+      let entry = workerSummaryMap.get(wId);
+      if (!entry) {
+        const wObj = this.workers().find((w) => w.id === wId);
+        entry = {
+          workerId: wId,
+          workerName: wObj?.name || `عامل #${wId}`,
+          role: wObj?.role || 'عامل',
+          days: 0,
+          nights: 0,
+          grossWages: 0,
+          advancesPaid: 0,
+          settlementsPaid: 0,
+          deductions: 0,
+          netRemaining: 0,
+        };
+        workerSummaryMap.set(wId, entry);
+      }
+      return entry;
+    };
+
+    for (const a of projAtt) {
+      const entry = ensureWorkerEntry(a.workerId);
+      const wObj = this.workers().find((w) => w.id === a.workerId);
+      entry.days += a.dayWorked;
+      entry.nights += a.nightWorked;
+      entry.grossWages +=
+        a.dayWorked * (a.workerDayRateSnapshot || wObj?.workerDayRate || 0) +
+        a.nightWorked * (a.workerNightRateSnapshot || wObj?.workerNightRate || 0);
+    }
+
+    const projCheckIds = new Set(
+      projectChecks.map((c) => c.check.id).filter((id): id is number => typeof id === 'number')
+    );
+
+    const projectAdvances = this.advances()
+      .filter(
+        (adv) =>
+          (adv.projectId ?? null) === pid ||
+          (adv.checkId && projCheckIds.has(adv.checkId))
+      )
+      .map((adv) => {
+        const entry = ensureWorkerEntry(adv.workerId);
+        entry.advancesPaid += Number(adv.amount) || 0;
+        const chk = adv.checkId
+          ? this.checks().find((c) => c.id === adv.checkId)
+          : undefined;
+        return {
+          ...adv,
+          workerName: entry.workerName,
+          checkNumber: chk?.number || null,
+        };
+      });
+
+    const projectSettlements = this.settlements()
+      .filter(
+        (st) =>
+          (st.projectId ?? null) === pid ||
+          (st.checkId && projCheckIds.has(st.checkId))
+      )
+      .map((st) => {
+        const entry = ensureWorkerEntry(st.workerId);
+        entry.settlementsPaid += Number(st.netPaid) || 0;
+        const chk = st.checkId
+          ? this.checks().find((c) => c.id === st.checkId)
+          : undefined;
+        return {
+          ...st,
+          workerName: entry.workerName,
+          checkNumber: chk?.number || null,
+        };
+      });
+
+    for (const d of this.deductions()) {
+      if ((d.projectId ?? null) === pid) {
+        const entry = ensureWorkerEntry(d.workerId);
+        entry.deductions += Number(d.amount) || 0;
+      }
+    }
+
+    for (const entry of workerSummaryMap.values()) {
+      entry.netRemaining = Math.max(
+        0,
+        entry.grossWages - entry.deductions - entry.advancesPaid - entry.settlementsPaid
+      );
+    }
+
+    const projectExpenses = this.expenses()
+      .filter(
+        (exp) =>
+          (exp.projectId ?? null) === pid ||
+          (exp.checkId && projCheckIds.has(exp.checkId))
+      )
+      .map((exp) => {
+        const chk = exp.checkId
+          ? this.checks().find((c) => c.id === exp.checkId)
+          : undefined;
+        return {
+          ...exp,
+          checkNumber: chk?.number || null,
+        };
+      });
+
     return {
+      project,
       breakdown,
       projectChecks,
       projectExtracts,
+      projectWorkers: Array.from(workerSummaryMap.values()),
+      projectAdvances,
+      projectSettlements,
+      projectExpenses,
+      projectMovements,
     };
   });
 
@@ -3560,9 +3797,13 @@ export class StoreService {
         ? options.customNetPaid
         : calculatedNet;
 
+    const chk = options?.checkId
+      ? this.checks().find((c) => c.id === options.checkId)
+      : undefined;
     const defaultProjId =
       options?.projectId ??
-      (wAtt.length > 0 ? wAtt[0].projectId : this.selectedProjectId() || 1);
+      chk?.projectId ??
+      (wAtt.length > 0 ? wAtt[0].projectId : this.selectedProjectId() || null);
 
     await this.createSettlement(
       {
@@ -3580,8 +3821,8 @@ export class StoreService {
         checkId: options?.checkId ?? null,
         notes:
           options?.notes ||
-          (options?.checkId
-            ? `تقفيل وصرف حساب العامل بالكامل من شيك #${options.checkId}`
+          (chk
+            ? `تقفيل وصرف حساب العامل بالكامل من شيك #${chk.number}`
             : 'تقفيل وصرف حساب العامل بالكامل (اديله حسابه)'),
       },
       openAdv.filter((a) => a.id !== undefined).map((a) => a.id!),
@@ -3595,58 +3836,102 @@ export class StoreService {
   }
 
   /**
-   * حفظ جلسة سحب الشيك النقدي اليومية (مثلاً سحبت 4000 ومصاريف سحب 40 ج) وربطها بالشيك والمصاريف
+   * حفظ سحبة شيك مشروع فعلية وربطها بالمشروع والمصاريف الخارجية
    */
-  async savePocketWithdrawalToCheck(params: {
-    checkId: number | null;
-    projectId: number | null;
-    withdrawnAmount: number;
-    withdrawalFee: number;
+  async savePocketWithdrawalToCheck(params?: boolean | {
+    checkId?: number | null;
+    projectId?: number | null;
+    withdrawnAmount?: number;
+    withdrawalFee?: number;
     recordFeeAsExpense?: boolean;
   }): Promise<void> {
-    this.pocketWithdrawnAmount.set(params.withdrawnAmount);
-    this.pocketWithdrawalFee.set(params.withdrawalFee);
-    this.pocketSelectedCheckId.set(params.checkId);
-    this.pocketSelectedProjectId.set(params.projectId);
+    const isBool = typeof params === 'boolean';
+    const opt = !isBool && params ? params : undefined;
+    const checkId = opt?.checkId !== undefined ? opt.checkId : this.pocketSelectedCheckId();
+    const projectId = opt?.projectId !== undefined ? opt.projectId : this.pocketSelectedProjectId();
+    const withdrawnAmount = opt?.withdrawnAmount !== undefined ? opt.withdrawnAmount : this.pocketWithdrawnAmount();
+    const withdrawalFee = opt?.withdrawalFee !== undefined ? opt.withdrawalFee : this.pocketWithdrawalFee();
+    const recordFeeAsExpense = isBool ? params : (opt?.recordFeeAsExpense ?? true);
 
-    if (params.checkId) {
-      const chk = this.checks().find((c) => c.id === params.checkId);
+    this.pocketWithdrawnAmount.set(withdrawnAmount);
+    this.pocketWithdrawalFee.set(withdrawalFee);
+    this.pocketSelectedCheckId.set(checkId);
+    this.pocketSelectedProjectId.set(projectId);
+
+    let targetCheckId = checkId;
+
+    if (targetCheckId) {
+      const chk = this.checks().find((c) => c.id === targetCheckId);
       if (chk) {
         await this.saveCheck({
           ...chk,
-          withdrawnAmount: params.withdrawnAmount,
-          withdrawalFee: params.withdrawalFee,
+          projectId: projectId ?? chk.projectId,
+          withdrawnAmount,
+          withdrawalFee,
           status: 'اتصرف',
+        });
+      }
+    } else if (withdrawnAmount > 0) {
+      // إذا لم يكن هناك شيك مسجل بعد، ننشئ سجل شيك وارد للمشروع بالمبلغ المسحوب حتى يُحفظ في قاعدة البيانات
+      targetCheckId = await this.saveCheck({
+        direction: 'وارد',
+        number: `سحبة-${this.todayIso()}`,
+        bank: 'سحبة شيك مشروع',
+        amount: withdrawnAmount,
+        dueDate: this.todayIso(),
+        status: 'اتصرف',
+        projectId,
+        extractId: null,
+        withdrawnAmount,
+        withdrawalFee,
+        notes: 'تم التسجيل من كشف سحبة شيك المشروع',
+      });
+      this.pocketSelectedCheckId.set(targetCheckId);
+    }
+
+    if (recordFeeAsExpense && withdrawalFee > 0) {
+      const alreadyHasFeeExpense = this.expenses().some(
+        (e) =>
+          targetCheckId &&
+          e.checkId === targetCheckId &&
+          e.category === 'رسوم سحب شيك' &&
+          e.amount === withdrawalFee
+      );
+      if (!alreadyHasFeeExpense) {
+        await this.saveExpense({
+          date: this.todayIso(),
+          category: 'رسوم سحب شيك',
+          amount: withdrawalFee,
+          projectId,
+          checkId: targetCheckId,
+          note: `مصاريف خارجية حق سحب شيك (${this.money(withdrawnAmount)})`,
         });
       }
     }
 
-    if (params.recordFeeAsExpense && params.withdrawalFee > 0) {
-      await this.saveExpense({
-        date: this.todayIso(),
-        category: 'رسوم سحب شيك',
-        amount: params.withdrawalFee,
-        projectId: params.projectId,
-        checkId: params.checkId,
-        note: `مصاريف خارجية حق سحب شيك (${this.money(params.withdrawnAmount)})`,
-      });
-    }
+    // Reset manual overrides so computed values read directly from the saved DB records
+    this.pocketWithdrawnAmount.set(0);
+    this.pocketWithdrawalFee.set(0);
+    this.pocketCustomAdvances.set(null);
 
     this.showToast(
-      `تم تحديث عهدة الجيب: سحبت ${this.money(params.withdrawnAmount)} ومصاريف سحب ${this.money(params.withdrawalFee)}`,
+      `تم حفظ سحبة الشيك (${this.money(withdrawnAmount)}) ورسوم السحب (${this.money(withdrawalFee)}) في السجلات`,
       'success'
     );
   }
 
   /**
-   * رسائل التوجيه الذكية في كل صفحة ("المفروض أعمل كذا أو نسيت أعمل كذا")
+   * رسائل التوجيه الذكية في كل صفحة — تذكير واحد مختصر ومبني ١٠٠٪ على البيانات الفعلية غير المكتملة فقط بدون زحمة
    */
   getPageAdvisorTips(routePath: string): PageAdvisorTip[] {
     const tips: PageAdvisorTip[] = [];
     const hc = this.todayHeadcountMatch();
     const ledger = this.comprehensiveLedger();
     const unlinkedChecks = this.checks().filter(
-      (c) => c.direction === 'وارد' && (!c.projectId || !c.extractId)
+      (c) => c.direction === 'وارد' && !c.projectId
+    );
+    const unlinkedAdvances = this.advances().filter(
+      (a) => !a.projectId && !a.checkId
     );
     const workersWithUnpaidBalance = this.workers().filter((w) => {
       if (!w.id) return false;
@@ -3667,112 +3952,73 @@ export class StoreService {
       return gross - adv - ded - paid > 0;
     });
 
-    // Global check if mandatory headcount is missing today
     if (!hc.hasMandatoryRecord && (routePath.includes('dashboard') || routePath.includes('attendance') || routePath.includes('bulk'))) {
       tips.push({
         id: 'tip-missing-headcount',
-        badge: 'نسيت خطوة إجبارية اليوم',
-        title: 'لم تسجل العدد اليومي الإجباري النهارده!',
-        description:
-          'المفروض تسجل إجمالي عدد العمالة والنحاتية وعدد السهرة أولاً عشان النظام يطابقهم تلقائياً مع الأسماء.',
+        badge: 'تذكير يومي',
+        title: 'نسيت تسجل العدد اليومي الإجباري النهارده',
+        description: 'سجّل عدد العمالة والنحاتية والسهرة أولاً لمطابقتها مع الأسماء.',
         severity: 'warning',
         icon: 'fact_check',
-        actionLabel: 'سجل العدد الإجباري الآن',
+        actionLabel: 'تسجيل العدد اليومي',
         actionType: 'open_headcount',
       });
     } else if (!hc.isExactMatch && (routePath.includes('attendance') || routePath.includes('bulk'))) {
       tips.push({
         id: 'tip-headcount-mismatch',
-        badge: 'مراجعة مطلوبة',
-        title: `العدد المسجل بالأسماء (${this.num(hc.actualDays)}) لا يطابق العدد الإجباري (${this.num(hc.expectedDays)})`,
-        description:
-          'المفروض تضيف أو تراجع أسماء العمال الحاضرين النهارده حتى تتطابق اليوميات ١٠٠٪ قبل صرف أي سلف.',
+        badge: 'مطابقة العدد',
+        title: `المسجل بالأسماء (${this.num(hc.actualDays)}) يختلف عن العدد الإجباري (${this.num(hc.expectedDays)})`,
+        description: 'راجع تحضير الأسماء ليتطابق العدد اليومي تماماً.',
         severity: 'amber',
         icon: 'compare_arrows',
-        actionLabel: 'فتح التحضير الجماعي السريع',
+        actionLabel: 'فتح التحضير الجماعي',
         actionType: 'navigate',
         targetRoute: '/bulk',
       });
     }
 
-    if (routePath.includes('workers') || routePath.includes('settlements')) {
-      if (workersWithUnpaidBalance.length > 0) {
-        const firstW = workersWithUnpaidBalance[0];
-        tips.push({
-          id: 'tip-workers-unpaid',
-          badge: 'ميزة سريعة غير مستغلة',
-          title: `عندك ${this.num(workersWithUnpaidBalance.length)} عامل ليهم حساب مستحق (إجمالي ${this.money(ledger.remainingOwedToWorkers)})`,
-          description:
-            'اضغط على أي عامل لتفتح لوحته النصفية فوق الصفحة: تقدر تضيف أو تخصم أيام، تديله حسابه بالكامل من شيك معين، أو تحذفه خالص مع تحضيره.',
-          severity: 'emerald',
-          icon: 'person_search',
-          actionLabel: `افتح لوحة ${firstW.name} الآن`,
-          actionType: 'open_worker_sheet',
-          targetId: firstW.id!,
-        });
-      }
-    }
-
-    if (routePath.includes('checks') || routePath.includes('my-ledger') || routePath.includes('dashboard')) {
+    if (unlinkedChecks.length > 0 && (routePath.includes('checks') || routePath.includes('extracts') || routePath.includes('my-ledger'))) {
       tips.push({
-        id: 'tip-pocket-check-calc',
-        badge: 'حاسبة جيب المقاول والشيكات',
-        title: 'سحبت كام من الشيك النهارده وباقي في جيبك كام؟ (مثال: سحبت 4000 ومصاريف 40 وسلف 3500 = باقي 500 / صافي 460)',
-        description:
-          'استخدم دفتر عهدة الجيب اليومي لربط المبلغ اللي سحبته من الشيك بمصاريف السحب وسلف العمال عشان تعرف الفلوس المفروض تكون في جيبك بالظبط.',
-        severity: 'info',
-        icon: 'account_balance_wallet',
-        actionLabel: 'فتح حاسبة سحبة الشيك وجيب المقاول',
-        actionType: 'open_pocket',
-        targetId: this.checks()[0]?.id ?? null,
+        id: 'tip-unlinked-checks',
+        badge: 'ربط بالمشروع',
+        title: `لديك ${this.num(unlinkedChecks.length)} شيك غير مربوط بمشروع محدد`,
+        description: 'اربط الشيك بالمشروع والمستخلص ليظهر في حساب خزنة المشروع وسحباته تلقائياً.',
+        severity: 'warning',
+        icon: 'link',
+        actionLabel: 'عرض الشيك وربطه',
+        actionType: 'open_check_sheet',
+        targetId: unlinkedChecks[0].id!,
       });
     }
 
-    if (routePath.includes('checks') || routePath.includes('extracts')) {
-      if (unlinkedChecks.length > 0) {
-        tips.push({
-          id: 'tip-unlinked-checks',
-          badge: 'تنبيه ربط الشيكات بالمستخلصات',
-          title: `يوجد ${this.num(unlinkedChecks.length)} شيك غير مربوط بمستخلص أو مشروع!`,
-          description:
-            'المفروض تربط كل شيك بالمشروع والمستخلص بتاعه عشان لما تصرف سلف أو قبض يتخصم من الشيك وتعرف باقي فيه كام وعليك قبض كام.',
-          severity: 'warning',
-          icon: 'link',
-          actionLabel: 'عرض تفاصيل الشيك وربطه',
-          actionType: 'open_check_sheet',
-          targetId: unlinkedChecks[0].id!,
-        });
-      }
-    }
-
-    if (routePath.includes('advances') || routePath.includes('deductions')) {
+    if (unlinkedAdvances.length > 0 && routePath.includes('advances')) {
       tips.push({
-        id: 'tip-link-advance-to-check',
-        badge: 'نصيحة محاسبية ذكية',
-        title: 'اربط كل سلفة بالشيك والمشروع اللي اتصرفت منه!',
-        description:
-          'لما تختار الشيك اللي اتصرفت منه السلفة، النظام بيخصمها تلقائياً من رصيد الشيك ويقولك فاضل في الشيك كام وفي جيبك كام.',
+        id: 'tip-unlinked-advances',
+        badge: 'ربط السلف بالشيك والمشروع',
+        title: `يوجد ${this.num(unlinkedAdvances.length)} سلفة غير محددة بشيك مشروع`,
+        description: 'عند تسجيل السلفة اختر المشروع أو الشيك ليُخصم المبلغ تلقائياً من المتبقي في شيك المشروع.',
         severity: 'emerald',
         icon: 'payments',
-        actionLabel: 'معاينة رصيد الشيكات والجيب',
+        actionLabel: 'كشف سحبات الشيكات',
         actionType: 'open_pocket',
       });
     }
 
-    if (tips.length === 0) {
+    if (workersWithUnpaidBalance.length > 0 && (routePath.includes('workers') || routePath.includes('settlements'))) {
+      const firstW = workersWithUnpaidBalance[0];
       tips.push({
-        id: 'tip-general-half-sheet',
-        badge: 'ميزة اللوحة النصفية السريعة',
-        title: 'اضغط على أي عامل أو شيك أو مشروع لفتح لوحة التفاصيل النصفية فوق الصفحة!',
-        description:
-          'تقدر من نفس المكان تضيف أو تخصم أيام، تصرف سلفة من شيك، تدي العامل حسابه بالكامل، أو تراجع باقي الشيك والمستخلص بدون مغادرة صفحتك.',
-        severity: 'info',
-        icon: 'touch_app',
-        actionLabel: 'استعراض قدرات المساعد زكي',
-        actionType: 'open_zaki_caps',
+        id: 'tip-workers-unpaid',
+        badge: 'تصفية حساب عمال',
+        title: `يوجد ${this.num(workersWithUnpaidBalance.length)} عامل لهم رصيد مستحق (${this.money(ledger.remainingOwedToWorkers)})`,
+        description: 'اضغط على أي عامل لفتح لوحته السريعة وإعطائه حسابه أو إضافة/خصم أيام.',
+        severity: 'emerald',
+        icon: 'person_search',
+        actionLabel: `لوحة ${firstW.name}`,
+        actionType: 'open_worker_sheet',
+        targetId: firstW.id!,
       });
     }
 
-    return tips.slice(0, 2);
+    return tips.slice(0, 1);
   }
 }

@@ -770,17 +770,67 @@ export class App implements AfterViewInit, OnDestroy {
     });
   }
 
+  readonly projectSheetMenuOpen = signal<boolean>(false);
+  readonly sheetExpenseAmount = signal<number>(100);
+  readonly sheetExpenseCategory = signal<'مواصلات' | 'أكل' | 'أدوات' | 'صيانة' | 'رسوم سحب شيك' | 'أخرى'>('مواصلات');
+  readonly sheetExpenseNote = signal<string>('');
+
+  openQuickActionForProject(
+    mode: 'advance' | 'deduction' | 'expense' | 'incoming',
+    projectId: number | null
+  ): void {
+    if (projectId) {
+      this.qaIncomingProjectId.set(projectId);
+      this.store.selectedProjectId.set(projectId);
+    }
+    this.store.closeHalfSheet();
+    this.openQuickActionModal(mode);
+  }
+
+  async quickAddProjectExpenseInSheet(
+    projectId: number | null,
+    checkId?: number | null
+  ): Promise<void> {
+    const amt = Math.max(0, Number(this.sheetExpenseAmount()) || 0);
+    if (amt <= 0) {
+      this.store.showToast('أدخل مبلغ المصروف الخارجي أولاً', 'warning');
+      return;
+    }
+    await this.store.saveExpense({
+      date: this.store.todayIso(),
+      category: this.sheetExpenseCategory(),
+      amount: amt,
+      projectId,
+      checkId: checkId ?? null,
+      note: this.sheetExpenseNote().trim() || 'مصروف مسجل من اللوحة السريعة',
+    });
+    this.sheetExpenseNote.set('');
+  }
+
   async executeFullDeleteWorkerWithRecords(workerId: number): Promise<void> {
     await this.store.deleteWorkerCompletelyWithAllRecords(workerId);
     this.confirmFullDeleteWorkerId.set(null);
   }
 
   async savePocketWithdrawalFromSheet(recordFeeAsExpense: boolean): Promise<void> {
+    const pk = this.store.dailyPocketSummary();
+    const effectiveWithdrawn =
+      this.store.pocketWithdrawnAmount() > 0
+        ? this.store.pocketWithdrawnAmount()
+        : pk.withdrawnAmount;
+    const effectiveFee =
+      this.store.pocketWithdrawalFee() > 0
+        ? this.store.pocketWithdrawalFee()
+        : pk.withdrawalFee;
     await this.store.savePocketWithdrawalToCheck({
       checkId: this.store.pocketSelectedCheckId(),
-      projectId: this.store.pocketSelectedProjectId() ?? this.store.selectedProjectId() ?? 1,
-      withdrawnAmount: this.store.pocketWithdrawnAmount(),
-      withdrawalFee: this.store.pocketWithdrawalFee(),
+      projectId:
+        this.store.pocketSelectedProjectId() ??
+        this.store.selectedProjectId() ??
+        this.store.projects()[0]?.id ??
+        null,
+      withdrawnAmount: effectiveWithdrawn,
+      withdrawalFee: effectiveFee,
       recordFeeAsExpense,
     });
   }

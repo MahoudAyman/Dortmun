@@ -275,7 +275,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
         </div>
       </div>
 
-      <!-- Segmented View Tabs (Mobile-Friendly, 4 Tabs) -->
+      <!-- Segmented View Tabs (Mobile-Friendly, 4 Core Non-Redundant Tabs + Methodology in ⋮ Menu) -->
       <div class="bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 grid grid-cols-2 lg:grid-cols-4 gap-1.5 shadow-sm">
         <button
           type="button"
@@ -288,7 +288,21 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
           "
         >
           <mat-icon class="!w-4 !h-4 !text-[18px]">domain</mat-icon>
-          <span class="truncate">تفاصيل كل مشروع ({{ store.num(ledger.projectBreakdowns.length) }})</span>
+          <span class="truncate">حسابات المشاريع والخزنة ({{ store.num(ledger.projectBreakdowns.length) }})</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="activeTab.set('check-withdrawals')"
+          class="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer"
+          [class]="
+            activeTab() === 'check-withdrawals'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+          "
+        >
+          <mat-icon class="!w-4 !h-4 !text-[18px]">account_balance_wallet</mat-icon>
+          <span class="truncate">ما تم سحبه من شيك المشروع والمتبقي</span>
         </button>
 
         <button
@@ -302,7 +316,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
           "
         >
           <mat-icon class="!w-4 !h-4 !text-[18px]">payments</mat-icon>
-          <span class="truncate">اللي وصلني (شيكات / شركات)</span>
+          <span class="truncate">إضافة رصيد ودفعات للمشاريع</span>
         </button>
 
         <button
@@ -318,23 +332,9 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
           <mat-icon class="!w-4 !h-4 !text-[18px]">swap_vert</mat-icon>
           <span class="truncate">كشف حركة الخزنة ({{ store.num(ledger.movements.length) }})</span>
         </button>
-
-        <button
-          type="button"
-          (click)="activeTab.set('methodology')"
-          class="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer"
-          [class]="
-            activeTab() === 'methodology'
-              ? 'bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 shadow-sm'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-          "
-        >
-          <mat-icon class="!w-4 !h-4 !text-[18px]">analytics</mat-icon>
-          <span class="truncate">مناهج المقاولات ومحاكي الربح</span>
-        </button>
       </div>
 
-      <!-- TAB 1: تفاصيل كل مشروع (Project-by-Project Breakdown) -->
+      <!-- TAB 1: حسابات المشاريع والخزنة (Project-by-Project Breakdown with 1-Click Quick Sheet & ⋮ Menu) -->
       @if (activeTab() === 'projects') {
         <div class="space-y-4">
           @if (ledger.projectBreakdowns.length === 0) {
@@ -359,7 +359,8 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
               @for (pb of ledger.projectBreakdowns; track pb.projectId) {
                 <div
-                  class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col justify-between relative"
+                  (click)="store.openProjectSheet(pb.projectId)"
+                  class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-[#3390EC] shadow-sm overflow-hidden flex flex-col justify-between relative cursor-pointer transition-all"
                 >
                   <!-- Project Card Header with Three-Dots (⋮) Button -->
                   <div class="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
@@ -368,16 +369,21 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                         <mat-icon class="!w-5 !h-5 !text-[22px]">apartment</mat-icon>
                       </div>
                       <div class="min-w-0">
-                        <h3 class="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
-                          {{ pb.projectName }}
-                        </h3>
+                        <div class="flex items-center gap-1.5">
+                          <h3 class="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white truncate">
+                            {{ pb.projectName }}
+                          </h3>
+                          <span class="px-2 py-0.5 rounded-md bg-[#3390EC]/15 text-[#3390EC] text-[10px] font-extrabold shrink-0">
+                            اضغط للتفاصيل
+                          </span>
+                        </div>
                         <p class="text-[11px] font-bold text-slate-500 dark:text-slate-400">
                           حضور: {{ store.num(pb.daysWorked) }} يومية · {{ store.num(pb.nightsWorked) }} سهرة
                         </p>
                       </div>
                     </div>
 
-                    <div class="flex items-center gap-2 shrink-0">
+                    <div class="flex items-center gap-2 shrink-0" (click)="$event.stopPropagation()">
                       <div class="text-left">
                         <div class="text-[10px] font-bold text-slate-500 dark:text-slate-400">صافي ربح المشروع</div>
                         <div
@@ -401,14 +407,33 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                   </div>
 
                   @if (openProjectMenuName() === pb.projectName) {
-                    <div class="px-4 py-3 bg-amber-50/90 dark:bg-slate-800 border-b border-amber-300 dark:border-slate-700 flex flex-wrap items-center gap-2 animate-fade-in">
+                    <div
+                      (click)="$event.stopPropagation()"
+                      class="px-4 py-3 bg-amber-50/90 dark:bg-slate-800 border-b border-amber-300 dark:border-slate-700 flex flex-wrap items-center gap-2 animate-fade-in"
+                    >
+                      <button
+                        type="button"
+                        (click)="store.openProjectSheet(pb.projectId); openProjectMenuName.set(null)"
+                        class="px-3 py-1.5 rounded-xl bg-[#3390EC] text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <mat-icon class="!w-4 !h-4 !text-[15px]">layers</mat-icon>
+                        <span>لوحة تفاصيل المشروع الكاملة</span>
+                      </button>
+                      <button
+                        type="button"
+                        (click)="openProjectCheckWithdrawals(pb.projectId); openProjectMenuName.set(null)"
+                        class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <mat-icon class="!w-4 !h-4 !text-[15px]">account_balance_wallet</mat-icon>
+                        <span>ما تم سحبه من شيك المشروع</span>
+                      </button>
                       <button
                         type="button"
                         (click)="openAddPaymentModal(pb.projectId); openProjectMenuName.set(null)"
-                        class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                        class="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <mat-icon class="!w-4 !h-4 !text-[15px]">add_card</mat-icon>
-                        <span>+ وصلني مبلغ للمشروع</span>
+                        <span>+ إضافة رصيد للمشروع</span>
                       </button>
                       <button
                         type="button"
@@ -416,45 +441,44 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                         class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <mat-icon class="!w-4 !h-4 !text-[15px] text-emerald-600">share</mat-icon>
-                        <span>نسخ كشف المشروع واتساب</span>
-                      </button>
-                      <button
-                        type="button"
-                        (click)="filterMovementsByProject(pb.projectName); openProjectMenuName.set(null)"
-                        class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <mat-icon class="!w-4 !h-4 !text-[15px] text-blue-500">receipt_long</mat-icon>
-                        <span>عرض حركات المشروع</span>
+                        <span>نسخ واتساب</span>
                       </button>
                     </div>
                   }
 
-                  <!-- Project 4-Quad Financial Grid -->
+                  <!-- Project 5-Metric Financial Strip (دخل كام · سحبنا من الشيك كام · طلع كام · قاعد كام · عليا كام) -->
                   <div class="p-4 space-y-3">
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       <div class="p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-500/20">
-                        <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">وصلني للمشروع</div>
+                        <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">دخل المشروع</div>
                         <div class="text-xs sm:text-sm font-black text-emerald-700 dark:text-emerald-400 tabular-nums mt-0.5">
                           {{ store.money(pb.totalReceivedForProject) }}
                         </div>
                       </div>
 
+                      <div class="p-2.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-500/20">
+                        <div class="text-[10px] font-bold text-purple-700 dark:text-purple-300">مسحوب من الشيكات</div>
+                        <div class="text-xs sm:text-sm font-black text-purple-700 dark:text-purple-400 tabular-nums mt-0.5">
+                          {{ store.money(pb.checksWithdrawnAmount || 0) }}
+                        </div>
+                      </div>
+
                       <div class="p-2.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-500/20">
-                        <div class="text-[10px] font-bold text-rose-700 dark:text-rose-300">اتصرف في المشروع</div>
+                        <div class="text-[10px] font-bold text-rose-700 dark:text-rose-300">طلع (سلف ومصاريف)</div>
                         <div class="text-xs sm:text-sm font-black text-rose-700 dark:text-rose-400 tabular-nums mt-0.5">
                           {{ store.money(pb.totalSpentInProject) }}
                         </div>
                       </div>
 
                       <div class="p-2.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-500/20">
-                        <div class="text-[10px] font-bold text-blue-700 dark:text-blue-300">ليّا في المشروع</div>
+                        <div class="text-[10px] font-bold text-blue-700 dark:text-blue-300">قاعد بخزنة المشروع</div>
                         <div class="text-xs sm:text-sm font-black text-blue-700 dark:text-blue-400 tabular-nums mt-0.5">
-                          {{ store.money(pb.owedToMeInProject) }}
+                          {{ store.money(pb.cashFlowBalance) }}
                         </div>
                       </div>
 
-                      <div class="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-500/20">
-                        <div class="text-[10px] font-bold text-amber-700 dark:text-amber-300">عليّا في المشروع</div>
+                      <div class="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-500/20 col-span-2 sm:col-span-1">
+                        <div class="text-[10px] font-bold text-amber-700 dark:text-amber-300">عليّا للعمال</div>
                         <div class="text-xs sm:text-sm font-black text-amber-700 dark:text-amber-400 tabular-nums mt-0.5">
                           {{ store.money(pb.owedByMeInProject) }}
                         </div>
@@ -467,14 +491,14 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                       <div class="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3 space-y-1.5 text-xs">
                         <div class="font-extrabold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                           <mat-icon class="!w-4 !h-4 !text-[16px]">south_west</mat-icon>
-                          <span>تفاصيل اللي وصلني لحساب المشروع:</span>
+                          <span>تفاصيل اللي دخل لحساب المشروع:</span>
                         </div>
                         <div class="flex justify-between text-slate-600 dark:text-slate-300">
                           <span>من شركة / مستخلصات:</span>
                           <span class="font-bold tabular-nums">{{ store.money(pb.receivedFromCompanies + pb.receivedFromExtracts) }}</span>
                         </div>
                         <div class="flex justify-between text-slate-600 dark:text-slate-300">
-                          <span>من شيكات محصلة:</span>
+                          <span>من شيكات محصلة / مسحوبة:</span>
                           <span class="font-bold tabular-nums">{{ store.money(pb.receivedFromChecks) }}</span>
                         </div>
                         <div class="flex justify-between text-slate-600 dark:text-slate-300">
@@ -482,8 +506,8 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                           <span class="font-bold tabular-nums">{{ store.money(pb.receivedFromPersons) }}</span>
                         </div>
                         <div class="flex justify-between text-blue-600 dark:text-blue-400 pt-1 border-t border-slate-200/70 dark:border-slate-700">
-                          <span>إجمالي استحقاقي على الشركة:</span>
-                          <span class="font-extrabold tabular-nums">{{ store.money(pb.companyEntitlement) }}</span>
+                          <span>باقي ليّا عند الشركة:</span>
+                          <span class="font-extrabold tabular-nums">{{ store.money(pb.owedToMeInProject) }}</span>
                         </div>
                       </div>
 
@@ -491,7 +515,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                       <div class="rounded-xl bg-slate-50 dark:bg-slate-800/50 p-3 space-y-1.5 text-xs">
                         <div class="font-extrabold text-rose-700 dark:text-rose-400 flex items-center gap-1">
                           <mat-icon class="!w-4 !h-4 !text-[16px]">north_east</mat-icon>
-                          <span>تفاصيل اللي اتصرف في المشروع:</span>
+                          <span>تفاصيل اللي طلع من المشروع:</span>
                         </div>
                         <div class="flex justify-between text-slate-600 dark:text-slate-300">
                           <span>اتصرف سلف للعمال:</span>
@@ -502,7 +526,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                           <span class="font-bold tabular-nums">{{ store.money(pb.settlementsPaid) }}</span>
                         </div>
                         <div class="flex justify-between text-slate-600 dark:text-slate-300">
-                          <span>اتصرف ناش + مصاريف خارجية:</span>
+                          <span>مصاريف خارجية ورسوم سحب:</span>
                           <span class="font-bold tabular-nums">{{ store.money(pb.nashPaid + pb.expensesSpent) }}</span>
                         </div>
                         <div class="flex justify-between text-amber-600 dark:text-amber-400 pt-1 border-t border-slate-200/70 dark:border-slate-700">
@@ -514,37 +538,36 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                   </div>
 
                   <!-- Project Card Footer Actions -->
-                  <div class="px-4 py-3 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                    <div class="text-xs font-bold text-slate-600 dark:text-slate-300">
-                      صافي السيولة النقدية للمشروع:
-                      <span
-                        class="font-black tabular-nums"
-                        [class]="pb.cashFlowBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
-                      >
-                        {{ store.money(pb.cashFlowBalance) }}
-                      </span>
-                    </div>
+                  <div
+                    (click)="$event.stopPropagation()"
+                    class="px-4 py-3 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <button
+                      type="button"
+                      (click)="store.openProjectSheet(pb.projectId)"
+                      class="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#3390EC] hover:underline cursor-pointer"
+                    >
+                      <mat-icon class="!w-4 !h-4 !text-[16px]">open_in_new</mat-icon>
+                      <span>عرض كشف المشروع الكامل في لوحة سريعة</span>
+                    </button>
 
                     <div class="flex items-center gap-1.5">
                       <button
                         type="button"
-                        (click)="openAddPaymentModal(pb.projectId)"
+                        (click)="openProjectCheckWithdrawals(pb.projectId)"
                         class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold cursor-pointer"
                       >
-                        <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">add</mat-icon>
-                        <span>وصلني مبلغ للمشروع</span>
+                        <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">account_balance_wallet</mat-icon>
+                        <span>ما تم سحبه من الشيك</span>
                       </button>
-
-                      @if (pb.projectId) {
-                        <a
-                          routerLink="/extracts"
-                          (click)="store.selectedProjectId.set(pb.projectId)"
-                          class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-bold hover:opacity-90"
-                        >
-                          <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">receipt_long</mat-icon>
-                          <span>المستخلصات</span>
-                        </a>
-                      }
+                      <button
+                        type="button"
+                        (click)="openAddPaymentModal(pb.projectId)"
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-[11px] font-bold cursor-pointer"
+                      >
+                        <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">add</mat-icon>
+                        <span>+ رصيد</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -554,16 +577,303 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
         </div>
       }
 
-      <!-- TAB 2: سجل الدفعات اللي وصلتني (Incoming Payments CRUD) -->
+      <!-- TAB 2: صفحة ما تم سحبه من شيك المشروع والمنصرف سلف ومصاريف والمتبقي (100% Data-Driven) -->
+      @if (activeTab() === 'check-withdrawals') {
+        @let pk = store.dailyPocketSummary();
+        <div class="space-y-4">
+          <div class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-emerald-500/40 p-4 sm:p-5 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <mat-icon>account_balance_wallet</mat-icon>
+                </div>
+                <div>
+                  <h3 class="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                    كشف ما تم سحبه من شيك المشروع والمدفوع سلف ومصاريف والمتبقي
+                  </h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    محسوب تلقائياً ١٠٠٪ من السجلات الفعلية (الشيكات المسجلة · السلف · القبض · المصاريف الخارجية ورسوم السحب)
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <!-- Filter by Project -->
+                <select
+                  aria-label="تصفية حسب المشروع"
+                  [value]="store.pocketSelectedProjectId() ?? ''"
+                  (change)="store.pocketSelectedProjectId.set($any($event.target).value ? +$any($event.target).value : null); store.pocketSelectedCheckId.set(null)"
+                  class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-extrabold"
+                >
+                  <option value="">كل المشاريع ({{ store.num(store.projects().length) }})</option>
+                  @for (p of store.projects(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                </select>
+
+                <!-- Filter by Check -->
+                <select
+                  aria-label="تصفية حسب الشيك"
+                  [value]="store.pocketSelectedCheckId() ?? ''"
+                  (change)="onSelectCheckForWithdrawal($any($event.target).value ? +$any($event.target).value : null)"
+                  class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-extrabold"
+                >
+                  <option value="">كل شيكات المشروع الواردة</option>
+                  @for (c of pk.projectChecks; track c.id) {
+                    <option [value]="c.id">شيك #{{ c.number }} ({{ store.money(c.amount) }} - {{ store.projectName(c.projectId) }})</option>
+                  }
+                </select>
+
+                <button
+                  type="button"
+                  (click)="store.openPocketSheet(store.pocketSelectedCheckId(), store.pocketSelectedProjectId())"
+                  class="px-3.5 py-2 rounded-xl bg-[#3390EC] text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px]">layers</mat-icon>
+                  <span>فتح في لوحة سريعة</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 5 Live Data-Driven Summary Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                <div class="text-[11px] font-bold text-slate-500">إجمالي شيكات المشروع</div>
+                <div class="text-base sm:text-lg font-black text-slate-900 dark:text-white tabular-nums mt-0.5">
+                  {{ store.money(pk.checksIncomingTotal) }}
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">{{ store.num(pk.projectChecks.length) }} شيك وارد</div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                <div class="text-[11px] font-bold text-blue-700 dark:text-blue-300">ما تم سحبه من الشيك</div>
+                <div class="text-base sm:text-lg font-black text-blue-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.withdrawnAmount) }}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">متبقي بالشيك: {{ store.money(pk.remainingInCheck) }}</div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                <div class="text-[11px] font-bold text-amber-800 dark:text-amber-300">المدفوع سلف وقبض للعمال</div>
+                <div class="text-base sm:text-lg font-black text-amber-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.totalWorkersPaid) }}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  سلف {{ store.money(pk.advancesTotal) }} + قبض {{ store.money(pk.settlementsTotal) }}
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+                <div class="text-[11px] font-bold text-rose-700 dark:text-rose-300">مصاريف خارجية ورسوم سحب</div>
+                <div class="text-base sm:text-lg font-black text-rose-600 tabular-nums mt-0.5">
+                  {{ store.money(pk.totalExternalExpenses) }}
+                </div>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  مصاريف {{ store.money(pk.externalExpensesTotal) }} + رسوم {{ store.money(pk.withdrawalFee) }}
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-emerald-600 text-white col-span-2 sm:col-span-1 shadow-xs">
+                <div class="text-[11px] font-bold text-emerald-100">المفروض قاعد معاك الآن</div>
+                <div class="text-lg sm:text-xl font-black tabular-nums mt-0.5">
+                  {{ store.money(pk.netRemainingInPocket) }}
+                </div>
+                <div class="text-[10px] text-emerald-100 mt-0.5">
+                  قبل المصاريف: {{ store.money(pk.remainingBeforeExpenses) }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Record / Update Check Withdrawal Form Linked to Project -->
+            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-xs font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-600">edit_note</mat-icon>
+                  <span>تسجيل / تحديث المبلغ المسحوب من شيك المشروع ورسوم السحب</span>
+                </div>
+                <span class="text-[11px] text-slate-500">
+                  يتم الحفظ مباشرة على شيك المشروع وتحديث المتبقي في الخزنة تلقائياً
+                </span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">الشيك / المشروع</label>
+                  <select
+                    [value]="store.pocketSelectedCheckId() ?? ''"
+                    (change)="onSelectCheckForWithdrawal($any($event.target).value ? +$any($event.target).value : null)"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold"
+                  >
+                    <option value="">اختر الشيك المسحوب منه...</option>
+                    @for (c of store.checks(); track c.id) {
+                      @if (c.direction === 'وارد') {
+                        <option [value]="c.id">
+                          شيك #{{ c.number }} ({{ store.money(c.amount) }} - {{ store.projectName(c.projectId) }})
+                        </option>
+                      }
+                    }
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">المبلغ المسحوب من الشيك (ج.م)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    [value]="store.pocketWithdrawnAmount() || pk.withdrawnAmount"
+                    (input)="store.pocketWithdrawnAmount.set(+$any($event.target).value)"
+                    placeholder="مثلاً: 4000"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black tabular-nums"
+                  />
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">مصاريف / رسوم السحب (ج.م)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    [value]="store.pocketWithdrawalFee() || pk.withdrawalFee"
+                    (input)="store.pocketWithdrawalFee.set(+$any($event.target).value)"
+                    placeholder="مثلاً: 40"
+                    class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black text-rose-600 tabular-nums"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  (click)="store.savePocketWithdrawalToCheck(true)"
+                  class="min-h-[40px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px]">save</mat-icon>
+                  <span>حفظ السحبة وربطها بالمشروع</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Live Lists: Project Checks + Advances Paid + External Expenses -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <!-- Column 1: الشيكات المسحوب منها -->
+              <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <mat-icon class="!w-4 !h-4 !text-[16px] text-purple-600">account_balance</mat-icon>
+                    <span>شيكات المشروع ({{ store.num(pk.projectChecks.length) }})</span>
+                  </h4>
+                  <a routerLink="/checks" class="text-[11px] font-bold text-[#3390EC] hover:underline">+ شيك جديد</a>
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                  @for (c of pk.projectChecks; track c.id) {
+                    <div
+                      (click)="store.openCheckSheet(c.id!)"
+                      class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:border-purple-500 border border-transparent flex items-center justify-between text-xs cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div class="font-extrabold text-slate-900 dark:text-white">
+                          شيك #{{ c.number }} · {{ store.projectName(c.projectId) }}
+                        </div>
+                        <div class="text-[11px] text-slate-500">
+                          قيمة الشيك: {{ store.money(c.amount) }} · سُحب: {{ store.money(c.withdrawnAmount ?? c.amount) }}
+                        </div>
+                      </div>
+                      <span class="px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 font-bold text-[10px]">
+                        التفاصيل
+                      </span>
+                    </div>
+                  } @empty {
+                    <div class="text-xs text-slate-400 py-4 text-center">لا توجد شيكات واردة مسجلة</div>
+                  }
+                </div>
+              </div>
+
+              <!-- Column 2: السلف والقبض المدفوعة من الشيك/المشروع -->
+              <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-600">groups</mat-icon>
+                    <span>السلف والقبض المسجلة ({{ store.num(pk.recordedAdvances.length + pk.recordedSettlements.length) }})</span>
+                  </h4>
+                  <a routerLink="/advances" class="text-[11px] font-bold text-[#3390EC] hover:underline">+ تسجيل سلفة</a>
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                  @for (adv of pk.recordedAdvances; track adv.id) {
+                    <div
+                      (click)="store.openWorkerSheet(adv.workerId)"
+                      class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:border-amber-500 border border-transparent flex items-center justify-between text-xs cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div class="font-extrabold text-slate-900 dark:text-white">
+                          سلفة: {{ store.workerName(adv.workerId) }}
+                        </div>
+                        <div class="text-[11px] text-slate-500">
+                          {{ store.digits(adv.date) }} · {{ adv.reason || store.projectName(adv.projectId) }}
+                        </div>
+                      </div>
+                      <span class="font-black text-amber-600 tabular-nums">-{{ store.money(adv.amount) }}</span>
+                    </div>
+                  }
+                  @for (st of pk.recordedSettlements; track st.id) {
+                    <div
+                      (click)="store.openWorkerSheet(st.workerId)"
+                      class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:border-blue-500 border border-transparent flex items-center justify-between text-xs cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div class="font-extrabold text-slate-900 dark:text-white">
+                          قبض تصفية: {{ store.workerName(st.workerId) }}
+                        </div>
+                        <div class="text-[11px] text-slate-500">{{ store.digits(st.date) }}</div>
+                      </div>
+                      <span class="font-black text-blue-600 tabular-nums">-{{ store.money(st.netPaid) }}</span>
+                    </div>
+                  }
+                  @if (pk.recordedAdvances.length === 0 && pk.recordedSettlements.length === 0) {
+                    <div class="text-xs text-slate-400 py-4 text-center">لا توجد سلف أو دفعات قبض مسجلة بعد</div>
+                  }
+                </div>
+              </div>
+
+              <!-- Column 3: المصاريف الخارجية ورسوم السحب -->
+              <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-600">receipt_long</mat-icon>
+                    <span>المصاريف الخارجية ({{ store.num(pk.recordedExpenses.length) }})</span>
+                  </h4>
+                  <a routerLink="/expenses" class="text-[11px] font-bold text-[#3390EC] hover:underline">+ تسجيل مصروف</a>
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                  @for (exp of pk.recordedExpenses; track exp.id) {
+                    <div
+                      (click)="store.openProjectSheet(exp.projectId)"
+                      class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:border-rose-500 border border-transparent flex items-center justify-between text-xs cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div class="font-extrabold text-slate-900 dark:text-white">{{ exp.category }}</div>
+                        <div class="text-[11px] text-slate-500">
+                          {{ store.digits(exp.date) }} · {{ exp.note || store.projectName(exp.projectId) }}
+                        </div>
+                      </div>
+                      <span class="font-black text-rose-600 tabular-nums">-{{ store.money(exp.amount) }}</span>
+                    </div>
+                  } @empty {
+                    <div class="text-xs text-slate-400 py-4 text-center">لا توجد مصاريف خارجية مسجلة</div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- TAB 3: سجل الدفعات اللي وصلتني (Incoming Payments CRUD Linked to Any Project) -->
       @if (activeTab() === 'incoming') {
         <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
-                سجل الفلوس والدفعات اللي وصلتني مباشرة
+                سجل الفلوس والدفعات والأرصدة المضافة للمشاريع
               </h3>
               <p class="text-xs text-slate-500 dark:text-slate-400">
-                كل دفعة وصلتك من شركة أو من شخص أو من شيك والمشروع اللي راحت لحسابه (بالإضافة للشيكات المحصلة والمستخلصات)
+                أي إضافة رصيد أو دفعة من شركة أو شيك أو مستخلص يمكنك ربطها بأي مشروع والضغط عليها لعرض كشف المشروع
               </p>
             </div>
 
@@ -573,7 +883,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
               class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs cursor-pointer"
             >
               <mat-icon class="!w-4 !h-4 !text-[18px]">add_card</mat-icon>
-              <span>إضافة دفعة واردة جديدة</span>
+              <span>+ إضافة رصيد / دفعة وربطها بمشروع</span>
             </button>
           </div>
 
@@ -584,7 +894,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                 لم تسجل دفعات واردة مباشرة بعد
               </p>
               <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                اضغط على "إضافة دفعة واردة جديدة" أو قل للمساعد ذكي مثلاً: "وصلني 50000 من شركة إعمار لمشروع التجمع"
+                اضغط على "إضافة رصيد / دفعة وربطها بمشروع" لتسجيل أي مبلغ وصلك وربطه بالمشروع الخاص به
               </p>
               <button
                 type="button"
@@ -598,7 +908,10 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
           } @else {
             <div class="divide-y divide-slate-100 dark:divide-slate-800">
               @for (item of store.incomingPayments(); track item.id) {
-                <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <div
+                  (click)="store.openProjectSheet(item.projectId)"
+                  class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+                >
                   <div class="flex items-start gap-3">
                     <div
                       class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold"
@@ -644,7 +957,10 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                     </div>
                   </div>
 
-                  <div class="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800">
+                  <div
+                    (click)="$event.stopPropagation()"
+                    class="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800"
+                  >
                     <span class="text-base font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
                       + {{ store.money(item.amount) }}
                     </span>
@@ -675,13 +991,13 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
         </div>
       }
 
-      <!-- TAB 3: كشف حركة الخزنة الكامل (All Inflows & Outflows) -->
+      <!-- TAB 4: كشف حركة الخزنة الكامل (All Inflows & Outflows - Click Any Row for Quick Sheet) -->
       @if (activeTab() === 'movements') {
         <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 class="text-base font-extrabold text-slate-900 dark:text-white">
-                كشف حركات الخزنة الموحد (الوارد والمنصرف)
+                كشف حركات الخزنة الموحد (الوارد والمنصرف — اضغط على أي حركة للتفاصيل)
               </h3>
               <p class="text-xs text-slate-500 dark:text-slate-400">
                 يجمع تلقائياً كل الدفعات الواردة، الشيكات المحصلة، المستخلصات، السلف، التسويات، الناش، والمصاريف
@@ -703,7 +1019,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                 class="px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer transition-colors"
                 [class]="movementFilter() === 'in' ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'"
               >
-                اللي وصلني (+)
+                اللي دخل (+)
               </button>
               <button
                 type="button"
@@ -711,7 +1027,7 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                 class="px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer transition-colors"
                 [class]="movementFilter() === 'out' ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'"
               >
-                اللي اتصرف (-)
+                اللي طلع (-)
               </button>
             </div>
           </div>
@@ -723,7 +1039,10 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
           } @else {
             <div class="divide-y divide-slate-100 dark:divide-slate-800">
               @for (mv of filteredMovements(); track mv.id) {
-                <div class="p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <div
+                  (click)="openMovementQuickSheet(mv)"
+                  class="p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition-colors"
+                >
                   <div class="flex items-center gap-3 min-w-0">
                     <div
                       class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
@@ -755,15 +1074,18 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                     </div>
                   </div>
 
-                  <div
-                    class="text-sm sm:text-base font-black tabular-nums shrink-0"
-                    [class]="
-                      mv.direction === 'in'
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    "
-                  >
-                    {{ mv.direction === 'in' ? '+' : '-' }} {{ store.money(mv.amount) }}
+                  <div class="flex items-center gap-2 shrink-0">
+                    <div
+                      class="text-sm sm:text-base font-black tabular-nums"
+                      [class]="
+                        mv.direction === 'in'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      "
+                    >
+                      {{ mv.direction === 'in' ? '+' : '-' }} {{ store.money(mv.amount) }}
+                    </div>
+                    <mat-icon class="!w-4 !h-4 !text-[16px] text-slate-400">chevron_left</mat-icon>
                   </div>
                 </div>
               }
@@ -1134,12 +1456,44 @@ export class MyLedger {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
 
-  readonly activeTab = signal<'projects' | 'incoming' | 'movements' | 'methodology'>('projects');
+  readonly activeTab = signal<'projects' | 'check-withdrawals' | 'incoming' | 'movements' | 'methodology'>('projects');
   readonly movementFilter = signal<'all' | 'in' | 'out'>('all');
   readonly showPaymentModal = signal<boolean>(false);
   readonly editingPaymentId = signal<number | null>(null);
   readonly headerMoreOpen = signal<boolean>(false);
   readonly openProjectMenuName = signal<string | null>(null);
+
+  openProjectCheckWithdrawals(projectId: number | null): void {
+    this.store.pocketSelectedProjectId.set(projectId);
+    this.store.pocketSelectedCheckId.set(null);
+    this.activeTab.set('check-withdrawals');
+  }
+
+  onSelectCheckForWithdrawal(checkId: number | null): void {
+    this.store.pocketSelectedCheckId.set(checkId);
+    if (checkId) {
+      const chk = this.store.checks().find((c) => c.id === checkId);
+      if (chk) {
+        this.store.pocketSelectedProjectId.set(chk.projectId);
+        this.store.pocketWithdrawnAmount.set(chk.withdrawnAmount ?? chk.amount);
+        this.store.pocketWithdrawalFee.set(chk.withdrawalFee ?? 0);
+      }
+    }
+  }
+
+  openMovementQuickSheet(mv: {
+    workerId?: number | null;
+    checkId?: number | null;
+    projectId?: number | null;
+  }): void {
+    if (mv.workerId) {
+      this.store.openWorkerSheet(mv.workerId);
+    } else if (mv.checkId) {
+      this.store.openCheckSheet(mv.checkId);
+    } else {
+      this.store.openProjectSheet(mv.projectId ?? null);
+    }
+  }
 
   // Interactive Project Profit Simulator signals
   readonly simContractValue = signal<number>(150000);

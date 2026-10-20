@@ -104,8 +104,16 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
           <div class="p-5 border-b border-slate-100 dark:border-slate-800 space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 class="text-lg font-extrabold text-slate-900 dark:text-white">
-                  مستخلص رقم {{ store.num(currentExt.number) }} — {{ store.projectName(currentExt.projectId) }}
+                <h2 class="text-lg font-extrabold text-slate-900 dark:text-white flex flex-wrap items-center gap-2">
+                  <span>مستخلص رقم {{ store.num(currentExt.number) }} —</span>
+                  <button
+                    type="button"
+                    (click)="store.openProjectSheet(currentExt.projectId)"
+                    class="text-[#3390EC] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{{ store.projectName(currentExt.projectId) }}</span>
+                    <mat-icon class="!w-4 !h-4 !text-[16px]">open_in_new</mat-icon>
+                  </button>
                 </h2>
                 <p class="text-xs text-slate-500 mt-0.5">
                   الفترة من {{ store.digits(currentExt.from) }} إلى {{ store.digits(currentExt.to) }}
@@ -115,11 +123,19 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
                 </p>
               </div>
 
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  (click)="store.openExtractSheet(currentExt.id!)"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#3390EC]/15 text-[#3390EC] text-xs font-extrabold cursor-pointer"
+                >
+                  <mat-icon class="!text-base !w-4 !h-4">layers</mat-icon>
+                  <span>لوحة المستخلص والمشروع</span>
+                </button>
                 <button
                   type="button"
                   (click)="recalculateFromAttendance(currentExt)"
-                  class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold"
+                  class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold cursor-pointer"
                 >
                   <mat-icon class="!text-base !w-4 !h-4 text-blue-600">sync</mat-icon>
                   <span>تحديث المحسوب من الحضور والإضافي</span>
@@ -127,7 +143,7 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
                 <button
                   type="button"
                   (click)="saveAllLines(currentExt)"
-                  class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                  class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
                 >
                   <mat-icon class="!text-base !w-4 !h-4">save</mat-icon>
                   <span>حفظ وتثبيت نسب المستخلص</span>
@@ -170,7 +186,7 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
             <table class="w-full text-right text-xs">
               <thead class="bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th class="py-3 px-3 font-bold">العامل</th>
+                  <th class="py-3 px-3 font-bold">العامل (اضغط للتفاصيل)</th>
                   <th class="py-3 px-2 font-bold">المحسوب (تلقائي)</th>
                   <th class="py-3 px-2 font-bold">المطالب من الشركة</th>
                   <th class="py-3 px-2 font-bold">الفرق</th>
@@ -187,7 +203,10 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                 @for (row of computedLines(); track row.id) {
                   <tr class="hover:bg-slate-50/60 dark:hover:bg-slate-800/30">
-                    <td class="py-2 px-2 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                    <td
+                      (click)="store.openWorkerSheet(row.workerId)"
+                      class="py-2 px-2 font-bold text-[#3390EC] hover:underline whitespace-nowrap cursor-pointer"
+                    >
                       {{ store.workerName(row.workerId) }}
                     </td>
 

@@ -873,6 +873,8 @@ export interface ProjectLedgerBreakdown {
   settlementsPaid: number; // قبض العمال المنصرف في المشروع
   nashPaid: number; // ناش مدفوع في المشروع
   expensesSpent: number; // مصاريف المشروع الخارجية
+  checksWithdrawnAmount?: number; // ما تم سحبه من شيكات المشروع
+  withdrawalFeesSpent?: number; // رسوم سحب الشيكات
   outgoingChecksCashed: number;
   pendingOutgoingChecks: number;
   totalSpentInProject: number; // إجمالي المنصرف الفعلي في المشروع
@@ -886,6 +888,8 @@ export interface ProjectLedgerBreakdown {
 export interface LedgerMovementItem {
   id: string;
   rawId?: number;
+  workerId?: number;
+  checkId?: number | null;
   isCustomIncoming?: boolean;
   date: string;
   direction: 'in' | 'out';
@@ -986,6 +990,14 @@ export function calculateComprehensiveLedger(params: {
   for (const w of workers) {
     if (w.id !== undefined) workerMap.set(w.id, w);
   }
+  const extractMap = new Map<number, Extract>();
+  for (const ex of extracts) {
+    if (ex.id !== undefined) extractMap.set(ex.id, ex);
+  }
+  const checkMap = new Map<number, CheckItem>();
+  for (const chk of checks) {
+    if (chk.id !== undefined) checkMap.set(chk.id, chk);
+  }
 
   // Determine each worker's primary project based on attendance (fallback to first active project)
   const defaultProjId = projects[0]?.id ?? null;
@@ -1012,6 +1024,63 @@ export function calculateComprehensiveLedger(params: {
     }
   }
 
+  const resolveCheckProjectId = (chk: CheckItem): number | null => {
+    if (chk.projectId) return chk.projectId;
+    if (chk.extractId) return extractMap.get(chk.extractId)?.projectId ?? null;
+    return null;
+  };
+
+  const resolveAdvanceProjectId = (adv: Advance): number | null => {
+    if (adv.projectId) return adv.projectId;
+    if (adv.checkId) {
+      const c = checkMap.get(adv.checkId);
+      if (c) {
+        const cPid = resolveCheckProjectId(c);
+        if (cPid) return cPid;
+      }
+    }
+    return workerPrimaryProject.get(adv.workerId) ?? defaultProjId;
+  };
+
+  const resolveSettlementProjectId = (st: Settlement): number | null => {
+    if (st.projectId) return st.projectId;
+    if (st.checkId) {
+      const c = checkMap.get(st.checkId);
+      if (c) {
+        const cPid = resolveCheckProjectId(c);
+        if (cPid) return cPid;
+      }
+    }
+    return workerPrimaryProject.get(st.workerId) ?? defaultProjId;
+  };
+
+  const resolveExpenseProjectId = (exp: Expense): number | null => {
+    if (exp.projectId) return exp.projectId;
+    if (exp.checkId) {
+      const c = checkMap.get(exp.checkId);
+      if (c) {
+        const cPid = resolveCheckProjectId(c);
+        if (cPid) return cPid;
+      }
+    }
+    return defaultProjId;
+  };
+
+  const resolveIncomingProjectId = (ip: IncomingPayment): number | null => {
+    if (ip.projectId) return ip.projectId;
+    if (ip.checkId) {
+      const c = checkMap.get(ip.checkId);
+      if (c) {
+        const cPid = resolveCheckProjectId(c);
+        if (cPid) return cPid;
+      }
+    }
+    if (ip.extractId) {
+      return extractMap.get(ip.extractId)?.projectId ?? null;
+    }
+    return null;
+  };
+
   const getProjName = (pid: number | null | undefined): string => {
     if (!pid) return 'الخزنة العامة / مشترك';
     return projectMap.get(pid)?.name || `مشروع #${pid}`;
@@ -1026,7 +1095,8 @@ export function calculateComprehensiveLedger(params: {
 
   // 1. Custom Incoming Payments (واصلني من شخص أو شركة أو شيك)
   for (const ip of incomingPayments) {
-    if (filterProjectId && ip.projectId !== filterProjectId) continue;
+    const pid = resolveIncomingProjectId(ip);
+    if (filterProjectId && pid !== filterProjectId) continue;
     const catLabel =
       ip.sourceType === 'شخص'
         ? 'دفعة واصلة من شخص / مهندس'
@@ -1041,6 +1111,7 @@ export function calculateComprehensiveLedger(params: {
     movements.push({
       id: `ip-${ip.id}`,
       rawId: ip.id,
+      checkId: ip.checkId ?? null,
       isCustomIncoming: true,
       date: ip.date,
       direction: 'in',
@@ -1059,8 +1130,8 @@ export function calculateComprehensiveLedger(params: {
                 ? 'مستخلص'
                 : 'أخرى',
       partyName: party,
-      projectId: ip.projectId ?? null,
-      projectName: getProjName(ip.projectId),
+      projectId: pid,
+      projectName: getProjName(pid),
       method: ip.method || 'نقدي',
       amount: Number(ip.amount) || 0,
       notes: ip.notes || '',
@@ -1069,15 +1140,23 @@ export function calculateComprehensiveLedger(params: {
 
   // 2. Cashed Checks (Incoming & Outgoing)
   for (const chk of checks) {
-    if (chk.status !== 'اتصرف') continue;
+    const isWithdrawn = (chk.withdrawnAmount ?? 0) > 0;
+    if (chk.status !== 'اتصرف' && !isWithdrawn) continue;
     if (chk.direction === 'وارد' && chk.id && linkedCheckIds.has(chk.id)) continue;
-    if (filterProjectId && chk.projectId !== filterProjectId) continue;
+    const pid = resolveCheckProjectId(chk);
+    if (filterProjectId && pid !== filterProjectId) continue;
     const catLabel =
       chk.direction === 'وارد' ? `صرف شيك وارد #${chk.number}` : `صرف شيك صادر #${chk.number}`;
     const party = `${chk.bank} (شيك #${chk.number})`;
+    const effectiveAmt =
+      chk.status === 'اتصرف'
+        ? Number(chk.amount) || 0
+        : Number(chk.withdrawnAmount) || Number(chk.amount) || 0;
 
     movements.push({
       id: `chk-${chk.id}`,
+      rawId: chk.id,
+      checkId: chk.id ?? null,
       date: chk.dueDate,
       direction: chk.direction === 'وارد' ? 'in' : 'out',
       title: `${catLabel} · ${chk.bank}`,
@@ -1086,19 +1165,15 @@ export function calculateComprehensiveLedger(params: {
       categoryLabel: catLabel,
       sourceType: 'شيك',
       partyName: party,
-      projectId: chk.projectId ?? null,
-      projectName: getProjName(chk.projectId),
+      projectId: pid,
+      projectName: getProjName(pid),
       method: 'شيك بنكي',
-      amount: Number(chk.amount) || 0,
+      amount: effectiveAmt,
       notes: chk.notes || '',
     });
   }
 
   // 3. Collected Extract Lines
-  const extractMap = new Map<number, Extract>();
-  for (const ex of extracts) {
-    if (ex.id !== undefined) extractMap.set(ex.id, ex);
-  }
   for (const line of extractLines) {
     const collected = Number(line.collected) || 0;
     if (collected <= 0) continue;
@@ -1112,6 +1187,9 @@ export function calculateComprehensiveLedger(params: {
 
     movements.push({
       id: `extline-${line.id}`,
+      rawId: line.id,
+      workerId: line.workerId,
+      checkId: line.checkId ?? null,
       date: line.collectedDate || parentExt?.to || '2026-10-18',
       direction: 'in',
       title: `${catLabel} · ${wName}`,
@@ -1130,22 +1208,26 @@ export function calculateComprehensiveLedger(params: {
 
   // 4. Outgoing Worker Advances
   for (const adv of advances) {
-    const pid = workerPrimaryProject.get(adv.workerId) ?? defaultProjId;
+    const pid = resolveAdvanceProjectId(adv);
     if (filterProjectId && pid !== filterProjectId) continue;
     const wName = workerMap.get(adv.workerId)?.name || `عامل #${adv.workerId}`;
+    const chk = adv.checkId ? checkMap.get(adv.checkId) : undefined;
     movements.push({
       id: `adv-${adv.id}`,
+      rawId: adv.id,
+      workerId: adv.workerId,
+      checkId: adv.checkId ?? null,
       date: adv.date,
       direction: 'out',
       title: `سلفة: ${wName}`,
       category: 'سلفة عامل',
-      subtitle: adv.reason || adv.notes || '',
-      categoryLabel: 'سلفة عامل / نحّات',
+      subtitle: adv.reason || adv.notes || (chk ? `من شيك #${chk.number}` : ''),
+      categoryLabel: chk ? `سلفة عامل (من شيك #${chk.number})` : 'سلفة عامل / نحّات',
       sourceType: 'سلفة',
       partyName: wName,
       projectId: pid,
       projectName: getProjName(pid),
-      method: 'نقدي',
+      method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(adv.amount) || 0,
       notes: adv.reason || adv.notes || '',
     });
@@ -1154,22 +1236,26 @@ export function calculateComprehensiveLedger(params: {
   // 5. Outgoing Settlements (قبض يوم ١٥)
   for (const st of settlements) {
     if ((st.netPaid || 0) <= 0) continue;
-    const pid = workerPrimaryProject.get(st.workerId) ?? defaultProjId;
+    const pid = resolveSettlementProjectId(st);
     if (filterProjectId && pid !== filterProjectId) continue;
     const wName = workerMap.get(st.workerId)?.name || `عامل #${st.workerId}`;
+    const chk = st.checkId ? checkMap.get(st.checkId) : undefined;
     movements.push({
       id: `stl-${st.id}`,
+      rawId: st.id,
+      workerId: st.workerId,
+      checkId: st.checkId ?? null,
       date: st.date,
       direction: 'out',
-      title: `صرف قبض يوم ١٥: ${wName}`,
+      title: `صرف قبض: ${wName}`,
       category: 'قبض العمال',
       subtitle: `تقفيل من ${st.from} إلى ${st.to}`,
-      categoryLabel: 'صرف قبض يوم ١٥ (صافي)',
+      categoryLabel: chk ? `صرف قبض (من شيك #${chk.number})` : 'صرف قبض يوم ١٥ (صافي)',
       sourceType: 'قبض ١٥',
       partyName: wName,
       projectId: pid,
       projectName: getProjName(pid),
-      method: 'نقدي',
+      method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(st.netPaid) || 0,
       notes: `تقفيل من ${st.from} إلى ${st.to}`,
     });
@@ -1190,6 +1276,8 @@ export function calculateComprehensiveLedger(params: {
     const catLabel = `صرف ناش إضافي (${parentExtra?.type || 'إضافي'})`;
     movements.push({
       id: `nash-${ec.id}`,
+      rawId: ec.id,
+      workerId: ec.workerId,
       date: parentExtra?.date || '2026-10-18',
       direction: 'out',
       title: `${catLabel} · ${wName}`,
@@ -1208,22 +1296,25 @@ export function calculateComprehensiveLedger(params: {
 
   // 7. Outgoing External Expenses
   for (const exp of expenses) {
-    const pid = exp.projectId ?? defaultProjId;
+    const pid = resolveExpenseProjectId(exp);
     if (filterProjectId && pid !== filterProjectId) continue;
+    const chk = exp.checkId ? checkMap.get(exp.checkId) : undefined;
     const catLabel = `مصروف خارجي (${exp.category})`;
     movements.push({
       id: `exp-${exp.id}`,
+      rawId: exp.id,
+      checkId: exp.checkId ?? null,
       date: exp.date,
       direction: 'out',
       title: catLabel,
       category: `مصروف (${exp.category})`,
       subtitle: exp.note || '',
-      categoryLabel: catLabel,
+      categoryLabel: chk ? `${catLabel} · شيك #${chk.number}` : catLabel,
       sourceType: 'مصروف',
       partyName: exp.category,
       projectId: pid,
       projectName: getProjName(pid),
-      method: 'نقدي',
+      method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(exp.amount) || 0,
       notes: exp.note || '',
     });
@@ -1242,9 +1333,11 @@ export function calculateComprehensiveLedger(params: {
 
   // If there are unallocated items or no projects yet, include General Treasury bucket if needed
   const hasUnallocated =
-    incomingPayments.some((ip) => !ip.projectId) ||
-    checks.some((c) => !c.projectId) ||
-    expenses.some((e) => !e.projectId && !defaultProjId);
+    incomingPayments.some((ip) => resolveIncomingProjectId(ip) === null) ||
+    checks.some((c) => resolveCheckProjectId(c) === null) ||
+    advances.some((a) => resolveAdvanceProjectId(a) === null) ||
+    settlements.some((st) => resolveSettlementProjectId(st) === null) ||
+    expenses.some((e) => resolveExpenseProjectId(e) === null);
 
   if (hasUnallocated || targetProjects.length === 0) {
     targetProjects.push({
@@ -1315,7 +1408,7 @@ export function calculateComprehensiveLedger(params: {
     const workerGrossWages = attWorkerWages + extraWorkerWages;
 
     // Received breakdown for this project
-    const projCustomIn = incomingPayments.filter((ip) => (ip.projectId ?? null) === pid);
+    const projCustomIn = incomingPayments.filter((ip) => resolveIncomingProjectId(ip) === pid);
     const customChecksIn = projCustomIn
       .filter((ip) => ip.sourceType === 'شيك' || ip.method === 'شيك')
       .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
@@ -1330,10 +1423,37 @@ export function calculateComprehensiveLedger(params: {
       )
       .reduce((s, ip) => s + (Number(ip.amount) || 0), 0);
 
-    const projChecks = checks.filter((c) => (c.projectId ?? null) === pid);
+    const projChecks = checks.filter((c) => resolveCheckProjectId(c) === pid);
     const cashedInChecks = projChecks
-      .filter((c) => c.direction === 'وارد' && c.status === 'اتصرف' && (!c.id || !linkedCheckIds.has(c.id)))
-      .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      .filter(
+        (c) =>
+          c.direction === 'وارد' &&
+          (c.status === 'اتصرف' || (c.withdrawnAmount ?? 0) > 0) &&
+          (!c.id || !linkedCheckIds.has(c.id))
+      )
+      .reduce(
+        (s, c) =>
+          s +
+          (c.status === 'اتصرف'
+            ? Number(c.amount) || 0
+            : Number(c.withdrawnAmount) || Number(c.amount) || 0),
+        0
+      );
+    const checksWithdrawnAmount =
+      customChecksIn +
+      projChecks
+        .filter((c) => c.direction === 'وارد' && (!c.id || !linkedCheckIds.has(c.id)))
+        .reduce(
+          (s, c) =>
+            s +
+            ((c.withdrawnAmount ?? 0) > 0
+              ? Number(c.withdrawnAmount) || 0
+              : c.status === 'اتصرف'
+                ? Number(c.amount) || 0
+                : 0),
+          0
+        );
+
     const pendingIncomingChecks = projChecks
       .filter((c) => c.direction === 'وارد' && c.status === 'معلق')
       .reduce((s, c) => s + (Number(c.amount) || 0), 0);
@@ -1352,25 +1472,48 @@ export function calculateComprehensiveLedger(params: {
     const receivedFromCompany = customCompanyIn + extTotals.collected;
     const totalReceived = receivedFromChecks + receivedFromPersons + receivedFromCompany;
 
-    // Advances, deductions, settlements for workers whose primary project is pid
-    const advancesSpent = advances
-      .filter((adv) => (workerPrimaryProject.get(adv.workerId) ?? null) === pid)
-      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    // Advances, deductions, settlements, expenses resolved to this project pid
+    const projAdvances = advances.filter((adv) => resolveAdvanceProjectId(adv) === pid);
+    for (const a of projAdvances) workerIdsInProj.add(a.workerId);
+    const advancesSpent = projAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
     const deductionsApplied = deductions
       .filter((d) => {
-        const dProj = d.projectId ?? workerPrimaryProject.get(d.workerId) ?? null;
+        const dProj = d.projectId ?? workerPrimaryProject.get(d.workerId) ?? defaultProjId;
         return dProj === pid;
       })
       .reduce((s, d) => s + (Number(d.amount) || 0), 0);
 
-    const settlementsPaid = settlements
-      .filter((st) => (workerPrimaryProject.get(st.workerId) ?? null) === pid)
-      .reduce((s, st) => s + Math.max(0, Number(st.netPaid) || 0), 0);
+    const projSettlements = settlements.filter((st) => resolveSettlementProjectId(st) === pid);
+    for (const st of projSettlements) workerIdsInProj.add(st.workerId);
+    const settlementsPaid = projSettlements.reduce(
+      (s, st) => s + Math.max(0, Number(st.netPaid) || 0),
+      0
+    );
 
-    const expensesSpent = expenses
-      .filter((ex) => (ex.projectId ?? defaultProjId) === pid)
-      .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+    const projExpenses = expenses.filter((ex) => resolveExpenseProjectId(ex) === pid);
+    const recordedExpensesSum = projExpenses.reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+
+    // Include check withdrawal fees if not already recorded in expenses
+    let extraCheckFees = 0;
+    for (const c of projChecks) {
+      const fee = Number(c.withdrawalFee) || 0;
+      if (fee > 0) {
+        const hasExpenseFee = projExpenses.some(
+          (ex) => ex.checkId === c.id && ex.category === 'رسوم سحب شيك'
+        );
+        if (!hasExpenseFee) {
+          extraCheckFees += fee;
+        }
+      }
+    }
+    const withdrawalFeesSpent =
+      extraCheckFees +
+      projExpenses
+        .filter((ex) => ex.category === 'رسوم سحب شيك')
+        .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+
+    const expensesSpent = recordedExpensesSum + extraCheckFees;
 
     const totalSpentInProject =
       advancesSpent + settlementsPaid + nashPaid + expensesSpent + outgoingChecksCashed;
@@ -1416,6 +1559,8 @@ export function calculateComprehensiveLedger(params: {
       settlementsPaid,
       nashPaid,
       expensesSpent,
+      checksWithdrawnAmount,
+      withdrawalFeesSpent,
       outgoingChecksCashed,
       pendingOutgoingChecks,
       totalSpentInProject,
@@ -1558,6 +1703,13 @@ export interface PocketCashSummary {
   remainingBeforeExpenses: number; // الباقي في الجيب بعد السلف والقبض قبل مصاريف السحب (مثلاً 4000 - 3500 = 500)
   totalExternalExpenses: number; // مصاريف السحب والمصاريف الخارجية (مثلاً 40 ج)
   netRemainingInPocket: number; // الصافي الفعلي المتبقي في الجيب بعد كل شيء (مثلاً 460 ج)
+  checksIncomingTotal: number;
+  remainingInCheck: number;
+  externalExpensesTotal: number;
+  projectChecks: CheckItem[];
+  recordedAdvances: Advance[];
+  recordedSettlements: Settlement[];
+  recordedExpenses: Expense[];
 }
 
 export function calculateDailyPocketSummary(params: {
@@ -1566,6 +1718,12 @@ export function calculateDailyPocketSummary(params: {
   advancesTotal: number;
   settlementsTotal?: number;
   otherExpensesTotal?: number;
+  checksIncomingTotal?: number;
+  remainingInCheck?: number;
+  projectChecks?: CheckItem[];
+  recordedAdvances?: Advance[];
+  recordedSettlements?: Settlement[];
+  recordedExpenses?: Expense[];
 }): PocketCashSummary {
   const withdrawnAmount = Math.max(0, Number(params.withdrawnAmount) || 0);
   const withdrawalFee = Math.max(0, Number(params.withdrawalFee) || 0);
@@ -1588,6 +1746,13 @@ export function calculateDailyPocketSummary(params: {
     remainingBeforeExpenses,
     totalExternalExpenses,
     netRemainingInPocket,
+    checksIncomingTotal: params.checksIncomingTotal ?? 0,
+    remainingInCheck: params.remainingInCheck ?? 0,
+    externalExpensesTotal: totalExternalExpenses,
+    projectChecks: params.projectChecks ?? [],
+    recordedAdvances: params.recordedAdvances ?? [],
+    recordedSettlements: params.recordedSettlements ?? [],
+    recordedExpenses: params.recordedExpenses ?? [],
   };
 }
 
@@ -1615,12 +1780,14 @@ export function calculateCheckFundBreakdowns(params: {
     if (ex.id !== undefined) extractMap.set(ex.id, ex);
   }
 
-  // Find primary incoming check per project so unlinked project advances/settlements can also be attributed if only 1 check exists for that project
+  // Find primary incoming check per project so unlinked project advances/settlements/expenses can also be attributed if only 1 check exists for that project
   const primaryCheckIdByProject = new Map<number, number>();
   for (const c of params.checks) {
-    if (c.direction === 'وارد' && c.projectId && c.id !== undefined) {
-      if (!primaryCheckIdByProject.has(c.projectId)) {
-        primaryCheckIdByProject.set(c.projectId, c.id);
+    const resolvedPid =
+      c.projectId ?? (c.extractId ? extractMap.get(c.extractId)?.projectId ?? null : null);
+    if (c.direction === 'وارد' && resolvedPid && c.id !== undefined) {
+      if (!primaryCheckIdByProject.has(resolvedPid)) {
+        primaryCheckIdByProject.set(resolvedPid, c.id);
       }
     }
   }
@@ -1634,17 +1801,20 @@ export function calculateCheckFundBreakdowns(params: {
   }
 
   return params.checks.map((check) => {
-    const projectName = check.projectId
-      ? projectMap.get(check.projectId)?.name || `مشروع #${check.projectId}`
+    const resolvedPid =
+      check.projectId ??
+      (check.extractId ? extractMap.get(check.extractId)?.projectId ?? null : null);
+    const projectName = resolvedPid
+      ? projectMap.get(resolvedPid)?.name || `مشروع #${resolvedPid}`
       : 'الخزنة العامة';
     const extractNumber = check.extractId
       ? extractMap.get(check.extractId)?.number ?? check.extractId
       : null;
 
     const isPrimaryForProject =
-      check.projectId != null &&
+      resolvedPid != null &&
       check.id !== undefined &&
-      primaryCheckIdByProject.get(check.projectId) === check.id;
+      primaryCheckIdByProject.get(resolvedPid) === check.id;
 
     const linkedAdvances = params.advances
       .filter((adv) => {
@@ -1652,13 +1822,13 @@ export function calculateCheckFundBreakdowns(params: {
           return adv.checkId === check.id;
         }
         const advProj = adv.projectId ?? workerPrimaryProject.get(adv.workerId) ?? null;
-        return isPrimaryForProject && advProj === check.projectId;
+        return isPrimaryForProject && advProj === resolvedPid;
       })
       .map((adv) => ({
         id: adv.id,
         workerId: adv.workerId,
         workerName: workerMap.get(adv.workerId)?.name || `عامل #${adv.workerId}`,
-        amount: adv.amount,
+        amount: Number(adv.amount) || 0,
         date: adv.date,
         reason: adv.reason || 'سلفة من الشيك',
       }));
@@ -1669,13 +1839,13 @@ export function calculateCheckFundBreakdowns(params: {
           return st.checkId === check.id;
         }
         const stProj = st.projectId ?? workerPrimaryProject.get(st.workerId) ?? null;
-        return isPrimaryForProject && stProj === check.projectId;
+        return isPrimaryForProject && stProj === resolvedPid;
       })
       .map((st) => ({
         id: st.id,
         workerId: st.workerId,
         workerName: workerMap.get(st.workerId)?.name || `عامل #${st.workerId}`,
-        netPaid: st.netPaid,
+        netPaid: Number(st.netPaid) || 0,
         date: st.date,
         days: st.days,
         nights: st.nights,
@@ -1686,38 +1856,46 @@ export function calculateCheckFundBreakdowns(params: {
         if (exp.checkId !== undefined && exp.checkId !== null) {
           return exp.checkId === check.id;
         }
-        return false;
+        return isPrimaryForProject && exp.projectId === resolvedPid;
       })
       .map((exp) => ({
         id: exp.id,
         category: exp.category,
-        amount: exp.amount,
+        amount: Number(exp.amount) || 0,
         date: exp.date,
         note: exp.note,
       }));
 
     const advancesSpentFromCheck = linkedAdvances.reduce((s, a) => s + a.amount, 0);
     const settlementsPaidFromCheck = linkedSettlements.reduce((s, st) => s + st.netPaid, 0);
-    const withdrawalFee = Math.max(0, Number(check.withdrawalFee) || 0);
+
+    // Avoid double-counting withdrawalFee if an Expense with category 'رسوم سحب شيك' is already linked to this check
+    const feeInLinkedExpenses = linkedExpenses
+      .filter((e) => e.category === 'رسوم سحب شيك')
+      .reduce((s, e) => s + e.amount, 0);
+    const rawCheckFee = Math.max(0, Number(check.withdrawalFee) || 0);
+    const extraFeeNotYetInExpenses = feeInLinkedExpenses > 0 ? 0 : rawCheckFee;
+    const withdrawalFee = feeInLinkedExpenses > 0 ? feeInLinkedExpenses : rawCheckFee;
+
     const expensesSpentFromCheck =
-      linkedExpenses.reduce((s, e) => s + e.amount, 0) + withdrawalFee;
+      linkedExpenses.reduce((s, e) => s + e.amount, 0) + extraFeeNotYetInExpenses;
 
     const withdrawnAmount =
       check.withdrawnAmount !== undefined && check.withdrawnAmount !== null && check.withdrawnAmount > 0
-        ? check.withdrawnAmount
-        : check.amount;
+        ? Number(check.withdrawnAmount)
+        : Number(check.amount) || 0;
 
     const totalSpentFromCheck =
       advancesSpentFromCheck + settlementsPaidFromCheck + expensesSpentFromCheck;
-    const remainingInCheck = check.amount - totalSpentFromCheck;
+    const remainingInCheck = (Number(check.amount) || 0) - totalSpentFromCheck;
     const remainingBeforeFees =
       withdrawnAmount - advancesSpentFromCheck - settlementsPaidFromCheck;
     const remainingInPocketNet = remainingBeforeFees - expensesSpentFromCheck;
 
     // Project remaining owed to workers
     let projectOwedToWorkers = 0;
-    if (check.projectId) {
-      const projAtt = params.attendances.filter((a) => a.projectId === check.projectId);
+    if (resolvedPid) {
+      const projAtt = params.attendances.filter((a) => a.projectId === resolvedPid);
       const gross = projAtt.reduce(
         (s, a) =>
           s +
@@ -1727,7 +1905,7 @@ export function calculateCheckFundBreakdowns(params: {
       );
       const projWorkerIds = new Set(projAtt.map((a) => a.workerId));
       const ded = params.deductions
-        .filter((d) => d.projectId === check.projectId || (d.projectId == null && projWorkerIds.has(d.workerId)))
+        .filter((d) => d.projectId === resolvedPid || (d.projectId == null && projWorkerIds.has(d.workerId)))
         .reduce((s, d) => s + d.amount, 0);
       projectOwedToWorkers = Math.max(
         0,

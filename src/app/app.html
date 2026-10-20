@@ -997,83 +997,50 @@
 
     <!-- Page Viewport (with extra bottom padding pb-28 so floating mobile nav never covers content) -->
     <main class="flex-1 p-4 lg:p-6 pb-28 lg:pb-10 max-w-7xl w-full mx-auto space-y-4">
-      <!-- CONTEXTUAL SMART PAGE ADVISOR ("في كل صفحة لو في ميزات المفروض استخدمها أو نسيت أعمل كذا يظهر رسالة تقولي المفروض أعمل كذا") -->
+      <!-- CONTEXTUAL SMART PAGE ADVISOR (سطر تنبيه ذكي مختصر بدون زحمة أو تكرار) -->
       @if (visibleAdvisorTips().length > 0) {
+        @let tip = visibleAdvisorTips()[0];
         <section
           aria-label="الموجّه الذكي للصفحة"
-          class="rounded-2xl border border-amber-500/35 bg-gradient-to-l from-amber-500/10 via-[var(--bg-card)] to-emerald-500/10 p-3.5 sm:p-4 shadow-2xs no-print space-y-2.5"
+          class="rounded-2xl border border-amber-500/35 bg-[var(--bg-card)] px-3.5 py-2.5 shadow-2xs no-print flex flex-wrap items-center justify-between gap-2.5"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <span class="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
-                <mat-icon class="!w-4 !h-4 !text-[18px]">tips_and_updates</mat-icon>
-              </span>
-              <div>
-                <div class="text-xs font-extrabold text-[var(--text-heading)] flex items-center gap-1.5">
-                  <span>مساعد المتابعة الذكي في هذه الصفحة</span>
-                  <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
-                    تذكير ذكي
-                  </span>
-                </div>
-                <p class="text-[11px] text-[var(--text-secondary)]">
-                  ينبّهك تلقائياً لأي خطوة نسيتها اليوم أو ميزة سريعة توفّر وقتك في هذه الصفحة
-                </p>
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <mat-icon class="!w-4 !h-4 !text-[18px]">{{ tip.icon }}</mat-icon>
+            </span>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold">
+                  {{ tip.badge }}
+                </span>
+                <span class="text-xs font-extrabold text-[var(--text-heading)]">
+                  {{ tip.title }}
+                </span>
               </div>
-            </div>
-
-            <div class="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                (click)="store.openPocketSheet()"
-                class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer shadow-2xs"
-              >
-                <mat-icon class="!w-3.5 !h-3.5 !text-[15px]">account_balance_wallet</mat-icon>
-                <span>سحبة الشيك وباقي جيبك ({{ store.money(store.dailyPocketSummary().remainingBeforeExpenses) }})</span>
-              </button>
+              <p class="text-[11px] text-[var(--text-secondary)] truncate">
+                {{ tip.description }}
+              </p>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            @for (tip of visibleAdvisorTips(); track tip.id) {
-              <div
-                class="p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div class="min-w-0 space-y-0.5">
-                  <div class="flex items-center gap-1.5">
-                    <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-500 shrink-0">{{ tip.icon }}</mat-icon>
-                    <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold">
-                      {{ tip.badge }}
-                    </span>
-                  </div>
-                  <div class="text-xs font-extrabold text-[var(--text-heading)]">
-                    {{ tip.title }}
-                  </div>
-                  <p class="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                    {{ tip.description }}
-                  </p>
-                </div>
-
-                <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                  <button
-                    type="button"
-                    (click)="executeAdvisorAction(tip)"
-                    class="px-3 py-1.5 rounded-xl bg-[#3390EC] hover:bg-[#4EA4F6] text-white text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                  >
-                    <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">bolt</mat-icon>
-                    <span>{{ tip.actionLabel }}</span>
-                  </button>
-                  <button
-                    type="button"
-                    (click)="dismissAdvisorTip(tip.id)"
-                    title="إخفاء هذا التذكير"
-                    aria-label="إخفاء التذكير"
-                    class="p-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-heading)] cursor-pointer"
-                  >
-                    <mat-icon class="!w-4 !h-4 !text-[16px]">close</mat-icon>
-                  </button>
-                </div>
-              </div>
-            }
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              (click)="executeAdvisorAction(tip)"
+              class="px-3 py-1.5 rounded-xl bg-[#3390EC] hover:bg-[#4EA4F6] text-white text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+            >
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">bolt</mat-icon>
+              <span>{{ tip.actionLabel }}</span>
+            </button>
+            <button
+              type="button"
+              (click)="dismissAdvisorTip(tip.id)"
+              title="إخفاء التذكير"
+              aria-label="إخفاء التذكير"
+              class="p-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-heading)] cursor-pointer"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">close</mat-icon>
+            </button>
           </div>
         </section>
       }
@@ -3022,162 +2989,472 @@
       }
 
       <!-- ==================================================================== -->
-      <!-- MODE 3: DAILY CHECK WITHDRAWAL & POCKET CASH CALCULATOR ("سحبت كام من فلوس الشيك اليوم مثلا سحبت 4000 ومصاريف سحب 40 وسلف 3500 يقلي باقي ف جيبك كده 500") -->
+      <!-- MODE 3: PROJECT CHECK WITHDRAWAL & SAFE LEDGER ("صفحة ما تم سحبه من شيك المشروع وتم دفع كام سلف وكام مصاريف خارجية والمفروض يكون قاعد كام بناءً على ما تم تسجيله") -->
       <!-- ==================================================================== -->
       @if (sheet.type === 'pocket') {
         @let pk = store.dailyPocketSummary();
         <div class="space-y-5">
-          <div class="p-4 rounded-2xl bg-gradient-to-l from-emerald-600 to-teal-700 text-white flex flex-wrap items-center justify-between gap-3">
+          <!-- Header & Filter by Project / Check -->
+          <div class="p-4 rounded-2xl bg-gradient-to-l from-emerald-700 to-teal-800 text-white flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-base sm:text-lg font-black">
-                دفتر وحاسبة سحبة الشيك وعهدة جيبك اليومية
+                كشف ما تم سحبه من شيك المشروع والمنصرف والمتبقي الفعلي
               </h3>
               <p class="text-xs text-emerald-100 mt-0.5">
-                مثال حي: سحبت ٤٠٠٠ ج من الشيك + مصاريف سحب خارجية ٤٠ ج + سجلت سلف وقبض ناس ٣٥٠٠ ج ⬅ باقي في جيبك ٥٠٠ ج (وصافي ٤٦٠ ج بعد مصاريف السحب)
+                محسوب تلقائياً ١٠٠٪ بناءً على ما تم تسجيله من شيكات وسلف وقبض ومصاريف خارجية (بدون أرقام عشوائية)
               </p>
             </div>
-            <button
-              type="button"
-              (click)="store.pocketWithdrawnAmount.set(4000); store.pocketWithdrawalFee.set(40); store.pocketCustomAdvances.set(3500)"
-              class="px-3.5 py-2 rounded-xl bg-white text-emerald-900 text-xs font-black cursor-pointer"
-            >
-              تطبيق مثال (٤٠٠٠ / ٤٠ / ٣٥٠٠)
-            </button>
-          </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select
+                [value]="store.pocketSelectedProjectId() ?? ''"
+                (change)="store.pocketSelectedProjectId.set($any($event.target).value ? +$any($event.target).value : null); store.pocketSelectedCheckId.set(null)"
+                aria-label="فلترة حسب المشروع"
+                class="px-3 py-1.5 rounded-xl bg-white text-slate-900 text-xs font-extrabold cursor-pointer"
+              >
+                <option value="">كل المشاريع والخزنة</option>
+                @for (p of store.projects(); track p.id) {
+                  <option [value]="p.id">{{ p.name }}</option>
+                }
+              </select>
 
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label class="block text-xs font-extrabold text-[var(--text-secondary)] mb-1">
-                ١. سحبت كام من الشيك اليوم؟ (ج.م)
-              </label>
-              <input
-                type="number"
-                min="0"
-                [value]="store.pocketWithdrawnAmount()"
-                (input)="store.pocketWithdrawnAmount.set(+$any($event.target).value)"
-                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-black tabular-nums"
-              />
-            </div>
-
-            <div>
-              <label class="block text-xs font-extrabold text-[var(--text-secondary)] mb-1">
-                ٢. مصاريف خارجية حق السحب (ج.م)
-              </label>
-              <input
-                type="number"
-                min="0"
-                [value]="store.pocketWithdrawalFee()"
-                (input)="store.pocketWithdrawalFee.set(+$any($event.target).value)"
-                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-black text-rose-600 tabular-nums"
-              />
-            </div>
-
-            <div>
-              <label class="block text-xs font-extrabold text-[var(--text-secondary)] mb-1">
-                ٣. سلف وقبض ناس دفعتها (ج.م)
-              </label>
-              <input
-                type="number"
-                min="0"
-                [value]="pk.advancesTotal"
-                (input)="store.pocketCustomAdvances.set(+$any($event.target).value)"
-                class="w-full px-3.5 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-sm font-black text-amber-600 tabular-nums"
-              />
-            </div>
-
-            <div>
-              <label class="block text-xs font-extrabold text-[var(--text-secondary)] mb-1">
-                ٤. ربط بشيك محدد (اختياري)
-              </label>
               <select
                 [value]="store.pocketSelectedCheckId() ?? ''"
                 (change)="store.pocketSelectedCheckId.set($any($event.target).value ? +$any($event.target).value : null)"
-                class="w-full px-3 py-2.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)] text-xs font-bold"
+                aria-label="فلترة حسب الشيك"
+                class="px-3 py-1.5 rounded-xl bg-white text-slate-900 text-xs font-extrabold cursor-pointer"
               >
-                <option value="">سحبة يومية عامة</option>
+                <option value="">كل الشيكات المسجلة</option>
                 @for (c of store.checks(); track c.id) {
-                  <option [value]="c.id">شيك #{{ c.number }} ({{ store.money(c.amount) }})</option>
+                  @if (c.direction === 'وارد') {
+                    <option [value]="c.id">
+                      شيك #{{ c.number }} ({{ store.projectName(c.projectId) }}) — {{ store.money(c.amount) }}
+                    </option>
+                  }
                 }
               </select>
             </div>
           </div>
 
-          <!-- Live Pocket Calculation Cards -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="p-4 rounded-2xl bg-emerald-600 text-white space-y-1 shadow-xs">
-              <div class="text-xs font-bold text-emerald-100">باقي في جيبك بعد السلف (قبل مصاريف السحب)</div>
-              <div class="text-2xl font-black tabular-nums">{{ store.money(pk.remainingBeforeExpenses) }}</div>
-              <div class="text-[11px] text-emerald-100">
-                سحبت {{ store.money(pk.withdrawnAmount) }} - سلف وقبض {{ store.money(pk.totalWorkersPaid) }}
+          <!-- 5 Automatic Data-Driven Summary Cards (مسحوب · سلف · قبض · مصاريف خارجية · المفروض قاعد كام) -->
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[11px] font-bold text-[var(--text-secondary)]">١. ما تم سحبه / استلامه</div>
+              <div class="text-base sm:text-lg font-black text-emerald-600 mt-1 tabular-nums">
+                {{ store.money(pk.withdrawnAmount) }}
+              </div>
+              <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">من شيكات ورصيد المشروع</div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[11px] font-bold text-[var(--text-secondary)]">٢. تم دفع سلف للناس</div>
+              <div class="text-base sm:text-lg font-black text-amber-600 mt-1 tabular-nums">
+                {{ store.money(pk.advancesTotal) }}
+              </div>
+              <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">من السلف المسجلة فعلياً</div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[11px] font-bold text-[var(--text-secondary)]">٣. تم دفع قبض وتقفيل</div>
+              <div class="text-base sm:text-lg font-black text-blue-600 mt-1 tabular-nums">
+                {{ store.money(pk.settlementsTotal) }}
+              </div>
+              <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">من التسويات والقبض المسجل</div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[11px] font-bold text-[var(--text-secondary)]">٤. مصاريف خارجية وحق سحب</div>
+              <div class="text-base sm:text-lg font-black text-rose-600 mt-1 tabular-nums">
+                {{ store.money(pk.totalExternalExpenses) }}
+              </div>
+              <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                سحب: {{ store.money(pk.withdrawalFee) }} + مصاريف: {{ store.money(pk.otherExpensesTotal) }}
               </div>
             </div>
 
-            <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-1">
-              <div class="text-xs font-bold text-[var(--text-secondary)]">مصاريف خارجية حق السحب ومصاريف اليوم</div>
-              <div class="text-2xl font-black text-rose-600 tabular-nums">{{ store.money(pk.totalExternalExpenses) }}</div>
-              <div class="text-[11px] text-[var(--text-secondary)]">
-                حق السحب: {{ store.money(pk.withdrawalFee) }} + مصاريف أخرى: {{ store.money(pk.otherExpensesTotal) }}
+            <div class="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xs">
+              <div class="text-[11px] font-bold text-emerald-100">٥. المفروض يكون قاعد كام</div>
+              <div class="text-lg sm:text-xl font-black mt-1 tabular-nums">
+                {{ store.money(pk.netRemainingInPocket) }}
               </div>
-            </div>
-
-            <div class="p-4 rounded-2xl bg-[#1F2A37] text-white space-y-1 shadow-xs">
-              <div class="text-xs font-bold text-[#E7C78F]">الصافي الفعلي في جيبك بعد مصاريف السحب</div>
-              <div class="text-2xl font-black text-emerald-400 tabular-nums">{{ store.money(pk.netRemainingInPocket) }}</div>
-              <div class="text-[11px] text-slate-300">
-                بعد خصم السلف ({{ store.money(pk.totalWorkersPaid) }}) وحق السحب ({{ store.money(pk.withdrawalFee) }})
+              <div class="text-[10px] text-emerald-100 mt-0.5">
+                قبل رسوم السحب: {{ store.money(pk.remainingBeforeExpenses) }}
               </div>
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              (click)="savePocketWithdrawalFromSheet(true)"
-              class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <mat-icon class="!w-4 !h-4 !text-[16px]">save</mat-icon>
-              <span>حفظ السحبة وتسجيل مصاريف السحب ({{ store.money(pk.withdrawalFee) }}) في المصاريف</span>
-            </button>
+          <!-- Record a Real Check Withdrawal & Withdrawal Fee Directly to Database -->
+          <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="text-xs sm:text-sm font-black text-[var(--text-heading)] flex items-center gap-1.5">
+                <mat-icon class="!w-4 !h-4 !text-[18px] text-emerald-600">add_card</mat-icon>
+                <span>تسجيل سحبة جديدة من شيك المشروع ومصاريف السحب (تُحفظ في الشيكات والمصاريف)</span>
+              </h4>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-end">
+              <div>
+                <label class="block text-[11px] font-bold text-[var(--text-secondary)] mb-1">المشروع المرتبط</label>
+                <select
+                  [value]="store.pocketSelectedProjectId() ?? ''"
+                  (change)="store.pocketSelectedProjectId.set($any($event.target).value ? +$any($event.target).value : null)"
+                  class="w-full px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-bold"
+                >
+                  <option value="">اختر المشروع...</option>
+                  @for (p of store.projects(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-[var(--text-secondary)] mb-1">المبلغ المسحوب من الشيك (ج.م)</label>
+                <input
+                  type="number"
+                  min="0"
+                  [value]="store.pocketWithdrawnAmount() || ''"
+                  (input)="store.pocketWithdrawnAmount.set(+$any($event.target).value)"
+                  placeholder="مثال: 4000"
+                  class="w-full px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-black tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-[var(--text-secondary)] mb-1">مصاريف خارجية حق السحب (ج.م)</label>
+                <input
+                  type="number"
+                  min="0"
+                  [value]="store.pocketWithdrawalFee() || ''"
+                  (input)="store.pocketWithdrawalFee.set(+$any($event.target).value)"
+                  placeholder="مثال: 40"
+                  class="w-full px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-black text-rose-600 tabular-nums"
+                />
+              </div>
+
+              <button
+                type="button"
+                (click)="savePocketWithdrawalFromSheet(true)"
+                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <mat-icon class="!w-4 !h-4 !text-[16px]">save</mat-icon>
+                <span>حفظ السحبة والمصروف</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Per-Check Breakdown List (كل شيك مشروع وما اتسحب واتصرف منه والمفروض قاعد كام) -->
+          <div class="space-y-2.5">
+            <h4 class="text-xs sm:text-sm font-black text-[var(--text-heading)]">
+              تفاصيل شيكات المشاريع والمسحوب والمنصرف من كل شيك:
+            </h4>
+            @for (cb of store.checkFundBreakdowns(); track cb.check.id) {
+              @if (cb.check.direction === 'وارد' && (!store.pocketSelectedProjectId() || cb.check.projectId === store.pocketSelectedProjectId())) {
+                <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="space-y-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        (click)="store.openCheckSheet(cb.check.id!)"
+                        class="text-xs sm:text-sm font-black text-[#3390EC] hover:underline cursor-pointer"
+                      >
+                        شيك #{{ cb.check.number }} ({{ cb.check.bank }})
+                      </button>
+                      <button
+                        type="button"
+                        (click)="store.openProjectSheet(cb.check.projectId)"
+                        class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold cursor-pointer"
+                      >
+                        مشروع: {{ cb.projectName }}
+                      </button>
+                      @if (cb.extractNumber) {
+                        <span class="px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 text-[10px] font-extrabold">
+                          مستخلص #{{ store.num(cb.extractNumber) }}
+                        </span>
+                      }
+                    </div>
+                    <div class="text-[11px] text-[var(--text-secondary)] flex flex-wrap items-center gap-3">
+                      <span>المسحوب: <strong class="text-[var(--text-heading)]">{{ store.money(cb.withdrawnAmount) }}</strong></span>
+                      <span>سلف للناس: <strong class="text-amber-600">{{ store.money(cb.advancesSpentFromCheck) }}</strong></span>
+                      <span>قبض عمال: <strong class="text-blue-600">{{ store.money(cb.settlementsPaidFromCheck) }}</strong></span>
+                      <span>مصاريف وحق سحب: <strong class="text-rose-600">{{ store.money(cb.expensesSpentFromCheck) }}</strong></span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0">
+                    <div class="text-left px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30">
+                      <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">المفروض قاعد</div>
+                      <div class="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        {{ store.money(cb.remainingInPocketNet) }}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      (click)="store.openCheckSheet(cb.check.id!)"
+                      class="px-3 py-2 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-extrabold cursor-pointer"
+                    >
+                      التفاصيل
+                    </button>
+                  </div>
+                </div>
+              }
+            } @empty {
+              <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-dashed border-[var(--border-subtle)] text-center text-xs text-[var(--text-secondary)]">
+                لم يتم تسجيل شيكات مشاريع بعد — يمكنك إضافة شيك أو تسجيل سحبة أعلاه أو من صفحة الشيكات.
+              </div>
+            }
           </div>
         </div>
       }
 
       <!-- ==================================================================== -->
-      <!-- MODE 4: PROJECT / VILLA LINKED INSPECTOR SHEET -->
+      <!-- MODE 4: PROJECT / VILLA FULL ACCOUNT & QUICK ACTION SHEET ("وعند الضغط على مشروع يتم عرض تفاصيله كاملة وفي كل ضغطة لوحة سريعة بكل التفاصيل أو لو كنت هعمل حاجة") -->
       <!-- ==================================================================== -->
       @if (sheet.type === 'project' && store.inspectedProjectDetails(); as pd) {
-        <div class="space-y-4">
+        <div class="space-y-5">
           @if (pd.breakdown; as b) {
-            <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
-                  تفاصيل مشروع / فيلا: {{ b.projectName }}
-                </h3>
-                <p class="text-xs text-[var(--text-secondary)]">
-                  الشيكات والمستخلصات والسلف والمتبقي للعمال في هذا المشروع
-                </p>
+            <!-- Project Header with Three-Dots (⋮) Secondary Tools -->
+            <div class="p-4 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 relative">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <mat-icon class="!w-6 !h-6 !text-[24px]">apartment</mat-icon>
+                </div>
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
+                      حساب مشروع / فيلا: {{ b.projectName }}
+                    </h3>
+                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 text-xs font-black tabular-nums">
+                      صافي الربح: {{ store.money(b.netProfit) }}
+                    </span>
+                  </div>
+                  <p class="text-xs text-[var(--text-secondary)] mt-0.5">
+                    إجمالي الحضور: <strong>{{ store.num(b.daysWorked) }} يومية</strong> و <strong>{{ store.num(b.nightsWorked) }} سهرة</strong> · عدد العمالة بالمشروع: <strong>{{ store.num(b.workersCount) }} عامل</strong>
+                  </p>
+                </div>
               </div>
-              <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-600 text-xs font-black tabular-nums">
-                صافي ربح المشروع: {{ store.money(b.netProfit) }}
-              </span>
+
+              <!-- Primary Action + Three-Dots (⋮) Menu -->
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  (click)="store.openPocketSheet(null, b.projectId)"
+                  class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px]">account_balance_wallet</mat-icon>
+                  <span>كشف سحبات شيك المشروع</span>
+                </button>
+
+                <button
+                  type="button"
+                  (click)="projectSheetMenuOpen.set(!projectSheetMenuOpen())"
+                  aria-label="أدوات إضافية للمشروع"
+                  class="w-9 h-9 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-center cursor-pointer"
+                >
+                  <mat-icon class="!w-5 !h-5 !text-[20px]">more_vert</mat-icon>
+                </button>
+              </div>
+
+              @if (projectSheetMenuOpen()) {
+                <div class="w-full pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    (click)="openQuickActionForProject('incoming', b.projectId); projectSheetMenuOpen.set(false)"
+                    class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <mat-icon class="!w-4 !h-4 !text-[15px]">add_card</mat-icon>
+                    <span>+ إضافة رصيد أو دفعة للمشروع</span>
+                  </button>
+                  <button
+                    type="button"
+                    (click)="openQuickActionForProject('advance', b.projectId); projectSheetMenuOpen.set(false)"
+                    class="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <mat-icon class="!w-4 !h-4 !text-[15px]">payments</mat-icon>
+                    <span>+ تسجيل سلفة لعامل بالمشروع</span>
+                  </button>
+                  <a
+                    routerLink="/extracts"
+                    (click)="store.selectedProjectId.set(b.projectId); store.closeHalfSheet(); projectSheetMenuOpen.set(false)"
+                    class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold inline-flex items-center gap-1"
+                  >
+                    <mat-icon class="!w-4 !h-4 !text-[15px] text-blue-500">receipt_long</mat-icon>
+                    <span>مستخلصات المشروع</span>
+                  </a>
+                  <a
+                    routerLink="/checks"
+                    (click)="store.selectedProjectId.set(b.projectId); store.closeHalfSheet(); projectSheetMenuOpen.set(false)"
+                    class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold inline-flex items-center gap-1"
+                  >
+                    <mat-icon class="!w-4 !h-4 !text-[15px] text-purple-500">request_quote</mat-icon>
+                    <span>شيكات المشروع</span>
+                  </a>
+                </div>
+              }
             </div>
 
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <!-- 6 Dedicated Project Account KPIs (دخل كام · اتسحب كام · سلف وقبض · مصاريف خارجية · المفروض قاعد كام · باقي للعمال والشركة) -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
               <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
-                <div class="text-[11px] text-[var(--text-secondary)] font-bold">إجمالي ما وصلني للمشروع</div>
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">١. دخل كام للمشروع</div>
                 <div class="text-sm font-black text-emerald-600 mt-1 tabular-nums">{{ store.money(b.totalReceivedForProject) }}</div>
+                <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">شيكات: {{ store.money(b.receivedFromChecks) }}</div>
               </div>
+
               <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
-                <div class="text-[11px] text-[var(--text-secondary)] font-bold">إجمالي المصروف والسلف</div>
-                <div class="text-sm font-black text-amber-600 mt-1 tabular-nums">{{ store.money(b.totalSpentInProject) }}</div>
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">٢. سلف على الناس بالمشروع</div>
+                <div class="text-sm font-black text-amber-600 mt-1 tabular-nums">{{ store.money(b.advancesSpent) }}</div>
+                <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">{{ store.num(pd.projectAdvances.length) }} عملية سلفة</div>
               </div>
+
               <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
-                <div class="text-[11px] text-[var(--text-secondary)] font-bold">عليّا قبض متبقي للعمال</div>
-                <div class="text-sm font-black text-rose-600 mt-1 tabular-nums">{{ store.money(b.owedByMeInProject) }}</div>
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">٣. قبض وناش منصرف</div>
+                <div class="text-sm font-black text-blue-600 mt-1 tabular-nums">{{ store.money(b.settlementsPaid + b.nashPaid) }}</div>
+                <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">تقفيل أجور العمال</div>
               </div>
+
               <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
-                <div class="text-[11px] text-[var(--text-secondary)] font-bold">ليّا متبقي عند الشركة</div>
-                <div class="text-sm font-black text-blue-600 mt-1 tabular-nums">{{ store.money(b.owedToMeInProject) }}</div>
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">٤. مصاريف خارجية وحق سحب</div>
+                <div class="text-sm font-black text-rose-600 mt-1 tabular-nums">{{ store.money(b.expensesSpent) }}</div>
+                <div class="text-[10px] text-[var(--text-secondary)] mt-0.5">رسوم سحب: {{ store.money(b.withdrawalFeesSpent || 0) }}</div>
+              </div>
+
+              <div class="p-3 rounded-2xl bg-emerald-600 text-white">
+                <div class="text-[10px] font-bold text-emerald-100">٥. المفروض قاعد بخزنة المشروع</div>
+                <div class="text-sm sm:text-base font-black mt-1 tabular-nums">{{ store.money(b.cashFlowBalance) }}</div>
+                <div class="text-[10px] text-emerald-100 mt-0.5">الداخل − إجمالي الطالع</div>
+              </div>
+
+              <div class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+                <div class="text-[10px] font-bold text-[var(--text-secondary)]">٦. باقي للعمال / عند الشركة</div>
+                <div class="text-xs font-black text-rose-600 mt-1 tabular-nums">للعمال: {{ store.money(b.owedByMeInProject) }}</div>
+                <div class="text-[10px] font-bold text-blue-600 mt-0.5 tabular-nums">ليّا بره: {{ store.money(b.owedToMeInProject) }}</div>
+              </div>
+            </div>
+
+            <!-- Instant Action Bar Inside Project Sheet ("لو كنت هعمل حاجة في المشروع فوراً") -->
+            <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-xs font-black text-[var(--text-heading)] flex items-center gap-1.5">
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">bolt</mat-icon>
+                  <span>تنفيذ عملية سريعة على حساب {{ b.projectName }}:</span>
+                </span>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    (click)="openQuickActionForProject('incoming', b.projectId)"
+                    class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold cursor-pointer"
+                  >
+                    + إضافة رصيد / دفعة
+                  </button>
+                  <button
+                    type="button"
+                    (click)="openQuickActionForProject('advance', b.projectId)"
+                    class="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-[11px] font-extrabold cursor-pointer"
+                  >
+                    + صرف سلفة لعامل
+                  </button>
+                </div>
+              </div>
+
+              <!-- Inline Quick External Expense Form for This Project -->
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2 border-t border-[var(--border-subtle)] items-center">
+                <select
+                  [value]="sheetExpenseCategory()"
+                  (change)="sheetExpenseCategory.set($any($event.target).value)"
+                  aria-label="بند المصروف الخارجي"
+                  class="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-bold"
+                >
+                  <option value="مواصلات">مصروف مواصلات</option>
+                  <option value="رسوم سحب شيك">رسوم سحب شيك</option>
+                  <option value="أكل">مصروف أكل ومشروبات</option>
+                  <option value="أدوات">مصروف أدوات وعدة</option>
+                  <option value="صيانة">مصروف صيانة</option>
+                  <option value="أخرى">مصروف خارجي آخر</option>
+                </select>
+                <input
+                  type="number"
+                  min="5"
+                  [value]="sheetExpenseAmount()"
+                  (input)="sheetExpenseAmount.set(+$any($event.target).value)"
+                  placeholder="المبلغ..."
+                  aria-label="مبلغ المصروف"
+                  class="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-black tabular-nums"
+                />
+                <input
+                  type="text"
+                  [value]="sheetExpenseNote()"
+                  (input)="sheetExpenseNote.set($any($event.target).value)"
+                  placeholder="ملاحظة المصروف..."
+                  aria-label="ملاحظة المصروف"
+                  class="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-xs font-bold"
+                />
+                <button
+                  type="button"
+                  (click)="quickAddProjectExpenseInSheet(b.projectId, pd.projectChecks[0]?.check?.id ?? null)"
+                  class="py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold cursor-pointer"
+                >
+                  + تسجيل مصروف بالمشروع
+                </button>
+              </div>
+            </div>
+
+            <!-- Two-Column Detailed Lists: Project Checks & Workers in Project -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Project Checks & Extracts -->
+              <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-2.5 max-h-60 overflow-y-auto">
+                <h4 class="text-xs font-black text-[var(--text-heading)] flex items-center justify-between">
+                  <span>شيكات ومستخلصات المشروع ({{ store.num(pd.projectChecks.length) }} شيك · {{ store.num(pd.projectExtracts.length) }} مستخلص)</span>
+                </h4>
+                @for (cb of pd.projectChecks; track cb.check.id) {
+                  <button
+                    type="button"
+                    (click)="store.openCheckSheet(cb.check.id!)"
+                    class="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-emerald-500 flex items-center justify-between text-xs cursor-pointer text-right"
+                  >
+                    <div>
+                      <div class="font-extrabold text-[var(--text-heading)]">
+                        شيك #{{ cb.check.number }} ({{ cb.check.bank }}) — {{ cb.check.status }}
+                      </div>
+                      <div class="text-[11px] text-[var(--text-secondary)]">
+                        مسحوب: {{ store.money(cb.withdrawnAmount) }} · سلف ومصاريف: {{ store.money(cb.totalSpentFromCheck) }}
+                      </div>
+                    </div>
+                    <div class="text-left">
+                      <div class="text-[10px] text-[var(--text-secondary)]">المفروض قاعد</div>
+                      <div class="font-black text-emerald-600 tabular-nums">{{ store.money(cb.remainingInPocketNet) }}</div>
+                    </div>
+                  </button>
+                } @empty {
+                  <div class="text-xs text-[var(--text-secondary)]">لا توجد شيكات مربوطة بهذا المشروع بعد.</div>
+                }
+              </div>
+
+              <!-- Project Workers (Clickable to open Worker Quick Sheet) -->
+              <div class="p-3.5 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-2.5 max-h-60 overflow-y-auto">
+                <h4 class="text-xs font-black text-[var(--text-heading)]">
+                  العمال وحساباتهم في هذا المشروع ({{ store.num(pd.projectWorkers.length) }}):
+                </h4>
+                @for (pw of pd.projectWorkers; track pw.workerId) {
+                  <button
+                    type="button"
+                    (click)="store.openWorkerSheet(pw.workerId)"
+                    class="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#3390EC] flex items-center justify-between text-xs cursor-pointer text-right"
+                  >
+                    <div>
+                      <div class="font-extrabold text-[var(--text-heading)]">
+                        {{ pw.workerName }} <span class="text-[10px] text-[var(--text-secondary)]">({{ pw.role }})</span>
+                      </div>
+                      <div class="text-[11px] text-[var(--text-secondary)]">
+                        {{ store.num(pw.days) }} ي · {{ store.num(pw.nights) }} س · أجر: {{ store.money(pw.grossWages) }} · سلف: {{ store.money(pw.advancesPaid) }}
+                      </div>
+                    </div>
+                    <div class="text-left">
+                      <div class="text-[10px] text-[var(--text-secondary)]">باقي له</div>
+                      <div class="font-black text-amber-600 tabular-nums">{{ store.money(pw.netRemaining) }}</div>
+                    </div>
+                  </button>
+                } @empty {
+                  <div class="text-xs text-[var(--text-secondary)]">لم يتم تسجيل حضور أو سلف عمال على هذا المشروع بعد.</div>
+                }
               </div>
             </div>
           }

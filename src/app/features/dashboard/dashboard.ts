@@ -513,7 +513,10 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
                 </thead>
                 <tbody class="divide-y divide-[var(--border-subtle)]">
                   @for (row of paydayPreviewRows(); track row.worker.id) {
-                    <tr>
+                    <tr
+                      (click)="store.openWorkerSheet(row.worker.id!)"
+                      class="hover:bg-[var(--bg-app)] cursor-pointer transition-colors"
+                    >
                       <td class="py-2.5 px-2 font-bold text-[var(--text-heading)]">
                         {{ row.worker.name }}
                         <span class="text-[10px] px-2 py-0.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] mr-1">{{ row.worker.role }}</span>
@@ -527,11 +530,11 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
                       <td class="py-2.5 px-2 font-bold tabular-nums text-[#3390EC] dark:text-[#4EA4F6]">
                         {{ store.money(row.calc.netPaid) }}
                       </td>
-                      <td class="py-2.5 px-2">
+                      <td class="py-2.5 px-2" (click)="$event.stopPropagation()">
                         <button
                           type="button"
                           (click)="copyWorkerPaydaySlip(row.worker.name, row.worker.role, row.calc)"
-                          class="px-3 py-1 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-emerald-500 text-[11px] font-bold"
+                          class="px-3 py-1 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-emerald-500 text-[11px] font-bold cursor-pointer"
                         >
                           نسخ الكشف
                         </button>
@@ -605,27 +608,37 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
       <div class="ceramic-card p-5 space-y-4 reveal-section">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 class="text-lg font-bold text-[var(--text-heading)]">مقارنة المشاريع والأداء المالي</h2>
-            <p class="text-sm text-[var(--text-secondary)]">مقارنة اليوميات والمطلوب من الشركة وأجور العمال وصافي الربح لكل مشروع</p>
+            <h2 class="text-lg font-bold text-[var(--text-heading)]">حسابات المشاريع والأداء المالي (اضغط على أي مشروع للتفاصيل الكاملة)</h2>
+            <p class="text-sm text-[var(--text-secondary)]">مقارنة اليوميات والمطلوب من الشركة والمنصرف وصافي الربح لكل مشروع</p>
           </div>
-          <div class="flex items-center gap-2">
-            <a routerLink="/settings" class="px-4 py-2 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14"></path>
-              </svg>
-              <span>+ إضافة مشروع جديد</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              (click)="store.openPocketSheet(null, store.selectedProjectId())"
+              class="px-4 py-2 rounded-full bg-emerald-600 text-white text-xs font-extrabold cursor-pointer"
+            >
+              ما تم سحبه من شيك المشروع والمنصرف
+            </button>
+            <a routerLink="/my-ledger" class="px-4 py-2 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold">
+              الخزنة وحسابات المشاريع
             </a>
-            <a routerLink="/extracts" class="px-4 py-2 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold">
-              تحويل للمستخلصات
+            <a routerLink="/settings" class="px-4 py-2 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5">
+              <span>+ مشروع جديد</span>
             </a>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           @for (item of projectComparisons(); track item.project.id) {
-            <div class="p-4 rounded-[18px] bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-3">
+            <div
+              (click)="store.openProjectSheet(item.project.id!)"
+              class="p-4 rounded-[18px] bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[#3390EC] cursor-pointer transition-all space-y-3"
+            >
               <div class="flex items-center justify-between">
-                <h3 class="font-bold text-[var(--text-heading)] text-sm">{{ item.project.name }}</h3>
+                <h3 class="font-bold text-[var(--text-heading)] text-sm flex items-center gap-1.5">
+                  <span>{{ item.project.name }}</span>
+                  <span class="px-2 py-0.5 rounded-md bg-[#3390EC]/15 text-[#3390EC] text-[10px] font-extrabold">التفاصيل</span>
+                </h3>
                 <span class="text-xs px-2.5 py-0.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-bold text-[var(--text-secondary)] tabular-nums">
                   {{ store.num(item.summary.totalDays) }} يومية
                 </span>

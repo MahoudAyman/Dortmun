@@ -36,7 +36,7 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
         </div>
       }
 
-      <!-- DAILY CHECK WITHDRAWAL & POCKET CASH CALCULATOR ("أنا سحبت كام من فلوس الشيك اليوم مثلا سحبت 4000 ودفعت مصاريف خارجيه حق السحب 40 ج وسجلت سلف ناس 3500 يقلي باقي ف جيبك كده 500") -->
+      <!-- DATA-DRIVEN PROJECT CHECK WITHDRAWAL & SAFE LEDGER ("صفحة ما تم سحبه من شيك المشروع وتم دفع كام سلف وكام مصاريف خارجية والمفروض يكون قاعد كام") -->
       @let pk = store.dailyPocketSummary();
       <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500/40 shadow-xs space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -46,118 +46,151 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
             </div>
             <div>
               <h2 class="text-base font-black text-slate-900 dark:text-white">
-                دفتر سحبة الشيك اليومية وعهدة جيبك (كم سحبت وكم صرفت سلف وكم باقي في جيبك)
+                كشف ما تم سحبه من شيك المشروع والمدفوع سلف ومصاريف والمتبقي
               </h2>
               <p class="text-xs text-slate-500">
-                مثال: سحبت ٤٠٠٠ ج من الشيك + مصاريف سحب خارجية ٤٠ ج + سجلت سلف ناس ٣٥٠٠ ج ⬅ باقي في جيبك ٥٠٠ ج (وصافي ٤٦٠ ج بعد مصاريف السحب)
+                محسوب تلقائياً ١٠٠٪ من السجلات الفعلية (الشيكات المسجلة · السلف · القبض · المصاريف الخارجية ورسوم السحب)
               </p>
             </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              (click)="applyExample4000()"
-              class="px-3.5 py-2 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-extrabold cursor-pointer"
+            <select
+              aria-label="تصفية حسب المشروع"
+              [value]="store.pocketSelectedProjectId() ?? ''"
+              (change)="store.pocketSelectedProjectId.set($any($event.target).value ? +$any($event.target).value : null); store.pocketSelectedCheckId.set(null)"
+              class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-extrabold"
             >
-              تطبيق مثال (سحبت ٤٠٠٠ / مصاريف ٤٠ / سلف ٣٥٠٠)
-            </button>
+              <option value="">كل المشاريع</option>
+              @for (p of store.projects(); track p.id) {
+                <option [value]="p.id">{{ p.name }}</option>
+              }
+            </select>
+
+            <select
+              aria-label="تصفية حسب الشيك"
+              [value]="store.pocketSelectedCheckId() ?? ''"
+              (change)="onSelectCheckForPocket($any($event.target).value ? +$any($event.target).value : null)"
+              class="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-extrabold"
+            >
+              <option value="">كل شيكات المشروع الواردة</option>
+              @for (c of pk.projectChecks; track c.id) {
+                <option [value]="c.id">شيك #{{ c.number }} ({{ store.money(c.amount) }} - {{ store.projectName(c.projectId) }})</option>
+              }
+            </select>
+
             <button
               type="button"
-              (click)="store.openPocketSheet()"
+              (click)="store.openPocketSheet(store.pocketSelectedCheckId(), store.pocketSelectedProjectId())"
               class="px-3.5 py-2 rounded-xl bg-[#3390EC] text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">layers</mat-icon>
-              <span>فتح في لوحة نصف الصفحة</span>
+              <span>التفاصيل في لوحة نصف الصفحة</span>
             </button>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div>
-            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-              سحبت كام من فلوس الشيك اليوم؟ (ج.م)
-            </label>
-            <input
-              type="number"
-              min="0"
-              [value]="store.pocketWithdrawnAmount()"
-              (input)="store.pocketWithdrawnAmount.set(+$any($event.target).value)"
-              class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums"
-            />
+        <!-- 5 Data-Driven Summary Boxes -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+            <div class="text-[11px] font-bold text-slate-500">إجمالي شيكات المشروع</div>
+            <div class="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5 tabular-nums">
+              {{ store.money(pk.checksIncomingTotal) }}
+            </div>
+            <div class="text-[10px] text-slate-400 mt-0.5">{{ store.num(pk.projectChecks.length) }} شيك وارد</div>
           </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-              مصاريف خارجية حق السحب (ج.م)
-            </label>
-            <input
-              type="number"
-              min="0"
-              [value]="store.pocketWithdrawalFee()"
-              (input)="store.pocketWithdrawalFee.set(+$any($event.target).value)"
-              class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black text-rose-600 tabular-nums"
-            />
+          <div class="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+            <div class="text-[11px] font-bold text-blue-700 dark:text-blue-300">ما تم سحبه من الشيك</div>
+            <div class="text-base sm:text-lg font-black text-blue-600 mt-0.5 tabular-nums">
+              {{ store.money(pk.withdrawnAmount) }}
+            </div>
+            <div class="text-[10px] text-slate-500 mt-0.5">متبقي بالشيك: {{ store.money(pk.remainingInCheck) }}</div>
           </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-              إجمالي سلف وقبض الناس المصروف (ج.م)
-            </label>
-            <input
-              type="number"
-              min="0"
-              [value]="pk.advancesTotal"
-              (input)="store.pocketCustomAdvances.set(+$any($event.target).value)"
-              class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black text-amber-600 tabular-nums"
-            />
+          <div class="p-3.5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <div class="text-[11px] font-bold text-amber-800 dark:text-amber-300">مدفوع سلف وقبض للعمال</div>
+            <div class="text-base sm:text-lg font-black text-amber-600 mt-0.5 tabular-nums">
+              {{ store.money(pk.totalWorkersPaid) }}
+            </div>
+            <div class="text-[10px] text-slate-500 mt-0.5">
+              سلف {{ store.money(pk.advancesTotal) }} + قبض {{ store.money(pk.settlementsTotal) }}
+            </div>
           </div>
 
+          <div class="p-3.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+            <div class="text-[11px] font-bold text-rose-700 dark:text-rose-300">مصاريف خارجية ورسوم سحب</div>
+            <div class="text-base sm:text-lg font-black text-rose-600 mt-0.5 tabular-nums">
+              {{ store.money(pk.totalExternalExpenses) }}
+            </div>
+            <div class="text-[10px] text-slate-500 mt-0.5">
+              مصاريف {{ store.money(pk.externalExpensesTotal) }} + رسوم {{ store.money(pk.withdrawalFee) }}
+            </div>
+          </div>
+
+          <div class="p-3.5 rounded-2xl bg-emerald-600 text-white col-span-2 sm:col-span-1">
+            <div class="text-[11px] font-bold text-emerald-100">المفروض قاعد معاك الآن</div>
+            <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums">
+              {{ store.money(pk.netRemainingInPocket) }}
+            </div>
+            <div class="text-[10px] text-emerald-100 mt-0.5">
+              قبل المصاريف: {{ store.money(pk.remainingBeforeExpenses) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Update Check Withdrawal Bar -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
           <div>
-            <label class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
-              الشيك المسحوب منه
-            </label>
+            <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">الشيك المسحوب منه</label>
             <select
               [value]="store.pocketSelectedCheckId() ?? ''"
-              (change)="store.pocketSelectedCheckId.set($any($event.target).value ? +$any($event.target).value : null)"
-              class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+              (change)="onSelectCheckForPocket($any($event.target).value ? +$any($event.target).value : null)"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold"
             >
-              <option value="">سحبة شيك عامة</option>
+              <option value="">اختر الشيك...</option>
               @for (c of store.checks(); track c.id) {
-                <option [value]="c.id">شيك #{{ c.number }} ({{ store.money(c.amount) }})</option>
+                @if (c.direction === 'وارد') {
+                  <option [value]="c.id">شيك #{{ c.number }} ({{ store.money(c.amount) }} - {{ store.projectName(c.projectId) }})</option>
+                }
               }
             </select>
           </div>
-        </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div class="p-3.5 rounded-2xl bg-emerald-600 text-white">
-            <div class="text-xs font-bold text-emerald-100">باقي في جيبك بعد السلف (قبل مصاريف السحب)</div>
-            <div class="text-xl font-black mt-0.5 tabular-nums">{{ store.money(pk.remainingBeforeExpenses) }}</div>
-            <div class="text-[11px] text-emerald-100 mt-0.5">
-              سحبت {{ store.money(pk.withdrawnAmount) }} - سلف {{ store.money(pk.totalWorkersPaid) }}
-            </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">ما تم سحبه من الشيك (ج.م)</label>
+            <input
+              type="number"
+              min="0"
+              [value]="store.pocketWithdrawnAmount() || pk.withdrawnAmount"
+              (input)="store.pocketWithdrawnAmount.set(+$any($event.target).value)"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black tabular-nums"
+            />
           </div>
 
-          <div class="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
-            <div class="text-xs font-bold text-rose-700 dark:text-rose-300">مصاريف خارجية حق السحب</div>
-            <div class="text-xl font-black text-rose-600 mt-0.5 tabular-nums">{{ store.money(pk.totalExternalExpenses) }}</div>
-            <div class="text-[11px] text-slate-500 mt-0.5">
-              رسوم السحب: {{ store.money(pk.withdrawalFee) }}
-            </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">مصاريف / رسوم السحب (ج.م)</label>
+            <input
+              type="number"
+              min="0"
+              [value]="store.pocketWithdrawalFee() || pk.withdrawalFee"
+              (input)="store.pocketWithdrawalFee.set(+$any($event.target).value)"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-black text-rose-600 tabular-nums"
+            />
           </div>
 
-          <div class="p-3.5 rounded-2xl bg-slate-900 text-white">
-            <div class="text-xs font-bold text-amber-300">الصافي الفعلي في جيبك بعد حق السحب</div>
-            <div class="text-xl font-black text-emerald-400 mt-0.5 tabular-nums">{{ store.money(pk.netRemainingInPocket) }}</div>
-            <div class="text-[11px] text-slate-300 mt-0.5">
-              المتبقي الفعلي في جيبك بعد كل المصاريف
-            </div>
-          </div>
+          <button
+            type="button"
+            (click)="store.savePocketWithdrawalToCheck(true)"
+            class="min-h-[40px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <mat-icon class="!w-4 !h-4 !text-[16px]">save</mat-icon>
+            <span>حفظ السحبة على الشيك</span>
+          </button>
         </div>
       </div>
 
-      <!-- Add Check Form -->
+      <!-- Add Check Form (with Project, Extract, and Withdrawal Linkage) -->
       <form
         [formGroup]="checkForm"
         (ngSubmit)="saveCheck()"
@@ -165,14 +198,14 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
       >
         <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <mat-icon class="text-amber-500">account_balance</mat-icon>
-          <span>تسجيل شيك جديد وربطه بالمشروع والمستخلص</span>
+          <span>تسجيل شيك جديد وربطه بالمشروع والمستخلص والمنصرف منه</span>
         </h2>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label for="chk-dir" class="block text-xs font-medium mb-1">اتجاه الشيك *</label>
             <select id="chk-dir" formControlName="direction" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
-              <option value="وارد">وارد (من الشركة)</option>
+              <option value="وارد">وارد (من الشركة للمشروع)</option>
               <option value="صادر">صادر (لمورد / مقاول باطن)</option>
             </select>
           </div>
@@ -188,12 +221,22 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
           </div>
 
           <div>
-            <label for="chk-amt" class="block text-xs font-medium mb-1">المبلغ (ج.م) *</label>
-            <input id="chk-amt" type="number" min="1" formControlName="amount" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm tabular-nums" />
+            <label for="chk-amt" class="block text-xs font-medium mb-1">قيمة الشيك الكلية (ج.م) *</label>
+            <input id="chk-amt" type="number" min="1" formControlName="amount" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums" />
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+          <div>
+            <label for="chk-withdrawn" class="block text-xs font-medium mb-1">المبلغ المسحوب منه (ج.م)</label>
+            <input id="chk-withdrawn" type="number" min="0" formControlName="withdrawnAmount" placeholder="اتركه فارغاً = كامل الشيك" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold tabular-nums" />
+          </div>
+
+          <div>
+            <label for="chk-fee" class="block text-xs font-medium mb-1">رسوم / مصاريف السحب (ج.م)</label>
+            <input id="chk-fee" type="number" min="0" formControlName="withdrawalFee" placeholder="0" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-rose-600 tabular-nums" />
+          </div>
+
           <div>
             <label for="chk-due" class="block text-xs font-medium mb-1">تاريخ الاستحقاق *</label>
             <input id="chk-due" type="date" formControlName="dueDate" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm tabular-nums" />
@@ -201,7 +244,7 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
 
           <div>
             <label for="chk-status" class="block text-xs font-medium mb-1">الحالة *</label>
-            <select id="chk-status" formControlName="status" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm">
+            <select id="chk-status" formControlName="status" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
               <option value="معلق">معلق</option>
               <option value="اتصرف">اتصرف</option>
               <option value="مرتجع">مرتجع</option>
@@ -209,7 +252,7 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
           </div>
 
           <div>
-            <label for="chk-proj" class="block text-xs font-medium mb-1">المشروع / الفيلا المرتبطة *</label>
+            <label for="chk-proj" class="block text-xs font-medium mb-1">ربط بأي مشروع / فيلا *</label>
             <select id="chk-proj" formControlName="projectId" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
               @for (p of store.projects(); track p.id) {
                 <option [ngValue]="p.id">{{ p.name }}</option>
@@ -226,14 +269,10 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
               }
             </select>
           </div>
-
-          <div>
-            <label for="chk-notes" class="block text-xs font-medium mb-1">ملاحظات</label>
-            <input id="chk-notes" type="text" formControlName="notes" placeholder="ملاحظة حرة..." class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
-          </div>
         </div>
 
-        <div class="flex justify-end">
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <input id="chk-notes" type="text" formControlName="notes" placeholder="ملاحظة حرة عن الشيك أو مكان الصرف..." class="flex-1 min-w-[200px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
           <button type="submit" [disabled]="checkForm.invalid" class="min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm disabled:opacity-50 cursor-pointer">
             <mat-icon class="!text-lg !w-5 !h-5">add_card</mat-icon>
             <span>حفظ الشيك وربطه بالمشروع والمستخلص</span>
@@ -245,13 +284,13 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
       <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-            <button type="button" (click)="directionFilter.set('all')" class="px-3 py-1.5 rounded-lg text-xs font-bold" [class.bg-white]="directionFilter() === 'all'" [class.dark:bg-slate-900]="directionFilter() === 'all'">الكل</button>
-            <button type="button" (click)="directionFilter.set('وارد')" class="px-3 py-1.5 rounded-lg text-xs font-bold" [class.bg-white]="directionFilter() === 'وارد'" [class.dark:bg-slate-900]="directionFilter() === 'وارد'">الواردة</button>
-            <button type="button" (click)="directionFilter.set('صادر')" class="px-3 py-1.5 rounded-lg text-xs font-bold" [class.bg-white]="directionFilter() === 'صادر'" [class.dark:bg-slate-900]="directionFilter() === 'صادر'">الصادرة</button>
+            <button type="button" (click)="directionFilter.set('all')" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer" [class.bg-white]="directionFilter() === 'all'" [class.dark:bg-slate-900]="directionFilter() === 'all'">الكل</button>
+            <button type="button" (click)="directionFilter.set('وارد')" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer" [class.bg-white]="directionFilter() === 'وارد'" [class.dark:bg-slate-900]="directionFilter() === 'وارد'">الواردة</button>
+            <button type="button" (click)="directionFilter.set('صادر')" class="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer" [class.bg-white]="directionFilter() === 'صادر'" [class.dark:bg-slate-900]="directionFilter() === 'صادر'">الصادرة</button>
           </div>
 
           <div class="text-xs font-bold tabular-nums">
-            إجمالي المعروض: <span class="text-amber-600">{{ store.money(filteredTotal()) }}</span> · اضغط على أي شيك لعرض تفاصيل الصرف والسلف منه
+            إجمالي المعروض: <span class="text-amber-600">{{ store.money(filteredTotal()) }}</span> · اضغط على أي شيك أو مشروع لعرض لوحة التفاصيل السريعة
           </div>
         </div>
 
@@ -261,9 +300,9 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
               <tr>
                 <th class="py-3 px-4 font-semibold">الشيك والبنك</th>
                 <th class="py-3 px-3 font-semibold">المشروع والمستخلص</th>
-                <th class="py-3 px-3 font-semibold">إجمالي الشيك</th>
-                <th class="py-3 px-3 font-semibold">مصروف سلف وقبض منه</th>
-                <th class="py-3 px-3 font-semibold">المفروض قاعد في الشيك</th>
+                <th class="py-3 px-3 font-semibold">قيمة الشيك والمسحوب</th>
+                <th class="py-3 px-3 font-semibold">مصروف سلف ومصاريف</th>
+                <th class="py-3 px-3 font-semibold">المفروض قاعد معاك</th>
                 <th class="py-3 px-3 font-semibold">الحالة</th>
                 <th class="py-3 px-4 font-semibold">إجراء</th>
               </tr>
@@ -290,26 +329,31 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
                     <div class="text-xs text-slate-500 mt-0.5">{{ cb.check.bank }} · {{ store.digits(cb.check.dueDate) }}</div>
                   </td>
 
-                  <td class="py-3 px-3 text-xs">
-                    <div class="font-extrabold text-slate-800 dark:text-slate-200">{{ cb.projectName }}</div>
+                  <td class="py-3 px-3 text-xs" (click)="$event.stopPropagation(); store.openProjectSheet(cb.check.projectId)">
+                    <div class="font-extrabold text-[#3390EC] hover:underline">{{ cb.projectName }}</div>
                     @if (cb.extractNumber) {
-                      <span class="text-blue-600 font-bold">مستخلص #{{ store.num(cb.extractNumber) }}</span>
+                      <span class="text-slate-600 dark:text-slate-400 font-bold">مستخلص #{{ store.num(cb.extractNumber) }}</span>
                     } @else {
-                      <span class="text-slate-400">بدون مستخلص محدد</span>
+                      <span class="text-slate-400">اضغط لتفاصيل المشروع</span>
                     }
                   </td>
 
-                  <td class="py-3 px-3 font-extrabold tabular-nums">{{ store.money(cb.check.amount) }}</td>
+                  <td class="py-3 px-3 tabular-nums">
+                    <div class="font-extrabold">{{ store.money(cb.check.amount) }}</div>
+                    <div class="text-[11px] text-blue-600 font-bold">
+                      سُحب: {{ store.money(cb.withdrawnAmount) }}
+                    </div>
+                  </td>
 
                   <td class="py-3 px-3 text-xs tabular-nums">
-                    <div class="font-bold text-amber-600">سلف: {{ store.money(cb.advancesSpentFromCheck) }}</div>
-                    <div class="font-bold text-blue-600">قبض: {{ store.money(cb.settlementsPaidFromCheck) }}</div>
+                    <div class="font-bold text-amber-600">سلف وقبض: {{ store.money(cb.advancesSpentFromCheck + cb.settlementsPaidFromCheck) }}</div>
+                    <div class="font-bold text-rose-600">مصاريف وسحب: {{ store.money(cb.expensesSpentFromCheck) }}</div>
                   </td>
 
                   <td class="py-3 px-3">
-                    <div class="font-black text-emerald-600 tabular-nums">{{ store.money(cb.remainingInCheck) }}</div>
-                    <div class="text-[11px] text-rose-600 font-bold tabular-nums">
-                      عليّا قبض بالمشروع: {{ store.money(cb.projectOwedToWorkers) }}
+                    <div class="font-black text-emerald-600 tabular-nums">{{ store.money(cb.remainingInPocketNet) }}</div>
+                    <div class="text-[11px] text-slate-500 font-bold tabular-nums">
+                      متبقي بالشيك: {{ store.money(cb.remainingInCheck) }}
                     </div>
                   </td>
 
@@ -329,7 +373,7 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
                     </select>
                   </td>
 
-                  <td class="py-3 px-4" (click)="$event.stopPropagation()">
+                  <td class="py-3 px-4 relative" (click)="$event.stopPropagation()">
                     <div class="flex items-center gap-1">
                       <button
                         type="button"
@@ -340,13 +384,42 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
                       </button>
                       <button
                         type="button"
-                        (click)="store.deleteCheck(cb.check.id!)"
-                        class="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
-                        [attr.aria-label]="'حذف شيك ' + cb.check.number"
+                        (click)="openCheckRowMenuId.set(openCheckRowMenuId() === cb.check.id ? null : cb.check.id!)"
+                        class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                        [attr.aria-label]="'المزيد للشيك ' + cb.check.number"
                       >
-                        <mat-icon class="!text-base !w-4 !h-4">delete</mat-icon>
+                        <mat-icon class="!text-base !w-4 !h-4">more_vert</mat-icon>
                       </button>
                     </div>
+
+                    @if (openCheckRowMenuId() === cb.check.id) {
+                      <div class="absolute left-4 top-11 z-20 w-44 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-lg p-1.5 space-y-1 text-xs">
+                        <button
+                          type="button"
+                          (click)="store.openPocketSheet(cb.check.id!, cb.check.projectId); openCheckRowMenuId.set(null)"
+                          class="w-full text-right px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <mat-icon class="!w-4 !h-4 !text-[15px] text-emerald-600">account_balance_wallet</mat-icon>
+                          <span>سحبة الشيك والمنصرف</span>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="store.openProjectSheet(cb.check.projectId); openCheckRowMenuId.set(null)"
+                          class="w-full text-right px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <mat-icon class="!w-4 !h-4 !text-[15px] text-blue-600">domain</mat-icon>
+                          <span>تفاصيل المشروع</span>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="store.deleteCheck(cb.check.id!); openCheckRowMenuId.set(null)"
+                          class="w-full text-right px-2.5 py-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <mat-icon class="!w-4 !h-4 !text-[15px]">delete</mat-icon>
+                          <span>حذف الشيك</span>
+                        </button>
+                      </div>
+                    }
                   </td>
                 </tr>
               }
@@ -362,12 +435,15 @@ export class ChecksPage {
   private readonly fb = inject(FormBuilder);
 
   readonly directionFilter = signal<'all' | CheckDirection>('all');
+  readonly openCheckRowMenuId = signal<number | null>(null);
 
   readonly checkForm = this.fb.group({
     direction: ['وارد' as CheckDirection, Validators.required],
     number: ['', Validators.required],
     bank: ['البنك الأهلي المصري', Validators.required],
     amount: [15000, [Validators.required, Validators.min(1)]],
+    withdrawnAmount: [null as number | null],
+    withdrawalFee: [0],
     dueDate: ['2026-10-19', Validators.required],
     status: ['معلق' as CheckStatus, Validators.required],
     projectId: [1 as number | null],
@@ -386,24 +462,35 @@ export class ChecksPage {
     this.filteredBreakdowns().reduce((s, cb) => s + cb.check.amount, 0)
   );
 
-  applyExample4000(): void {
-    this.store.pocketWithdrawnAmount.set(4000);
-    this.store.pocketWithdrawalFee.set(40);
-    this.store.pocketCustomAdvances.set(3500);
-    this.store.showToast(
-      'تم تطبيق المثال: سحبت ٤٠٠٠ ج · مصاريف سحب ٤٠ ج · سلف ٣٥٠٠ ج ⬅ باقي ٥٠٠ ج (صافي ٤٦٠ ج)',
-      'success'
-    );
+  onSelectCheckForPocket(checkId: number | null): void {
+    this.store.pocketSelectedCheckId.set(checkId);
+    if (checkId) {
+      const chk = this.store.checks().find((c) => c.id === checkId);
+      if (chk) {
+        this.store.pocketSelectedProjectId.set(chk.projectId);
+        this.store.pocketWithdrawnAmount.set(chk.withdrawnAmount ?? chk.amount);
+        this.store.pocketWithdrawalFee.set(chk.withdrawalFee ?? 0);
+      }
+    }
   }
 
   async saveCheck(): Promise<void> {
     if (this.checkForm.invalid) return;
     const v = this.checkForm.getRawValue();
+    const amount = Number(v.amount);
+    const withdrawnAmount =
+      v.withdrawnAmount !== null && v.withdrawnAmount !== undefined && Number(v.withdrawnAmount) > 0
+        ? Number(v.withdrawnAmount)
+        : amount;
+    const withdrawalFee = Math.max(0, Number(v.withdrawalFee) || 0);
+
     await this.store.saveCheck({
       direction: (v.direction || 'وارد') as CheckDirection,
       number: v.number || '',
       bank: v.bank || '',
-      amount: Number(v.amount),
+      amount,
+      withdrawnAmount,
+      withdrawalFee,
       dueDate: v.dueDate || this.store.todayIso(),
       status: (v.status || 'معلق') as CheckStatus,
       projectId: v.projectId ? Number(v.projectId) : 1,
@@ -411,7 +498,7 @@ export class ChecksPage {
       notes: v.notes || '',
     });
     this.store.showToast('تم حفظ الشيك وربطه بالمشروع والمستخلص بنجاح', 'success');
-    this.checkForm.patchValue({ number: '', notes: '' });
+    this.checkForm.patchValue({ number: '', notes: '', withdrawnAmount: null, withdrawalFee: 0 });
   }
 
   async changeStatus(chk: CheckItem, status: CheckStatus): Promise<void> {
