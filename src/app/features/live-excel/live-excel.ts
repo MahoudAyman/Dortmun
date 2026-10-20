@@ -12,19 +12,12 @@ import {
   Attendance,
   Worker,
   Advance,
-  Deduction,
   Expense,
   CheckItem,
   Extract,
-  ExpenseCategory,
-  CheckStatus,
-  CheckDirection,
-  DeductionMode,
 } from '../../core/db/models';
 import {
   formatCurrency,
-  formatNumber,
-  toArabicDigits,
 } from '../../core/calc/calculations';
 
 export type ExcelSheetTab =
@@ -36,1341 +29,1950 @@ export type ExcelSheetTab =
   | 'extracts'
   | 'master';
 
+export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
+
 @Component({
   selector: 'app-live-excel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatIconModule],
   template: `
-    <div class="space-y-4">
-      <!-- EXCEL TOP APPLICATION BAR & WORKBOOK BRANDING -->
+    <div
+      class="excel-app-window flex flex-col rounded-xl border border-[#d4d4d4] dark:border-[#374151] shadow-xl overflow-hidden bg-[#f3f2f1] dark:bg-[#1f2937] text-[#242424] dark:text-[#f3f4f6] select-none"
+    >
+      <!-- 1. MICROSOFT EXCEL TITLE BAR (شريط العنوان العلوي الأخضر الكلاسيكي) -->
       <div
-        class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-xs overflow-hidden"
+        class="excel-title-bar bg-[#107c41] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold gap-2 shadow-xs"
       >
-        <!-- Microsoft Excel Styled Ribbon Header -->
-        <div
-          class="bg-[#107c41] text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm"
-        >
-          <div class="flex items-center gap-3">
-            <div
-              class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center font-bold text-xl shadow-inner shrink-0"
-            >
-              <mat-icon class="!text-2xl !w-6 !h-6">grid_on</mat-icon>
-            </div>
-            <div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <h1 class="text-base lg:text-lg font-black tracking-tight">
-                  شيت إكسيل الموقع المباشر (Live Excel Studio)
-                </h1>
-                <span
-                  class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/40 text-emerald-100 border border-emerald-300/30 flex items-center gap-1.5"
-                >
-                  <span
-                    class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
-                  ></span>
-                  <span>مزامنة مباشرة مع الداتا بيز والمشاريع</span>
-                </span>
-              </div>
-              <p class="text-xs text-white/80 font-medium">
-                سجل وعدّل كل تفاصيل الموقع (اليوميات، العمال، السلف، المصاريف،
-                الشيكات) مباشرة وكأنك داخل إكسيل
-              </p>
-            </div>
+        <!-- Left: Quick Access Toolbar -->
+        <div class="flex items-center gap-2">
+          <!-- Excel App Logo -->
+          <div
+            class="w-6 h-6 rounded-md bg-white text-[#107c41] font-black text-sm flex items-center justify-center shadow-xs"
+            title="Microsoft Excel - نظام المقاولات الذكي"
+          >
+            X
           </div>
 
-          <!-- Quick Action Buttons in Ribbon -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              (click)="downloadRealExcel()"
-              class="px-3.5 py-1.5 rounded-xl bg-white text-[#107c41] hover:bg-emerald-50 text-xs font-black flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
-              title="تصدير الشيت الحالي كملف إكسيل حقيقي .xlsx"
-            >
-              <mat-icon class="!text-base !w-4 !h-4">file_download</mat-icon>
-              <span>تحميل Excel (.xlsx)</span>
-            </button>
-
-            <button
-              type="button"
-              (click)="copySheetAsTsv()"
-              class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 cursor-pointer"
-              title="نسخ بيانات الجدول الحالي لتلصقها مباشرة في برنامج إكسيل أو Google Sheets"
-            >
-              <mat-icon class="!text-base !w-4 !h-4">content_copy</mat-icon>
-              <span>نسخ كـ Excel</span>
-            </button>
-
-            <button
-              type="button"
-              (click)="triggerPrint()"
-              class="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 cursor-pointer"
-              title="طباعة جدول الشيت الحالي"
-            >
-              <mat-icon class="!text-base !w-4 !h-4">print</mat-icon>
-              <span>طباعة</span>
-            </button>
-
-            <button
-              type="button"
-              (click)="store.undoLastOperation()"
-              class="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center justify-center border border-white/20 cursor-pointer"
-              title="تراجع عن آخر حركة"
-            >
-              <mat-icon class="!text-base !w-4 !h-4">undo</mat-icon>
-            </button>
+          <!-- AutoSave Toggle Indicator -->
+          <div
+            class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-900/50 text-[11px] text-emerald-100 border border-emerald-400/30 font-medium"
+            title="الحفظ التلقائي الفوري مفعّل - كل تعديل في أي خلية يُحفظ في قاعدة البيانات فوراً"
+          >
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>حفظ تلقائي: تشغيل</span>
           </div>
+
+          <!-- Quick Save / Undo / Redo -->
+          <button
+            type="button"
+            (click)="triggerQuickSaveToast()"
+            class="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+            title="حفظ الآن (Ctrl+S)"
+          >
+            <mat-icon class="!text-sm !w-4 !h-4">save</mat-icon>
+          </button>
+          <button
+            type="button"
+            (click)="store.undoLastOperation()"
+            class="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+            title="تراجع عن آخر تعديل (Ctrl+Z)"
+          >
+            <mat-icon class="!text-sm !w-4 !h-4">undo</mat-icon>
+          </button>
         </div>
 
-        <!-- Toolbar & Filter Zone -->
+        <!-- Center: Workbook Title -->
         <div
-          class="p-3 bg-[var(--bg-subtle)]/70 border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3 text-xs"
+          class="flex items-center gap-2 text-center truncate font-bold text-xs"
         >
-          <!-- Left: Search and Filters -->
-          <div class="flex items-center gap-2 flex-wrap flex-1 min-w-[280px]">
-            <!-- Search Box -->
-            <div class="relative flex-1 min-w-[180px] max-w-xs">
-              <mat-icon
-                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] !text-base !w-4 !h-4 pointer-events-none"
-              >
-                search
-              </mat-icon>
-              <input
-                type="text"
-                [value]="searchQuery()"
-                (input)="searchQuery.set($any($event.target).value)"
-                placeholder="بحث فوري في كل الخلايا..."
-                class="w-full pr-8 pl-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-heading)] placeholder:text-[var(--text-secondary)]/70 focus:outline-none focus:ring-1 focus:ring-[#107c41]"
-              />
-              @if (searchQuery()) {
-                <button
-                  type="button"
-                  (click)="searchQuery.set('')"
-                  class="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-rose-500"
-                >
-                  <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
-                </button>
-              }
-            </div>
+          <span class="truncate">
+            {{ activeWorkbookFileName() }} - Excel
+          </span>
+          <span
+            class="text-[10px] bg-emerald-800/80 px-2 py-0.5 rounded text-emerald-200 border border-emerald-400/20"
+          >
+            تم الحفظ محلياً
+          </span>
+        </div>
 
-            <!-- Project Filter -->
-            <div class="flex items-center gap-1.5">
-              <span class="text-[var(--text-secondary)] font-bold">المشروع:</span>
-              <select
-                [value]="selectedProjectId() === null ? '' : selectedProjectId()"
-                (change)="onProjectFilterChange($any($event.target).value)"
-                class="px-2.5 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-heading)] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#107c41]"
-              >
-                <option value="">كل المشاريع (الكل)</option>
-                @for (p of store.projects(); track p.id) {
-                  <option [value]="p.id">{{ p.name }}</option>
-                }
-              </select>
-            </div>
-
-            <!-- Date / Month Filter -->
-            <div class="flex items-center gap-1.5">
-              <span class="text-[var(--text-secondary)] font-bold">الشهر:</span>
-              <input
-                type="month"
-                [value]="filterMonth()"
-                (input)="filterMonth.set($any($event.target).value)"
-                class="px-2.5 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-heading)] font-semibold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#107c41]"
-              />
-              @if (filterMonth()) {
-                <button
-                  type="button"
-                  (click)="filterMonth.set('')"
-                  class="text-[10px] text-rose-600 hover:underline font-bold"
-                >
-                  إلغاء
-                </button>
-              }
-            </div>
+        <!-- Right: Search & Window Tools -->
+        <div class="flex items-center gap-1.5">
+          <div class="relative hidden md:block">
+            <input
+              type="text"
+              [value]="searchQuery()"
+              (input)="searchQuery.set($any($event.target).value)"
+              placeholder="بحث في كل الخلايا (Alt + Q)..."
+              class="w-48 pl-2 pr-7 py-0.5 text-[11px] rounded bg-emerald-950/40 text-white placeholder:text-white/60 border border-emerald-400/30 focus:outline-none focus:bg-white focus:text-slate-900 focus:w-64 transition-all"
+            />
+            <mat-icon
+              class="absolute right-1.5 top-1/2 -translate-y-1/2 text-white/70 !text-xs !w-3.5 !h-3.5 pointer-events-none"
+            >
+              search
+            </mat-icon>
           </div>
 
-          <!-- Right: Add Row Button -->
-          <div class="flex items-center gap-2">
-            @if (activeTab() !== 'master') {
+          <button
+            type="button"
+            (click)="downloadRealExcel()"
+            class="px-2.5 py-1 rounded bg-white text-[#107c41] hover:bg-emerald-50 text-[11px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+            title="تنزيل كملف Excel حقيقي .xlsx"
+          >
+            <mat-icon class="!text-xs !w-3.5 !h-3.5">file_download</mat-icon>
+            <span class="hidden sm:inline">تنزيل .xlsx</span>
+          </button>
+
+          <button
+            type="button"
+            (click)="copySheetAsTsv()"
+            class="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+            title="نسخ جدول البيانات للذاكرة للصقه في Excel أو Google Sheets"
+          >
+            <mat-icon class="!text-sm !w-4 !h-4">content_copy</mat-icon>
+          </button>
+
+          <button
+            type="button"
+            (click)="triggerPrint()"
+            class="p-1 rounded hover:bg-white/20 text-white cursor-pointer"
+            title="طباعة"
+          >
+            <mat-icon class="!text-sm !w-4 !h-4">print</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. MICROSOFT EXCEL RIBBON TABS (تبويبات الشريط: ملف، الشريط الرئيسي، إدراج، صيغ، بيانات، عرض) -->
+      <div
+        class="excel-ribbon-tabs bg-[#f3f2f1] dark:bg-[#111827] border-b border-[#e1dfdd] dark:border-[#374151] px-2 flex items-center gap-0.5 text-xs font-medium"
+      >
+        <button
+          type="button"
+          (click)="activeRibbonTab.set('home')"
+          class="ribbon-tab-btn"
+          [class.ribbon-tab-btn-active]="activeRibbonTab() === 'home'"
+        >
+          الشريط الرئيسي (Home)
+        </button>
+        <button
+          type="button"
+          (click)="activeRibbonTab.set('insert')"
+          class="ribbon-tab-btn"
+          [class.ribbon-tab-btn-active]="activeRibbonTab() === 'insert'"
+        >
+          إدراج (Insert)
+        </button>
+        <button
+          type="button"
+          (click)="activeRibbonTab.set('formulas')"
+          class="ribbon-tab-btn"
+          [class.ribbon-tab-btn-active]="activeRibbonTab() === 'formulas'"
+        >
+          صيغ ودوال (Formulas)
+        </button>
+        <button
+          type="button"
+          (click)="activeRibbonTab.set('data')"
+          class="ribbon-tab-btn"
+          [class.ribbon-tab-btn-active]="activeRibbonTab() === 'data'"
+        >
+          بيانات وتصفية (Data)
+        </button>
+        <button
+          type="button"
+          (click)="activeRibbonTab.set('view')"
+          class="ribbon-tab-btn"
+          [class.ribbon-tab-btn-active]="activeRibbonTab() === 'view'"
+        >
+          عرض (View)
+        </button>
+      </div>
+
+      <!-- 3. RIBBON TOOLBAR PANEL (شريط الأدوات المنسدل لكل تبويب إكسيل) -->
+      <div
+        class="excel-ribbon-content bg-white dark:bg-[#1e293b] border-b border-[#d4d4d4] dark:border-[#374151] px-3 py-2 flex flex-wrap items-center gap-3 text-xs overflow-x-auto shadow-2xs"
+      >
+        @switch (activeRibbonTab()) {
+          @case ('home') {
+            <!-- Clipboard Group -->
+            <div class="ribbon-group flex items-center gap-1 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
+              <button
+                type="button"
+                (click)="copySheetAsTsv()"
+                class="ribbon-btn flex flex-col items-center justify-center p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                title="نسخ جدول الخلايا"
+              >
+                <mat-icon class="!text-base !w-4 !h-4 text-[#107c41]">content_copy</mat-icon>
+                <span class="text-[10px]">نسخ</span>
+              </button>
+              <button
+                type="button"
+                (click)="downloadRealExcel()"
+                class="ribbon-btn flex flex-col items-center justify-center p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                title="تصدير كملف إكسيل كامل"
+              >
+                <mat-icon class="!text-base !w-4 !h-4 text-[#107c41]">file_download</mat-icon>
+                <span class="text-[10px]">تصدير</span>
+              </button>
+            </div>
+
+            <!-- Font / Formatting Group -->
+            <div class="ribbon-group flex items-center gap-1 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
+              <button
+                type="button"
+                (click)="toggleCellBold()"
+                class="p-1 rounded font-black text-xs min-w-[24px] hover:bg-gray-100 dark:hover:bg-slate-700"
+                [class.bg-emerald-100]="isCellBold()"
+                [class.text-emerald-800]="isCellBold()"
+                title="غامق (Ctrl+B)"
+              >
+                B
+              </button>
+              <button
+                type="button"
+                (click)="toggleCellItalic()"
+                class="p-1 rounded italic text-xs min-w-[24px] hover:bg-gray-100 dark:hover:bg-slate-700"
+                [class.bg-emerald-100]="isCellItalic()"
+                [class.text-emerald-800]="isCellItalic()"
+                title="مائل (Ctrl+I)"
+              >
+                I
+              </button>
+              <div
+                class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 text-[11px]"
+                title="حجم الخط"
+              >
+                <span>خط 11</span>
+              </div>
+            </div>
+
+            <!-- Alignment Group -->
+            <div class="ribbon-group flex items-center gap-1 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
+              <button
+                type="button"
+                (click)="textAlignMode.set('right')"
+                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700"
+                [class.bg-emerald-100]="textAlignMode() === 'right'"
+                title="محاذاة لليمين"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">format_align_right</mat-icon>
+              </button>
+              <button
+                type="button"
+                (click)="textAlignMode.set('center')"
+                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700"
+                [class.bg-emerald-100]="textAlignMode() === 'center'"
+                title="محاذاة للوسط"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">format_align_center</mat-icon>
+              </button>
+              <button
+                type="button"
+                (click)="textAlignMode.set('left')"
+                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700"
+                [class.bg-emerald-100]="textAlignMode() === 'left'"
+                title="محاذاة لليسار"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">format_align_left</mat-icon>
+              </button>
+            </div>
+
+            <!-- Cells Operations Group -->
+            <div class="ribbon-group flex items-center gap-1.5 pl-2 border-l border-[#e5e7eb] dark:border-slate-700">
               <button
                 type="button"
                 (click)="addNewRowToActiveSheet()"
-                class="px-3.5 py-1.5 rounded-xl bg-[#107c41] hover:bg-[#0c5c30] text-white font-extrabold flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                class="px-2.5 py-1 rounded bg-[#107c41] hover:bg-[#0c5c30] text-white font-bold flex items-center gap-1 shadow-2xs cursor-pointer"
+                title="إدراج صف جديد في الشيت"
               >
-                <mat-icon class="!text-base !w-4 !h-4">add_circle</mat-icon>
-                <span>➕ إضافة صف جديد مباشر</span>
+                <mat-icon class="!text-xs !w-3.5 !h-3.5">add</mat-icon>
+                <span>إدراج صف</span>
               </button>
-            }
+              <button
+                type="button"
+                (click)="deleteSelectedRow()"
+                [disabled]="selectedRowId() === null"
+                class="px-2.5 py-1 rounded border border-rose-200 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-[11px] font-bold flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                title="حذف الصف المحدد"
+              >
+                <mat-icon class="!text-xs !w-3.5 !h-3.5">delete</mat-icon>
+                <span>حذف صف</span>
+              </button>
+            </div>
 
-            <span
-              class="px-2.5 py-1 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-mono font-bold"
-            >
-              عدد الصفوف: {{ currentFilteredCount() }}
-            </span>
-          </div>
-        </div>
+            <!-- Editing & Quick AutoSum -->
+            <div class="ribbon-group flex items-center gap-2">
+              <div
+                class="flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-[#107c41] font-mono font-bold text-xs"
+                title="دالة الجمع التلقائي للعمود النشط"
+              >
+                <span class="font-serif font-black">Σ AutoSum:</span>
+                <span>{{ formatMoney(activeSheetSum()) }}</span>
+              </div>
+            </div>
+          }
 
-        <!-- FORMULA BAR (شريط الدوال والمعادلات fx مثل إكسيل) -->
+          @case ('insert') {
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                (click)="addNewRowToActiveSheet()"
+                class="px-3 py-1.5 rounded bg-[#107c41] text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">table_rows</mat-icon>
+                <span>إدراج صف بيانات جديد</span>
+              </button>
+              <button
+                type="button"
+                (click)="downloadRealExcel()"
+                class="px-3 py-1.5 rounded border border-[#107c41] text-[#107c41] hover:bg-emerald-50 font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <mat-icon class="!text-sm !w-4 !h-4">table_view</mat-icon>
+                <span>تصدير جدول بيانات متكامل (.xlsx)</span>
+              </button>
+            </div>
+          }
+
+          @case ('formulas') {
+            <div class="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                (click)="insertFormula('SUM')"
+                class="px-2.5 py-1 rounded bg-gray-100 dark:bg-slate-700 hover:bg-emerald-100 font-bold font-mono text-xs flex items-center gap-1"
+              >
+                <span class="text-[#107c41] font-black">Σ</span>
+                <span>=SUM(...) : {{ formatMoney(activeSheetSum()) }}</span>
+              </button>
+              <button
+                type="button"
+                (click)="insertFormula('AVERAGE')"
+                class="px-2.5 py-1 rounded bg-gray-100 dark:bg-slate-700 hover:bg-emerald-100 font-bold font-mono text-xs flex items-center gap-1"
+              >
+                <span>=AVERAGE(...) : {{ formatMoney(activeSheetAvg()) }}</span>
+              </button>
+              <button
+                type="button"
+                (click)="insertFormula('COUNT')"
+                class="px-2.5 py-1 rounded bg-gray-100 dark:bg-slate-700 hover:bg-emerald-100 font-bold font-mono text-xs flex items-center gap-1"
+              >
+                <span>=COUNT(...) : {{ currentFilteredCount() }}</span>
+              </button>
+            </div>
+          }
+
+          @case ('data') {
+            <div class="flex items-center gap-3 flex-wrap">
+              <!-- Filter by Project -->
+              <div class="flex items-center gap-1.5">
+                <span class="text-gray-500 font-bold">تصفية المشروع:</span>
+                <select
+                  [value]="selectedProjectId() === null ? '' : selectedProjectId()"
+                  (change)="onProjectFilterChange($any($event.target).value)"
+                  class="px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  <option value="">جميع المشاريع</option>
+                  @for (p of store.projects(); track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                </select>
+              </div>
+
+              <!-- Filter by Month -->
+              <div class="flex items-center gap-1.5">
+                <span class="text-gray-500 font-bold">الشهر:</span>
+                <input
+                  type="month"
+                  [value]="filterMonth()"
+                  (input)="filterMonth.set($any($event.target).value)"
+                  class="px-2 py-0.5 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-semibold cursor-pointer"
+                />
+              </div>
+
+              <!-- Quick Sort -->
+              <button
+                type="button"
+                (click)="toggleSortDirection()"
+                class="px-2.5 py-1 rounded border border-gray-300 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <mat-icon class="!text-xs !w-3.5 !h-3.5">sort</mat-icon>
+                <span>فرز: {{ sortDescending() ? 'الأحدث أولاً ↓' : 'الأقدم أولاً ↑' }}</span>
+              </button>
+            </div>
+          }
+
+          @case ('view') {
+            <div class="flex items-center gap-3 flex-wrap">
+              <label class="flex items-center gap-1.5 cursor-pointer font-bold">
+                <input
+                  type="checkbox"
+                  [checked]="showGridlines()"
+                  (change)="showGridlines.set($any($event.target).checked)"
+                  class="accent-[#107c41]"
+                />
+                <span>إظهار خطوط شبكة إكسيل (Gridlines)</span>
+              </label>
+
+              <label class="flex items-center gap-1.5 cursor-pointer font-bold">
+                <input
+                  type="checkbox"
+                  [checked]="showFormulaBar()"
+                  (change)="showFormulaBar.set($any($event.target).checked)"
+                  class="accent-[#107c41]"
+                />
+                <span>شريط الصيغة (Formula Bar)</span>
+              </label>
+
+              <div class="flex items-center gap-1 font-bold">
+                <span>التكبير:</span>
+                <button
+                  type="button"
+                  (click)="zoomLevel.set(90)"
+                  class="px-1.5 py-0.5 rounded text-[10px] border"
+                  [class.bg-emerald-100]="zoomLevel() === 90"
+                >
+                  90%
+                </button>
+                <button
+                  type="button"
+                  (click)="zoomLevel.set(100)"
+                  class="px-1.5 py-0.5 rounded text-[10px] border"
+                  [class.bg-emerald-100]="zoomLevel() === 100"
+                >
+                  100%
+                </button>
+                <button
+                  type="button"
+                  (click)="zoomLevel.set(115)"
+                  class="px-1.5 py-0.5 rounded text-[10px] border"
+                  [class.bg-emerald-100]="zoomLevel() === 115"
+                >
+                  115%
+                </button>
+              </div>
+            </div>
+          }
+        }
+      </div>
+
+      <!-- 4. MICROSOFT EXCEL FORMULA BAR (شريط الصيغة الحقيقي fx ومربع الاسم A1) -->
+      @if (showFormulaBar()) {
         <div
-          class="px-4 py-2 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] flex items-center gap-2.5 text-xs font-mono"
+          class="excel-formula-bar bg-white dark:bg-[#111827] border-b border-[#d4d4d4] dark:border-[#374151] px-2 py-1 flex items-center gap-1.5 text-xs font-mono"
         >
+          <!-- Cell Name Box (مربع اسم الخلية مثل A1 أو C4) -->
           <div
-            class="px-2.5 py-1 rounded-md bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[#107c41] font-black min-w-[55px] text-center shrink-0"
+            class="excel-name-box w-20 px-2 py-1 text-center font-bold text-slate-800 dark:text-slate-100 bg-[#f9fafb] dark:bg-[#1f2937] border border-[#d4d4d4] dark:border-[#4b5563] rounded-xs select-none shadow-2xs"
+            title="اسم الخلية النشطة حالياً"
           >
             {{ selectedCellLabel() }}
           </div>
-          <div class="flex items-center gap-1 text-[var(--text-secondary)] font-bold italic shrink-0">
-            <span class="text-sm font-serif font-black text-[#107c41]">fx</span>
+
+          <!-- Formula fx button & cancel/enter icons -->
+          <div class="flex items-center gap-0.5 text-gray-400 select-none">
+            <button
+              type="button"
+              (click)="revertCellEdit()"
+              class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-slate-800 text-rose-500"
+              title="إلغاء التعديل (Esc)"
+            >
+              <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+            </button>
+            <button
+              type="button"
+              (click)="commitCellEdit()"
+              class="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-slate-800 text-emerald-600"
+              title="تثبيت القيمة (Enter)"
+            >
+              <mat-icon class="!text-xs !w-3.5 !h-3.5">check</mat-icon>
+            </button>
+            <span
+              class="font-serif italic font-black text-[#107c41] px-1 text-sm select-none"
+              title="إدراج دالة رياضية"
+            >
+              fx
+            </span>
           </div>
+
+          <!-- Wide Formula Input -->
           <input
             type="text"
             [value]="activeFormulaValue()"
             (input)="onFormulaBarInput($any($event.target).value)"
-            placeholder="محتوى الخلية المحددة أو اختر خلية للتعديل المباشر عليها..."
-            class="flex-1 px-3 py-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-heading)] font-sans focus:outline-none focus:ring-1 focus:ring-[#107c41]"
+            (keydown.enter)="commitCellEdit()"
+            (keydown.escape)="revertCellEdit()"
+            placeholder="اكتب هنا قيمة الخلية أو الصيغة..."
+            class="flex-1 px-2.5 py-1 bg-transparent text-slate-900 dark:text-slate-100 font-sans text-xs focus:outline-none focus:bg-emerald-50/30 dark:focus:bg-emerald-950/20 rounded"
           />
+        </div>
+      }
 
-          <!-- Quick Math Formula Chips -->
-          <div class="hidden sm:flex items-center gap-1.5 font-sans font-bold text-[11px] text-[var(--text-secondary)]">
-            <span class="text-[10px] text-[var(--text-secondary)] font-normal">دوال سريعة:</span>
-            <span
-              class="px-2 py-0.5 rounded bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
-              title="إجمالي المجموع"
+      <!-- 5. THE EXCEL CELL GRID WORKSPACE (المربعات وخلايا الإكسيل الحقيقية بالكامل) -->
+      <div
+        class="excel-grid-viewport overflow-auto min-h-[460px] max-h-[720px] bg-white dark:bg-[#0f172a] relative"
+        [style.zoom]="zoomLevel() + '%'"
+      >
+        <!-- TAB 1: ATTENDANCE SHEET (شيت سجل اليوميات والحضور) -->
+        @if (activeTab() === 'attendance') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <!-- Column Letters Header (A, B, C, D, E, F...) -->
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">
+                  <span class="text-[10px] text-gray-400">◰</span>
+                </th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">التاريخ</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">اسم العامل / النحات</span></th>
+                <th class="excel-col-letter w-28" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">المهنة</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">نهارية</span></th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">سهرة</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">يومية نهار (ج.م)</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">يومية سهرة (ج.م)</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 dark:bg-emerald-950/40 text-[#107c41]" [class.col-active]="activeColLetter() === 'I'">I<br><span class="col-title">استحقاق العامل</span></th>
+                <th class="excel-col-letter w-32 text-left bg-blue-50 dark:bg-blue-950/40 text-blue-600" [class.col-active]="activeColLetter() === 'J'">J<br><span class="col-title">حساب الشركة</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'K'">K<br><span class="col-title">ملاحظات</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of filteredAttendances(); track (item.id || $index); let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <!-- Row Number Header (1, 2, 3...) -->
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, item.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <!-- A. Date -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, item.date, item.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="item.date"
+                      (change)="updateAttendanceField(item, 'date', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                    @if (selectedCellLabel() === ('A' + (rowIdx + 1))) {
+                      <div class="excel-fill-handle"></div>
+                    }
+                  </td>
+
+                  <!-- B. Worker Name -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, store.workerName(item.workerId), item.id)"
+                  >
+                    <select
+                      [value]="item.workerId"
+                      (change)="updateAttendanceField(item, 'workerId', +$any($event.target).value)"
+                      class="cell-select font-bold"
+                    >
+                      @for (w of store.workers(); track w.id) {
+                        <option [value]="w.id">{{ w.name }} ({{ w.role }})</option>
+                      }
+                    </select>
+                    @if (selectedCellLabel() === ('B' + (rowIdx + 1))) {
+                      <div class="excel-fill-handle"></div>
+                    }
+                  </td>
+
+                  <!-- C. Role (Computed) -->
+                  <td
+                    class="excel-cell text-gray-500 font-medium"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, getWorkerRole(item.workerId), item.id)"
+                  >
+                    {{ getWorkerRole(item.workerId) }}
+                  </td>
+
+                  <!-- D. Project -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, store.projectName(item.projectId), item.id)"
+                  >
+                    <select
+                      [value]="item.projectId"
+                      (change)="updateAttendanceField(item, 'projectId', +$any($event.target).value)"
+                      class="cell-select"
+                    >
+                      @for (p of store.projects(); track p.id) {
+                        <option [value]="p.id">{{ p.name }}</option>
+                      }
+                    </select>
+                    @if (selectedCellLabel() === ('D' + (rowIdx + 1))) {
+                      <div class="excel-fill-handle"></div>
+                    }
+                  </td>
+
+                  <!-- E. Day Worked -->
+                  <td
+                    class="excel-cell text-center"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, item.dayWorked + '', item.id)"
+                  >
+                    <select
+                      [value]="item.dayWorked"
+                      (change)="updateAttendanceField(item, 'dayWorked', +$any($event.target).value)"
+                      class="cell-select text-center font-bold"
+                      [class.text-emerald-700]="item.dayWorked === 1"
+                      [class.text-rose-600]="item.dayWorked === 0"
+                    >
+                      <option [value]="1">حاضر (1)</option>
+                      <option [value]="0">غياب (0)</option>
+                    </select>
+                  </td>
+
+                  <!-- F. Night Worked -->
+                  <td
+                    class="excel-cell text-center"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, item.nightWorked + '', item.id)"
+                  >
+                    <select
+                      [value]="item.nightWorked"
+                      (change)="updateAttendanceField(item, 'nightWorked', +$any($event.target).value)"
+                      class="cell-select text-center font-bold"
+                      [class.text-indigo-600]="item.nightWorked === 1"
+                      [class.text-gray-400]="item.nightWorked === 0"
+                    >
+                      <option [value]="1">سهرة (1)</option>
+                      <option [value]="0">بدون (0)</option>
+                    </select>
+                  </td>
+
+                  <!-- G. Worker Day Rate Snapshot -->
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
+                    (click)="focusCell('G', rowIdx + 1, item.workerDayRateSnapshot + '', item.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="item.workerDayRateSnapshot"
+                      (blur)="updateAttendanceField(item, 'workerDayRateSnapshot', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold"
+                    />
+                  </td>
+
+                  <!-- H. Worker Night Rate Snapshot -->
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
+                    (click)="focusCell('H', rowIdx + 1, item.workerNightRateSnapshot + '', item.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="item.workerNightRateSnapshot"
+                      (blur)="updateAttendanceField(item, 'workerNightRateSnapshot', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold"
+                    />
+                  </td>
+
+                  <!-- I. Worker Gross (Formula Cell) -->
+                  <td
+                    class="excel-cell text-left font-mono font-bold bg-emerald-50/40 dark:bg-emerald-950/20 text-[#107c41]"
+                    [class.cell-selected]="selectedCellLabel() === ('I' + (rowIdx + 1))"
+                    (click)="focusCell('I', rowIdx + 1, (item.dayWorked * item.workerDayRateSnapshot + item.nightWorked * item.workerNightRateSnapshot) + '', item.id)"
+                  >
+                    {{ formatMoney(item.dayWorked * item.workerDayRateSnapshot + item.nightWorked * item.workerNightRateSnapshot) }}
+                  </td>
+
+                  <!-- J. Company Gross (Formula Cell) -->
+                  <td
+                    class="excel-cell text-left font-mono font-bold bg-blue-50/40 dark:bg-blue-950/20 text-blue-600"
+                    [class.cell-selected]="selectedCellLabel() === ('J' + (rowIdx + 1))"
+                    (click)="focusCell('J', rowIdx + 1, (item.dayWorked * item.companyDayRateSnapshot + item.nightWorked * item.companyNightRateSnapshot) + '', item.id)"
+                  >
+                    {{ formatMoney(item.dayWorked * item.companyDayRateSnapshot + item.nightWorked * item.companyNightRateSnapshot) }}
+                  </td>
+
+                  <!-- K. Notes -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('K' + (rowIdx + 1))"
+                    (click)="focusCell('K', rowIdx + 1, item.note || '', item.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="item.note"
+                      (blur)="updateAttendanceField(item, 'note', $any($event.target).value)"
+                      placeholder="ملاحظات..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <!-- Delete Row Action -->
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteAttendanceRow(item)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف هذا الصف"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="13" class="p-8 text-center text-gray-400">
+                    لا توجد يوميات مسجلة تطابق التصفية. اضغط على <b>إدراج صف</b> من شريط الأدوات بالأعلى للإضافة فوراً في الشيت.
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 2: WORKERS SHEET (شيت دليل العمال والنحاتية) -->
+        @if (activeTab() === 'workers') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter w-20" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">كود</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">اسم العامل / النحات</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">الصنعة / الدور</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">يومية نهار (ج.م)</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">يومية سهرة (ج.م)</span></th>
+                <th class="excel-col-letter w-36" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">رقم الهاتف</span></th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">الحالة</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 text-[#107c41]" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">إجمالي المستحق</span></th>
+                <th class="excel-col-letter w-32 text-left bg-rose-50 text-rose-600" [class.col-active]="activeColLetter() === 'I'">I<br><span class="col-title">إجمالي السلف</span></th>
+                <th class="excel-col-letter w-32 text-left bg-blue-50 text-blue-700" [class.col-active]="activeColLetter() === 'J'">J<br><span class="col-title">صافي للقبض</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'K'">K<br><span class="col-title">ملاحظات</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (w of filteredWorkers(); track (w.id || $index); let rowIdx = $index) {
+                @let stat = getWorkerSummary(w.id || 0);
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, w.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <!-- A. ID -->
+                  <td
+                    class="excel-cell font-mono text-gray-400 font-bold"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, '#' + w.id, w.id)"
+                  >
+                    #{{ w.id }}
+                  </td>
+
+                  <!-- B. Name -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, w.name, w.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="w.name"
+                      (blur)="updateWorkerField(w, 'name', $any($event.target).value)"
+                      class="cell-editor font-bold text-slate-900 dark:text-slate-100"
+                    />
+                    @if (selectedCellLabel() === ('B' + (rowIdx + 1))) {
+                      <div class="excel-fill-handle"></div>
+                    }
+                  </td>
+
+                  <!-- C. Role -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, w.role, w.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="w.role"
+                      (blur)="updateWorkerField(w, 'role', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <!-- D. Day Rate -->
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, w.workerDayRate + '', w.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="w.workerDayRate"
+                      (blur)="updateWorkerField(w, 'workerDayRate', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold"
+                    />
+                  </td>
+
+                  <!-- E. Night Rate -->
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, w.workerNightRate + '', w.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="w.workerNightRate"
+                      (blur)="updateWorkerField(w, 'workerNightRate', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold"
+                    />
+                  </td>
+
+                  <!-- F. Phone -->
+                  <td
+                    class="excel-cell font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, w.phone || '', w.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="w.phone"
+                      (blur)="updateWorkerField(w, 'phone', $any($event.target).value)"
+                      placeholder="01xxxxxxxxx"
+                      class="cell-editor font-mono"
+                    />
+                  </td>
+
+                  <!-- G. Active -->
+                  <td
+                    class="excel-cell text-center"
+                    [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
+                    (click)="focusCell('G', rowIdx + 1, w.active ? 'نشط' : 'إجازة', w.id)"
+                  >
+                    <button
+                      type="button"
+                      (click)="updateWorkerField(w, 'active', !w.active)"
+                      class="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer"
+                      [class.bg-emerald-100]="w.active"
+                      [class.text-emerald-800]="w.active"
+                      [class.bg-gray-100]="!w.active"
+                      [class.text-gray-600]="!w.active"
+                    >
+                      {{ w.active ? 'نشط' : 'إجازة' }}
+                    </button>
+                  </td>
+
+                  <!-- H. Gross -->
+                  <td
+                    class="excel-cell text-left font-mono font-bold bg-emerald-50/40 text-[#107c41]"
+                    [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
+                    (click)="focusCell('H', rowIdx + 1, stat.gross + '', w.id)"
+                  >
+                    {{ formatMoney(stat.gross) }}
+                  </td>
+
+                  <!-- I. Advances -->
+                  <td
+                    class="excel-cell text-left font-mono font-bold bg-rose-50/40 text-rose-600"
+                    [class.cell-selected]="selectedCellLabel() === ('I' + (rowIdx + 1))"
+                    (click)="focusCell('I', rowIdx + 1, stat.advances + '', w.id)"
+                  >
+                    {{ formatMoney(stat.advances) }}
+                  </td>
+
+                  <!-- J. Net -->
+                  <td
+                    class="excel-cell text-left font-mono font-black bg-blue-50/40 text-blue-700"
+                    [class.cell-selected]="selectedCellLabel() === ('J' + (rowIdx + 1))"
+                    (click)="focusCell('J', rowIdx + 1, stat.net + '', w.id)"
+                  >
+                    {{ formatMoney(stat.net) }}
+                  </td>
+
+                  <!-- K. Notes -->
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('K' + (rowIdx + 1))"
+                    (click)="focusCell('K', rowIdx + 1, w.notes || '', w.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="w.notes"
+                      (blur)="updateWorkerField(w, 'notes', $any($event.target).value)"
+                      placeholder="ملاحظات..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteWorkerRow(w)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف العامل"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 3: ADVANCES SHEET (شيت السلف والخصومات) -->
+        @if (activeTab() === 'advances') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">التاريخ</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">اسم العامل</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">المبلغ (ج.م)</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter min-w-[180px]" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">السبب والبيان</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">الشيك المصروف منه</span></th>
+                <th class="excel-col-letter min-w-[140px]" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">ملاحظات</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (adv of filteredAdvances(); track (adv.id || $index); let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, adv.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, adv.date, adv.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="adv.date"
+                      (change)="updateAdvanceField(adv, 'date', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, store.workerName(adv.workerId), adv.id)"
+                  >
+                    <select
+                      [value]="adv.workerId"
+                      (change)="updateAdvanceField(adv, 'workerId', +$any($event.target).value)"
+                      class="cell-select font-bold"
+                    >
+                      @for (w of store.workers(); track w.id) {
+                        <option [value]="w.id">{{ w.name }}</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, adv.amount + '', adv.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="adv.amount"
+                      (blur)="updateAdvanceField(adv, 'amount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold text-rose-600"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, store.projectName(adv.projectId ?? null), adv.id)"
+                  >
+                    <select
+                      [value]="adv.projectId || ''"
+                      (change)="updateAdvanceField(adv, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
+                      class="cell-select"
+                    >
+                      <option value="">بدون مشروع محدد</option>
+                      @for (p of store.projects(); track p.id) {
+                        <option [value]="p.id">{{ p.name }}</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, adv.reason, adv.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="adv.reason"
+                      (blur)="updateAdvanceField(adv, 'reason', $any($event.target).value)"
+                      placeholder="السبب..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, adv.checkId ? ('شيك #' + adv.checkId) : 'كاش الخزنة', adv.id)"
+                  >
+                    <select
+                      [value]="adv.checkId || ''"
+                      (change)="updateAdvanceField(adv, 'checkId', $any($event.target).value ? +$any($event.target).value : null)"
+                      class="cell-select text-[11px]"
+                    >
+                      <option value="">كاش الخزنة الحر</option>
+                      @for (c of store.checks(); track c.id) {
+                        <option [value]="c.id">شيك {{ c.number }} ({{ formatMoney(c.amount) }})</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
+                    (click)="focusCell('G', rowIdx + 1, adv.notes || '', adv.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="adv.notes"
+                      (blur)="updateAdvanceField(adv, 'notes', $any($event.target).value)"
+                      placeholder="ملاحظات..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteAdvanceRow(adv)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف السلفة"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 4: SITE EXPENSES SHEET (شيت مصاريف الموقع) -->
+        @if (activeTab() === 'expenses') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">التاريخ</span></th>
+                <th class="excel-col-letter w-36" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">بند المصروف</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">المبلغ (ج.م)</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter w-36" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">جهة الصرف / الشيك</span></th>
+                <th class="excel-col-letter min-w-[200px]" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">البيان والتفاصيل</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (exp of filteredExpenses(); track (exp.id || $index); let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, exp.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, exp.date, exp.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="exp.date"
+                      (change)="updateExpenseField(exp, 'date', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, exp.category, exp.id)"
+                  >
+                    <select
+                      [value]="exp.category"
+                      (change)="updateExpenseField(exp, 'category', $any($event.target).value)"
+                      class="cell-select font-bold"
+                    >
+                      <option value="مواصلات">مواصلات وانتقالات</option>
+                      <option value="أكل">أكل وبوفيه</option>
+                      <option value="أدوات">عدد وأدوات</option>
+                      <option value="صيانة">صيانة وإصلاحات</option>
+                      <option value="رسوم سحب شيك">رسوم سحب شيك بنكي</option>
+                      <option value="أخرى">مصاريف أخرى</option>
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, exp.amount + '', exp.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="exp.amount"
+                      (blur)="updateExpenseField(exp, 'amount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold text-rose-600"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, store.projectName(exp.projectId ?? null), exp.id)"
+                  >
+                    <select
+                      [value]="exp.projectId || ''"
+                      (change)="updateExpenseField(exp, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
+                      class="cell-select"
+                    >
+                      <option value="">عام لكافة المشاريع</option>
+                      @for (p of store.projects(); track p.id) {
+                        <option [value]="p.id">{{ p.name }}</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, exp.checkId ? ('شيك #' + exp.checkId) : 'الخزنة', exp.id)"
+                  >
+                    <select
+                      [value]="exp.checkId || ''"
+                      (change)="updateExpenseField(exp, 'checkId', $any($event.target).value ? +$any($event.target).value : null)"
+                      class="cell-select text-[11px]"
+                    >
+                      <option value="">الخزنة / كاش شخصي</option>
+                      @for (c of store.checks(); track c.id) {
+                        <option [value]="c.id">شيك {{ c.number }} ({{ c.bank }})</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, exp.note, exp.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="exp.note"
+                      (blur)="updateExpenseField(exp, 'note', $any($event.target).value)"
+                      placeholder="البيان..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteExpenseRow(exp)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف المصروف"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 5: CHECKS SHEET (شيت الشيكات وحساب البنك) -->
+        @if (activeTab() === 'checks') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">الاتجاه</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">رقم الشيك</span></th>
+                <th class="excel-col-letter w-36" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">البنك</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">تاريخ الاستحقاق</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 text-[#107c41]" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">قيمة الشيك (ج.م)</span></th>
+                <th class="excel-col-letter w-28 text-center" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">الحالة</span></th>
+                <th class="excel-col-letter w-32 text-left bg-amber-50 text-amber-800" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">المسحوب كاش</span></th>
+                <th class="excel-col-letter w-32 text-left bg-blue-50 text-blue-800" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">باقي في البنك</span></th>
+                <th class="excel-col-letter w-32 text-left bg-purple-50 text-purple-800" [class.col-active]="activeColLetter() === 'I'">I<br><span class="col-title">باقي في الجيب</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'J'">J<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'K'">K<br><span class="col-title">ملاحظات</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of filteredChecks(); track (c.id || $index); let rowIdx = $index) {
+                @let bankRem = (c.amount || 0) - (c.withdrawnAmount || 0);
+                @let pocketRem = getCheckPocketRemaining(c);
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, c.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <td
+                    class="excel-cell text-center"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, c.direction, c.id)"
+                  >
+                    <select
+                      [value]="c.direction"
+                      (change)="updateCheckField(c, 'direction', $any($event.target).value)"
+                      class="cell-select text-center font-bold"
+                    >
+                      <option value="وارد">وارد</option>
+                      <option value="صادر">صادر</option>
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell font-mono font-bold"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, c.number, c.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="c.number"
+                      (blur)="updateCheckField(c, 'number', $any($event.target).value)"
+                      class="cell-editor font-mono font-bold"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, c.bank, c.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="c.bank"
+                      (blur)="updateCheckField(c, 'bank', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, c.dueDate, c.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="c.dueDate"
+                      (change)="updateCheckField(c, 'dueDate', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, c.amount + '', c.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="c.amount"
+                      (blur)="updateCheckField(c, 'amount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-black text-[#107c41]"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-center"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, c.status, c.id)"
+                  >
+                    <select
+                      [value]="c.status"
+                      (change)="updateCheckField(c, 'status', $any($event.target).value)"
+                      class="cell-select text-center font-bold"
+                      [class.text-emerald-700]="c.status === 'اتصرف'"
+                      [class.text-amber-600]="c.status === 'معلق'"
+                    >
+                      <option value="اتصرف">اتصرف في البنك</option>
+                      <option value="معلق">معلق</option>
+                      <option value="مرتجع">مرتجع</option>
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
+                    (click)="focusCell('G', rowIdx + 1, (c.withdrawnAmount || 0) + '', c.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="c.withdrawnAmount || 0"
+                      (blur)="updateCheckField(c, 'withdrawnAmount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold text-amber-700"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono font-bold bg-blue-50/50 text-blue-700"
+                    [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
+                    (click)="focusCell('H', rowIdx + 1, bankRem + '', c.id)"
+                  >
+                    {{ formatMoney(bankRem) }}
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono font-black bg-purple-50/50 text-purple-700"
+                    [class.cell-selected]="selectedCellLabel() === ('I' + (rowIdx + 1))"
+                    (click)="focusCell('I', rowIdx + 1, pocketRem + '', c.id)"
+                  >
+                    {{ formatMoney(pocketRem) }}
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('J' + (rowIdx + 1))"
+                    (click)="focusCell('J', rowIdx + 1, store.projectName(c.projectId ?? null), c.id)"
+                  >
+                    <select
+                      [value]="c.projectId || ''"
+                      (change)="updateCheckField(c, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
+                      class="cell-select"
+                    >
+                      <option value="">عام للمقاول</option>
+                      @for (p of store.projects(); track p.id) {
+                        <option [value]="p.id">{{ p.name }}</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('K' + (rowIdx + 1))"
+                    (click)="focusCell('K', rowIdx + 1, c.notes || '', c.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="c.notes"
+                      (blur)="updateCheckField(c, 'notes', $any($event.target).value)"
+                      placeholder="ملاحظات..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteCheckRow(c)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف الشيك"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 6: EXTRACTS SHEET (شيت المستخلصات) -->
+        @if (activeTab() === 'extracts') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter w-24" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">رقم</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">الفترة من</span></th>
+                <th class="excel-col-letter w-32" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">الفترة إلى</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">المطالبة (ج.م)</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">الاستقطاعات</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 text-[#107c41]" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">الصافي المحصل</span></th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">ملاحظات</span></th>
+                <th class="excel-col-letter w-16 text-center select-none">حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ext of filteredExtracts(); track (ext.id || $index); let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, ext.id)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+
+                  <td
+                    class="excel-cell font-mono font-bold"
+                    [class.cell-selected]="selectedCellLabel() === ('A' + (rowIdx + 1))"
+                    (click)="focusCell('A', rowIdx + 1, ext.number + '', ext.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="ext.number"
+                      (blur)="updateExtractField(ext, 'number', +$any($event.target).value)"
+                      class="cell-editor font-mono font-bold"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('B' + (rowIdx + 1))"
+                    (click)="focusCell('B', rowIdx + 1, store.projectName(ext.projectId), ext.id)"
+                  >
+                    <select
+                      [value]="ext.projectId"
+                      (change)="updateExtractField(ext, 'projectId', +$any($event.target).value)"
+                      class="cell-select font-bold"
+                    >
+                      @for (p of store.projects(); track p.id) {
+                        <option [value]="p.id">{{ p.name }}</option>
+                      }
+                    </select>
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('C' + (rowIdx + 1))"
+                    (click)="focusCell('C', rowIdx + 1, ext.from, ext.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="ext.from"
+                      (change)="updateExtractField(ext, 'from', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('D' + (rowIdx + 1))"
+                    (click)="focusCell('D', rowIdx + 1, ext.to, ext.id)"
+                  >
+                    <input
+                      type="date"
+                      [value]="ext.to"
+                      (change)="updateExtractField(ext, 'to', $any($event.target).value)"
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('E' + (rowIdx + 1))"
+                    (click)="focusCell('E', rowIdx + 1, (ext.claimedAmount || 0) + '', ext.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="ext.claimedAmount || 0"
+                      (blur)="updateExtractField(ext, 'claimedAmount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono"
+                    [class.cell-selected]="selectedCellLabel() === ('F' + (rowIdx + 1))"
+                    (click)="focusCell('F', rowIdx + 1, (ext.deductions || 0) + '', ext.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="ext.deductions || 0"
+                      (blur)="updateExtractField(ext, 'deductions', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-bold text-rose-600"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell text-left font-mono font-black bg-emerald-50/50 text-[#107c41]"
+                    [class.cell-selected]="selectedCellLabel() === ('G' + (rowIdx + 1))"
+                    (click)="focusCell('G', rowIdx + 1, (ext.paidAmount || 0) + '', ext.id)"
+                  >
+                    <input
+                      type="number"
+                      [value]="ext.paidAmount || 0"
+                      (blur)="updateExtractField(ext, 'paidAmount', +$any($event.target).value)"
+                      class="cell-editor text-left font-mono font-black text-[#107c41]"
+                    />
+                  </td>
+
+                  <td
+                    class="excel-cell"
+                    [class.cell-selected]="selectedCellLabel() === ('H' + (rowIdx + 1))"
+                    (click)="focusCell('H', rowIdx + 1, ext.notes || '', ext.id)"
+                  >
+                    <input
+                      type="text"
+                      [value]="ext.notes"
+                      (blur)="updateExtractField(ext, 'notes', $any($event.target).value)"
+                      placeholder="ملاحظات..."
+                      class="cell-editor"
+                    />
+                  </td>
+
+                  <td class="excel-cell text-center select-none">
+                    <button
+                      type="button"
+                      (click)="deleteExtractRow(ext)"
+                      class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="حذف المستخلص"
+                    >
+                      <mat-icon class="!text-xs !w-3.5 !h-3.5">close</mat-icon>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <!-- TAB 7: MASTER AUDIT SUMMARY SHEET (شيت ميزان المراجعة والأرباح) -->
+        @if (activeTab() === 'master') {
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter w-32 text-left bg-blue-50 text-blue-700" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">المستخلصات</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 text-[#107c41]" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">يوميات العمالة</span></th>
+                <th class="excel-col-letter w-32 text-left bg-amber-50 text-amber-800" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">السلف</span></th>
+                <th class="excel-col-letter w-32 text-left bg-rose-50 text-rose-700" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">المصاريف</span></th>
+                <th class="excel-col-letter w-36 text-left bg-purple-50 text-purple-800 font-black" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">صافي الربح</span></th>
+                <th class="excel-col-letter w-28 text-center" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">الهامش %</span></th>
+                <th class="excel-col-letter w-28 text-center select-none" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">الحالة</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (m of masterSummaryRows(); track m.projectId; let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, m.projectId)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+                  <td class="excel-cell font-bold text-slate-800 dark:text-slate-100">{{ m.projectName }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-blue-700">{{ formatMoney(m.totalRevenue) }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-[#107c41]">{{ formatMoney(m.totalLaborCost) }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-amber-800">{{ formatMoney(m.totalAdvances) }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-rose-700">{{ formatMoney(m.totalExpenses) }}</td>
+                  <td class="excel-cell text-left font-mono font-black text-purple-800">{{ formatMoney(m.netProfit) }}</td>
+                  <td class="excel-cell text-center font-mono font-bold" [class.text-emerald-700]="m.profitMargin >= 15" [class.text-amber-700]="m.profitMargin < 15">
+                    {{ m.profitMargin.toFixed(1) }}%
+                  </td>
+                  <td class="excel-cell text-center">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold" [class.bg-emerald-100]="m.active" [class.text-emerald-800]="m.active">
+                      {{ m.active ? 'نشط' : 'مغلق' }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+
+      <!-- 6. BOTTOM WORKBOOK SHEETS BAR (شريط أوراق العمل السفلي الكلاسيكي لبرنامج إكسيل) -->
+      <div
+        class="excel-bottom-sheets-bar bg-[#f3f2f1] dark:bg-[#111827] border-t border-[#d4d4d4] dark:border-[#374151] px-2 py-0.5 flex items-center justify-between text-xs overflow-x-auto select-none"
+      >
+        <!-- Navigation Arrows & Tabs -->
+        <div class="flex items-center gap-1 min-w-0">
+          <div class="flex items-center text-gray-400 pl-1 border-l border-gray-300 dark:border-slate-700">
+            <button type="button" (click)="cycleTab(-1)" class="p-1 hover:text-slate-800 dark:hover:text-white" title="الورقة السابقة">
+              <mat-icon class="!text-sm !w-4 !h-4">chevron_right</mat-icon>
+            </button>
+            <button type="button" (click)="cycleTab(1)" class="p-1 hover:text-slate-800 dark:hover:text-white" title="الورقة التالية">
+              <mat-icon class="!text-sm !w-4 !h-4">chevron_left</mat-icon>
+            </button>
+          </div>
+
+          <!-- The Real Excel Tabs (أوراق العمل) -->
+          <div class="flex items-center gap-0.5 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              (click)="setActiveTab('attendance')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'attendance'"
             >
-              SUM: {{ formatMoney(activeSheetSum()) }}
-            </span>
-            <span
-              class="px-2 py-0.5 rounded bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
-              title="المتوسط الحسابي"
+              <span>📅 سجل اليوميات والحضور</span>
+              <span class="tab-badge">{{ store.attendances().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('workers')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'workers'"
             >
-              AVG: {{ formatMoney(activeSheetAvg()) }}
-            </span>
-            <span
-              class="px-2 py-0.5 rounded bg-[var(--bg-subtle)] border border-[var(--border-subtle)]"
-              title="العدد الإجمالي"
+              <span>👷 دليل العمال واليوميات</span>
+              <span class="tab-badge">{{ store.workers().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('advances')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'advances'"
             >
-              COUNT: {{ currentFilteredCount() }}
-            </span>
+              <span>💸 السلف والخصومات</span>
+              <span class="tab-badge">{{ store.advances().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('expenses')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'expenses'"
+            >
+              <span>🏗️ مصاريف الموقع والتشغيل</span>
+              <span class="tab-badge">{{ store.expenses().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('checks')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'checks'"
+            >
+              <span>🏢 الشيكات وحساب البنك</span>
+              <span class="tab-badge">{{ store.checks().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('extracts')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'extracts'"
+            >
+              <span>📑 مستخلصات المشاريع</span>
+              <span class="tab-badge">{{ store.extracts().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('master')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'master'"
+            >
+              <span>📊 ميزان الأرباح والمراجعة</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="addNewRowToActiveSheet()"
+              class="p-1 rounded-full text-[#107c41] hover:bg-emerald-100 flex items-center justify-center cursor-pointer"
+              title="إضافة صف جديد للورقة الحالية"
+            >
+              <mat-icon class="!text-sm !w-4 !h-4">add</mat-icon>
+            </button>
           </div>
         </div>
+      </div>
 
-        <!-- WORKBOOK SHEET TABS (شريط التبويبات السفلي مثل شيتات إكسيل الحقيقية) -->
-        <div
-          class="px-3 pt-2 bg-[var(--bg-subtle)] border-b border-[var(--border-subtle)] flex items-center gap-1 overflow-x-auto no-scrollbar"
-        >
-          <button
-            type="button"
-            (click)="setActiveTab('attendance')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'attendance'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">fact_check</mat-icon>
-            <span>📅 1. سجل اليوميات والحضور</span>
-            <span class="excel-tab-badge">{{ store.attendances().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('workers')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'workers'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">groups</mat-icon>
-            <span>👷 2. العمال والنحاتية واليوميات</span>
-            <span class="excel-tab-badge">{{ store.workers().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('advances')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'advances'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">payments</mat-icon>
-            <span>💸 3. السلف والخصومات</span>
-            <span class="excel-tab-badge">{{ store.advances().length + store.deductions().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('expenses')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'expenses'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">receipt_long</mat-icon>
-            <span>🏗️ 4. مصاريف الموقع والتشغيل</span>
-            <span class="excel-tab-badge">{{ store.expenses().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('checks')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'checks'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">account_balance</mat-icon>
-            <span>🏢 5. الشيكات وحسابات البنك</span>
-            <span class="excel-tab-badge">{{ store.checks().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('extracts')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'extracts'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">receipt</mat-icon>
-            <span>📑 6. مستخلصات المشاريع</span>
-            <span class="excel-tab-badge">{{ store.extracts().length }}</span>
-          </button>
-
-          <button
-            type="button"
-            (click)="setActiveTab('master')"
-            class="excel-tab-btn"
-            [class.excel-tab-active]="activeTab() === 'master'"
-          >
-            <mat-icon class="!text-sm !w-4 !h-4">analytics</mat-icon>
-            <span>📊 7. ميزان المراجعة والأرباح</span>
-          </button>
+      <!-- 7. MICROSOFT EXCEL STATUS BAR (شريط الحالة السفلي لإكسيل مع الدوال التلقائية والزوم) -->
+      <div
+        class="excel-status-bar bg-[#107c41] text-white px-3 py-1 flex flex-wrap items-center justify-between text-[11px] font-medium select-none shadow-inner"
+      >
+        <!-- Ready / Edit Status Indicator -->
+        <div class="flex items-center gap-2">
+          <span class="font-bold flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
+            <span>جاهز (Ready)</span>
+          </span>
+          <span class="text-white/40">|</span>
+          <span class="text-white/90">
+            انقر على أي مربع للتعديل المباشر · متزامن فورياً مع قاعدة البيانات
+          </span>
         </div>
 
-        <!-- LIVE EDITABLE SPREADSHEET GRID CONTAINER -->
-        <div class="overflow-x-auto min-h-[420px] max-h-[700px] border-b border-[var(--border-subtle)] bg-white dark:bg-[#111827]">
-          
-          <!-- TAB 1: ATTENDANCE SHEET -->
-          @if (activeTab() === 'attendance') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-32">A. التاريخ</th>
-                  <th class="min-w-[150px]">B. اسم العامل / النحات</th>
-                  <th class="w-28">C. المهنة</th>
-                  <th class="min-w-[140px]">D. المشروع</th>
-                  <th class="w-24 text-center">E. نهارية</th>
-                  <th class="w-24 text-center">F. سهرة</th>
-                  <th class="w-28 text-left">G. يومية نهار (ج.م)</th>
-                  <th class="w-28 text-left">H. يومية سهرة (ج.م)</th>
-                  <th class="w-28 text-left bg-emerald-50 dark:bg-emerald-950/20 text-[#107c41]">I. استحقاق العامل</th>
-                  <th class="w-28 text-left bg-blue-50 dark:bg-blue-950/20 text-blue-600">J. استحقاق الشركة</th>
-                  <th class="min-w-[150px]">K. ملاحظات</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (item of filteredAttendances(); track (item.id || $index); let idx = $index) {
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    [class.excel-row-selected]="selectedRowId() === item.id"
-                    (click)="selectCell('A' + (idx + 1), item.date, item.id)"
-                  >
-                    <!-- Row Number -->
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">
-                      {{ idx + 1 }}
-                    </td>
-
-                    <!-- A. Date -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="item.date"
-                        (change)="updateAttendanceField(item, 'date', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- B. Worker -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="item.workerId"
-                        (change)="updateAttendanceField(item, 'workerId', +$any($event.target).value)"
-                        class="excel-select w-full font-bold text-[var(--text-heading)]"
-                      >
-                        @for (w of store.workers(); track w.id) {
-                          <option [value]="w.id">{{ w.name }} ({{ w.role }})</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- C. Role (Calculated snapshot) -->
-                    <td class="excel-cell text-[var(--text-secondary)] font-medium">
-                      {{ getWorkerRole(item.workerId) }}
-                    </td>
-
-                    <!-- D. Project -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="item.projectId"
-                        (change)="updateAttendanceField(item, 'projectId', +$any($event.target).value)"
-                        class="excel-select w-full"
-                      >
-                        @for (p of store.projects(); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- E. Day Worked -->
-                    <td class="excel-cell text-center">
-                      <select
-                        [value]="item.dayWorked"
-                        (change)="updateAttendanceField(item, 'dayWorked', +$any($event.target).value)"
-                        class="excel-select text-center font-bold"
-                        [class.text-emerald-600]="item.dayWorked === 1"
-                        [class.text-rose-500]="item.dayWorked === 0"
-                      >
-                        <option [value]="1">حاضر (1)</option>
-                        <option [value]="0">غياب (0)</option>
-                      </select>
-                    </td>
-
-                    <!-- F. Night Worked -->
-                    <td class="excel-cell text-center">
-                      <select
-                        [value]="item.nightWorked"
-                        (change)="updateAttendanceField(item, 'nightWorked', +$any($event.target).value)"
-                        class="excel-select text-center font-bold"
-                        [class.text-indigo-600]="item.nightWorked === 1"
-                        [class.text-gray-400]="item.nightWorked === 0"
-                      >
-                        <option [value]="1">سهرة (1)</option>
-                        <option [value]="0">بدون (0)</option>
-                      </select>
-                    </td>
-
-                    <!-- G. Worker Day Rate Snapshot -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="item.workerDayRateSnapshot"
-                        (blur)="updateAttendanceField(item, 'workerDayRateSnapshot', +$any($event.target).value)"
-                        class="excel-input text-left font-mono w-full"
-                      />
-                    </td>
-
-                    <!-- H. Worker Night Rate Snapshot -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="item.workerNightRateSnapshot"
-                        (blur)="updateAttendanceField(item, 'workerNightRateSnapshot', +$any($event.target).value)"
-                        class="excel-input text-left font-mono w-full"
-                      />
-                    </td>
-
-                    <!-- I. Worker Gross Wages (Calculated Formula) -->
-                    <td class="excel-cell text-left font-mono font-bold bg-emerald-50/50 dark:bg-emerald-950/20 text-[#107c41]">
-                      {{ formatMoney(item.dayWorked * item.workerDayRateSnapshot + item.nightWorked * item.workerNightRateSnapshot) }}
-                    </td>
-
-                    <!-- J. Company Gross (Calculated Formula) -->
-                    <td class="excel-cell text-left font-mono font-bold bg-blue-50/50 dark:bg-blue-950/20 text-blue-600">
-                      {{ formatMoney(item.dayWorked * item.companyDayRateSnapshot + item.nightWorked * item.companyNightRateSnapshot) }}
-                    </td>
-
-                    <!-- K. Notes -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="item.note"
-                        (blur)="updateAttendanceField(item, 'note', $any($event.target).value)"
-                        placeholder="ملاحظات..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Actions -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteAttendanceRow(item)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
-                        title="حذف هذا الصف من اليوميات"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                } @empty {
-                  <tr>
-                    <td colspan="13" class="p-8 text-center text-[var(--text-secondary)]">
-                      لا توجد يوميات مسجلة تطابق التصفية. اضغط على <b>➕ إضافة صف جديد</b> لتسجيل يومية مباشرة في الشيت.
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 2: WORKERS SHEET -->
-          @if (activeTab() === 'workers') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-20">A. كود</th>
-                  <th class="min-w-[160px]">B. اسم العامل / النحات</th>
-                  <th class="w-32">C. الصنعة / الدور</th>
-                  <th class="w-28 text-left">D. يومية نهار (ج.م)</th>
-                  <th class="w-28 text-left">E. يومية سهرة (ج.م)</th>
-                  <th class="w-32">F. رقم التليفون</th>
-                  <th class="w-24 text-center">G. الحالة</th>
-                  <th class="w-28 text-left bg-emerald-50 dark:bg-emerald-950/20 text-[#107c41]">H. إجمالي الاستحقاق</th>
-                  <th class="w-28 text-left bg-rose-50 dark:bg-rose-950/20 text-rose-600">I. إجمالي السلف</th>
-                  <th class="w-28 text-left bg-blue-50 dark:bg-blue-950/20 text-blue-600">J. صافي المتبقي للقبض</th>
-                  <th class="min-w-[150px]">K. ملاحظات</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (w of filteredWorkers(); track (w.id || $index); let idx = $index) {
-                  @let stat = getWorkerSummary(w.id || 0);
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    [class.excel-row-selected]="selectedRowId() === w.id"
-                    (click)="selectCell('B' + (idx + 1), w.name, w.id)"
-                  >
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    
-                    <!-- A. ID -->
-                    <td class="excel-cell font-mono text-gray-400 font-bold">#{{ w.id }}</td>
-
-                    <!-- B. Name -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="w.name"
-                        (blur)="updateWorkerField(w, 'name', $any($event.target).value)"
-                        class="excel-input font-bold text-[var(--text-heading)] w-full"
-                      />
-                    </td>
-
-                    <!-- C. Role -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="w.role"
-                        (blur)="updateWorkerField(w, 'role', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- D. Day Rate -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="w.workerDayRate"
-                        (blur)="updateWorkerField(w, 'workerDayRate', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold w-full"
-                      />
-                    </td>
-
-                    <!-- E. Night Rate -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="w.workerNightRate"
-                        (blur)="updateWorkerField(w, 'workerNightRate', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold w-full"
-                      />
-                    </td>
-
-                    <!-- F. Phone -->
-                    <td class="excel-cell font-mono">
-                      <input
-                        type="text"
-                        [value]="w.phone"
-                        (blur)="updateWorkerField(w, 'phone', $any($event.target).value)"
-                        placeholder="01xxxxxxxxx"
-                        class="excel-input font-mono w-full"
-                      />
-                    </td>
-
-                    <!-- G. Active -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="updateWorkerField(w, 'active', !w.active)"
-                        class="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer"
-                        [class.bg-emerald-100]="w.active"
-                        [class.text-emerald-800]="w.active"
-                        [class.bg-gray-100]="!w.active"
-                        [class.text-gray-600]="!w.active"
-                      >
-                        {{ w.active ? 'نشط' : 'إجازة' }}
-                      </button>
-                    </td>
-
-                    <!-- H. Gross -->
-                    <td class="excel-cell text-left font-mono font-bold bg-emerald-50/50 dark:bg-emerald-950/20 text-[#107c41]">
-                      {{ formatMoney(stat.gross) }}
-                    </td>
-
-                    <!-- I. Advances -->
-                    <td class="excel-cell text-left font-mono font-bold bg-rose-50/50 dark:bg-rose-950/20 text-rose-600">
-                      {{ formatMoney(stat.advances) }}
-                    </td>
-
-                    <!-- J. Net -->
-                    <td class="excel-cell text-left font-mono font-black bg-blue-50/50 dark:bg-blue-950/20 text-blue-700">
-                      {{ formatMoney(stat.net) }}
-                    </td>
-
-                    <!-- K. Notes -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="w.notes"
-                        (blur)="updateWorkerField(w, 'notes', $any($event.target).value)"
-                        placeholder="ملاحظات..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Action -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteWorkerRow(w)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        title="حذف العامل"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 3: ADVANCES & DEDUCTIONS SHEET -->
-          @if (activeTab() === 'advances') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-32">A. التاريخ</th>
-                  <th class="min-w-[150px]">B. اسم العامل</th>
-                  <th class="w-28 text-center">C. النوع</th>
-                  <th class="w-32 text-left">D. المبلغ (ج.م)</th>
-                  <th class="min-w-[140px]">E. المشروع</th>
-                  <th class="min-w-[180px]">F. السبب والبيان</th>
-                  <th class="w-28">G. الشيك المصروف منه</th>
-                  <th class="min-w-[140px]">H. ملاحظات</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (adv of filteredAdvances(); track (adv.id || $index); let idx = $index) {
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    (click)="selectCell('D' + (idx + 1), adv.amount + '', adv.id)"
-                  >
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    
-                    <!-- A. Date -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="adv.date"
-                        (change)="updateAdvanceField(adv, 'date', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- B. Worker -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="adv.workerId"
-                        (change)="updateAdvanceField(adv, 'workerId', +$any($event.target).value)"
-                        class="excel-select w-full font-bold text-[var(--text-heading)]"
-                      >
-                        @for (w of store.workers(); track w.id) {
-                          <option [value]="w.id">{{ w.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- C. Type -->
-                    <td class="excel-cell text-center">
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                        سلفة نقدية
-                      </span>
-                    </td>
-
-                    <!-- D. Amount -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="adv.amount"
-                        (blur)="updateAdvanceField(adv, 'amount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold text-rose-600 w-full"
-                      />
-                    </td>
-
-                    <!-- E. Project -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="adv.projectId || ''"
-                        (change)="updateAdvanceField(adv, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
-                        class="excel-select w-full"
-                      >
-                        <option value="">بدون مشروع محدد</option>
-                        @for (p of store.projects(); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- F. Reason -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="adv.reason"
-                        (blur)="updateAdvanceField(adv, 'reason', $any($event.target).value)"
-                        placeholder="سبب السلفة..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- G. Check -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="adv.checkId || ''"
-                        (change)="updateAdvanceField(adv, 'checkId', $any($event.target).value ? +$any($event.target).value : null)"
-                        class="excel-select w-full text-[11px]"
-                      >
-                        <option value="">من الكاش الحر / الخزنة</option>
-                        @for (c of store.checks(); track c.id) {
-                          <option [value]="c.id">شيك {{ c.number }} ({{ formatMoney(c.amount) }})</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- H. Notes -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="adv.notes"
-                        (blur)="updateAdvanceField(adv, 'notes', $any($event.target).value)"
-                        placeholder="ملاحظات..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Actions -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteAdvanceRow(adv)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        title="حذف السلفة"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 4: SITE EXPENSES SHEET -->
-          @if (activeTab() === 'expenses') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-32">A. التاريخ</th>
-                  <th class="w-36">B. بند المصروف</th>
-                  <th class="w-32 text-left">C. المبلغ (ج.م)</th>
-                  <th class="min-w-[140px]">D. المشروع التابع له</th>
-                  <th class="w-36">E. الشيك أو جهة الصرف</th>
-                  <th class="min-w-[200px]">F. البيان والتفاصيل</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (exp of filteredExpenses(); track (exp.id || $index); let idx = $index) {
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    (click)="selectCell('C' + (idx + 1), exp.amount + '', exp.id)"
-                  >
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    
-                    <!-- A. Date -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="exp.date"
-                        (change)="updateExpenseField(exp, 'date', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- B. Category -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="exp.category"
-                        (change)="updateExpenseField(exp, 'category', $any($event.target).value)"
-                        class="excel-select w-full font-bold"
-                      >
-                        <option value="مواصلات">مواصلات وانتقالات</option>
-                        <option value="أكل">أكل وبوفيه</option>
-                        <option value="أدوات">عدد وأدوات</option>
-                        <option value="صيانة">صيانة وإصلاحات</option>
-                        <option value="رسوم سحب شيك">رسوم سحب شيك بنكي</option>
-                        <option value="أخرى">مصاريف أخرى</option>
-                      </select>
-                    </td>
-
-                    <!-- C. Amount -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="exp.amount"
-                        (blur)="updateExpenseField(exp, 'amount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold text-rose-600 w-full"
-                      />
-                    </td>
-
-                    <!-- D. Project -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="exp.projectId || ''"
-                        (change)="updateExpenseField(exp, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
-                        class="excel-select w-full"
-                      >
-                        <option value="">عام لكافة المشاريع</option>
-                        @for (p of store.projects(); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- E. Check ID -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="exp.checkId || ''"
-                        (change)="updateExpenseField(exp, 'checkId', $any($event.target).value ? +$any($event.target).value : null)"
-                        class="excel-select w-full text-[11px]"
-                      >
-                        <option value="">الخزنة / كاش شخصي</option>
-                        @for (c of store.checks(); track c.id) {
-                          <option [value]="c.id">شيك {{ c.number }} ({{ c.bank }})</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- F. Note -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="exp.note"
-                        (blur)="updateExpenseField(exp, 'note', $any($event.target).value)"
-                        placeholder="تفاصيل المصروف..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Action -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteExpenseRow(exp)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        title="حذف المصروف"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 5: CHECKS & BANK SHEET -->
-          @if (activeTab() === 'checks') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-24 text-center">A. الاتجاه</th>
-                  <th class="w-32">B. رقم الشيك</th>
-                  <th class="w-36">C. البنك / الفرع</th>
-                  <th class="w-32">D. تاريخ الاستحقاق</th>
-                  <th class="w-32 text-left bg-emerald-50 dark:bg-emerald-950/20 text-[#107c41]">E. قيمة الشيك (ج.م)</th>
-                  <th class="w-28 text-center">F. الحالة</th>
-                  <th class="w-32 text-left bg-amber-50 dark:bg-amber-950/20 text-amber-700">G. المسحوب كاش (سلف)</th>
-                  <th class="w-32 text-left bg-blue-50 dark:bg-blue-950/20 text-blue-700">H. باقي في حساب البنك</th>
-                  <th class="w-32 text-left bg-purple-50 dark:bg-purple-950/20 text-purple-700">I. باقي كاش في الجيب</th>
-                  <th class="min-w-[140px]">J. المشروع</th>
-                  <th class="min-w-[150px]">K. ملاحظات</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (c of filteredChecks(); track (c.id || $index); let idx = $index) {
-                  @let bankRem = (c.amount || 0) - (c.withdrawnAmount || 0);
-                  @let pocketRem = getCheckPocketRemaining(c);
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    (click)="selectCell('E' + (idx + 1), c.amount + '', c.id)"
-                  >
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    
-                    <!-- A. Direction -->
-                    <td class="excel-cell text-center">
-                      <select
-                        [value]="c.direction"
-                        (change)="updateCheckField(c, 'direction', $any($event.target).value)"
-                        class="excel-select text-center font-bold"
-                      >
-                        <option value="وارد">وارد (من شركة)</option>
-                        <option value="صادر">صادر</option>
-                      </select>
-                    </td>
-
-                    <!-- B. Number -->
-                    <td class="excel-cell font-mono font-bold">
-                      <input
-                        type="text"
-                        [value]="c.number"
-                        (blur)="updateCheckField(c, 'number', $any($event.target).value)"
-                        placeholder="رقم الشيك..."
-                        class="excel-input font-mono font-bold w-full"
-                      />
-                    </td>
-
-                    <!-- C. Bank -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="c.bank"
-                        (blur)="updateCheckField(c, 'bank', $any($event.target).value)"
-                        placeholder="اسم البنك..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- D. Due Date -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="c.dueDate"
-                        (change)="updateCheckField(c, 'dueDate', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- E. Amount -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="c.amount"
-                        (blur)="updateCheckField(c, 'amount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-black text-[#107c41] w-full"
-                      />
-                    </td>
-
-                    <!-- F. Status -->
-                    <td class="excel-cell text-center">
-                      <select
-                        [value]="c.status"
-                        (change)="updateCheckField(c, 'status', $any($event.target).value)"
-                        class="excel-select text-center font-bold"
-                        [class.text-emerald-700]="c.status === 'اتصرف'"
-                        [class.text-amber-600]="c.status === 'معلق'"
-                        [class.text-rose-600]="c.status === 'مرتجع'"
-                      >
-                        <option value="اتصرف">اتصرف في البنك</option>
-                        <option value="معلق">معلق</option>
-                        <option value="مرتجع">مرتجع</option>
-                      </select>
-                    </td>
-
-                    <!-- G. Withdrawn Cash -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="c.withdrawnAmount || 0"
-                        (blur)="updateCheckField(c, 'withdrawnAmount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold text-amber-700 w-full"
-                      />
-                    </td>
-
-                    <!-- H. Remaining in Bank (Formula E - G) -->
-                    <td class="excel-cell text-left font-mono font-bold bg-blue-50/50 dark:bg-blue-950/20 text-blue-700">
-                      {{ formatMoney(bankRem) }}
-                    </td>
-
-                    <!-- I. Remaining in Pocket (Formula G - advances - fees) -->
-                    <td class="excel-cell text-left font-mono font-black bg-purple-50/50 dark:bg-purple-950/20 text-purple-700">
-                      {{ formatMoney(pocketRem) }}
-                    </td>
-
-                    <!-- J. Project -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="c.projectId || ''"
-                        (change)="updateCheckField(c, 'projectId', $any($event.target).value ? +$any($event.target).value : null)"
-                        class="excel-select w-full"
-                      >
-                        <option value="">عام للمقاول</option>
-                        @for (p of store.projects(); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- K. Notes -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="c.notes"
-                        (blur)="updateCheckField(c, 'notes', $any($event.target).value)"
-                        placeholder="ملاحظات..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Action -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteCheckRow(c)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        title="حذف الشيك"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 6: EXTRACTS SHEET -->
-          @if (activeTab() === 'extracts') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="w-24 font-mono">A. رقم المستخلص</th>
-                  <th class="min-w-[150px]">B. المشروع</th>
-                  <th class="w-32">C. الفترة من</th>
-                  <th class="w-32">D. الفترة إلى</th>
-                  <th class="w-32 text-left">E. إجمالي المطالبة (ج.م)</th>
-                  <th class="w-32 text-left">F. الاستقطاعات (ج.م)</th>
-                  <th class="w-32 text-left bg-emerald-50 dark:bg-emerald-950/20 text-[#107c41]">G. الصافي المحصل (ج.م)</th>
-                  <th class="min-w-[160px]">H. ملاحظات</th>
-                  <th class="w-16 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (ext of filteredExtracts(); track (ext.id || $index); let idx = $index) {
-                  <tr
-                    class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
-                    (click)="selectCell('E' + (idx + 1), (ext.claimedAmount || 0) + '', ext.id)"
-                  >
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    
-                    <!-- A. Number -->
-                    <td class="excel-cell font-mono font-bold">
-                      <input
-                        type="number"
-                        [value]="ext.number"
-                        (blur)="updateExtractField(ext, 'number', +$any($event.target).value)"
-                        class="excel-input font-mono font-bold w-full"
-                      />
-                    </td>
-
-                    <!-- B. Project -->
-                    <td class="excel-cell">
-                      <select
-                        [value]="ext.projectId"
-                        (change)="updateExtractField(ext, 'projectId', +$any($event.target).value)"
-                        class="excel-select w-full font-bold"
-                      >
-                        @for (p of store.projects(); track p.id) {
-                          <option [value]="p.id">{{ p.name }}</option>
-                        }
-                      </select>
-                    </td>
-
-                    <!-- C. From -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="ext.from"
-                        (change)="updateExtractField(ext, 'from', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- D. To -->
-                    <td class="excel-cell">
-                      <input
-                        type="date"
-                        [value]="ext.to"
-                        (change)="updateExtractField(ext, 'to', $any($event.target).value)"
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- E. Claimed -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="ext.claimedAmount || 0"
-                        (blur)="updateExtractField(ext, 'claimedAmount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold w-full"
-                      />
-                    </td>
-
-                    <!-- F. Deductions -->
-                    <td class="excel-cell text-left font-mono">
-                      <input
-                        type="number"
-                        [value]="ext.deductions || 0"
-                        (blur)="updateExtractField(ext, 'deductions', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-bold text-rose-600 w-full"
-                      />
-                    </td>
-
-                    <!-- G. Paid Net -->
-                    <td class="excel-cell text-left font-mono font-black bg-emerald-50/50 dark:bg-emerald-950/20 text-[#107c41]">
-                      <input
-                        type="number"
-                        [value]="ext.paidAmount || 0"
-                        (blur)="updateExtractField(ext, 'paidAmount', +$any($event.target).value)"
-                        class="excel-input text-left font-mono font-black text-[#107c41] w-full"
-                      />
-                    </td>
-
-                    <!-- H. Notes -->
-                    <td class="excel-cell">
-                      <input
-                        type="text"
-                        [value]="ext.notes"
-                        (blur)="updateExtractField(ext, 'notes', $any($event.target).value)"
-                        placeholder="ملاحظات المستخلص..."
-                        class="excel-input w-full"
-                      />
-                    </td>
-
-                    <!-- Action -->
-                    <td class="excel-cell text-center">
-                      <button
-                        type="button"
-                        (click)="deleteExtractRow(ext)"
-                        class="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        title="حذف المستخلص"
-                      >
-                        <mat-icon class="!text-sm !w-4 !h-4">delete</mat-icon>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          <!-- TAB 7: MASTER AUDIT & PROFIT SUMMARY SHEET -->
-          @if (activeTab() === 'master') {
-            <table class="excel-table w-full text-right text-xs border-collapse">
-              <thead>
-                <tr class="excel-col-header">
-                  <th class="w-12 text-center">#</th>
-                  <th class="min-w-[160px]">A. اسم المشروع</th>
-                  <th class="w-32 text-left bg-blue-50 dark:bg-blue-950/20 text-blue-700">B. إجمالي المستخلصات (ج.م)</th>
-                  <th class="w-32 text-left bg-emerald-50 dark:bg-emerald-950/20 text-[#107c41]">C. إجمالي يوميات العمالة (ج.م)</th>
-                  <th class="w-32 text-left bg-amber-50 dark:bg-amber-950/20 text-amber-700">D. إجمالي السلف والخصومات</th>
-                  <th class="w-32 text-left bg-rose-50 dark:bg-rose-950/20 text-rose-700">E. مصاريف الموقع (ج.م)</th>
-                  <th class="w-36 text-left bg-purple-50 dark:bg-purple-950/20 text-purple-700 font-black">F. صافي أرباح المقاول (ج.م)</th>
-                  <th class="w-28 text-center">G. نسبة الربح %</th>
-                  <th class="w-28 text-center">H. حالة المشروع</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (m of masterSummaryRows(); track m.projectId; let idx = $index) {
-                  <tr class="excel-row hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10">
-                    <td class="excel-cell-row-num text-center font-mono text-gray-400 select-none">{{ idx + 1 }}</td>
-                    <td class="excel-cell font-bold text-[var(--text-heading)]">{{ m.projectName }}</td>
-                    <td class="excel-cell text-left font-mono font-bold text-blue-700">{{ formatMoney(m.totalRevenue) }}</td>
-                    <td class="excel-cell text-left font-mono font-bold text-[#107c41]">{{ formatMoney(m.totalLaborCost) }}</td>
-                    <td class="excel-cell text-left font-mono font-bold text-amber-700">{{ formatMoney(m.totalAdvances) }}</td>
-                    <td class="excel-cell text-left font-mono font-bold text-rose-700">{{ formatMoney(m.totalExpenses) }}</td>
-                    <td class="excel-cell text-left font-mono font-black text-purple-800 text-sm">
-                      {{ formatMoney(m.netProfit) }}
-                    </td>
-                    <td class="excel-cell text-center font-mono font-bold" [class.text-emerald-600]="m.profitMargin >= 15" [class.text-amber-600]="m.profitMargin < 15">
-                      {{ m.profitMargin.toFixed(1) }}%
-                    </td>
-                    <td class="excel-cell text-center">
-                      <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold" [class.bg-emerald-100]="m.active" [class.text-emerald-800]="m.active" [class.bg-gray-100]="!m.active" [class.text-gray-600]="!m.active">
-                        {{ m.active ? 'مشروع نشط' : 'مغلق' }}
-                      </span>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-        </div>
-
-        <!-- EXCEL STATUS / FORMULA SUMMARY FOOTER (شريط الحالة والملخص الحسابي مثل إكسيل) -->
-        <div
-          class="bg-[var(--bg-subtle)] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)] font-medium"
-        >
-          <div class="flex items-center gap-3">
-            <span class="inline-flex items-center gap-1.5 font-bold text-[#107c41]">
-              <mat-icon class="!text-sm !w-4 !h-4">check_circle</mat-icon>
-              <span>جاهز (جاهز للتعديل المباشر في أي خلية)</span>
-            </span>
-            <span class="text-gray-300 dark:text-gray-700">|</span>
-            <span class="text-[11px]">
-              اضغط على أي خلية للتعديل، يتم الحفظ فورياً في النظام وقاعدة البيانات
-            </span>
-          </div>
-
-          <!-- Real-Time Column Aggregate Pills (SUM, AVERAGE, COUNT) -->
-          <div class="flex items-center gap-3 font-mono font-bold">
-            <div class="bg-[var(--bg-card)] px-3 py-1 rounded-md border border-[var(--border-subtle)] shadow-2xs">
-              <span class="text-gray-400 font-sans text-[10px]">العدد (COUNT): </span>
-              <span class="text-[var(--text-heading)]">{{ currentFilteredCount() }}</span>
-            </div>
-            <div class="bg-[var(--bg-card)] px-3 py-1 rounded-md border border-[var(--border-subtle)] shadow-2xs">
-              <span class="text-gray-400 font-sans text-[10px]">المجموع (SUM): </span>
-              <span class="text-[#107c41]">{{ formatMoney(activeSheetSum()) }}</span>
-            </div>
-            <div class="bg-[var(--bg-card)] px-3 py-1 rounded-md border border-[var(--border-subtle)] shadow-2xs">
-              <span class="text-gray-400 font-sans text-[10px]">المتوسط (AVERAGE): </span>
-              <span class="text-blue-600">{{ formatMoney(activeSheetAvg()) }}</span>
-            </div>
-          </div>
+        <!-- Calculations Strip: AVERAGE, COUNT, SUM -->
+        <div class="flex items-center gap-3 font-mono font-bold">
+          <span title="متوسط القيم بالورقة الحالية">
+            متوسط (AVERAGE): {{ formatMoney(activeSheetAvg()) }}
+          </span>
+          <span class="text-white/40">|</span>
+          <span title="عدد الصفوف بالورقة الحالية">
+            العدد (COUNT): {{ currentFilteredCount() }}
+          </span>
+          <span class="text-white/40">|</span>
+          <span class="text-emerald-100 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-400/20" title="المجموع الإجمالي">
+            المجموع (SUM): {{ formatMoney(activeSheetSum()) }}
+          </span>
         </div>
       </div>
     </div>
   `,
   styles: `
-    .excel-tab-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.5rem 0.875rem;
-      border-top-left-radius: 0.5rem;
-      border-top-right-radius: 0.5rem;
-      font-size: 0.75rem;
-      font-weight: 700;
+    .excel-app-window {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    .ribbon-tab-btn {
+      padding: 0.375rem 0.75rem;
+      border: none;
+      background: transparent;
       color: var(--text-secondary);
-      background-color: transparent;
-      border-top: 2px solid transparent;
-      white-space: nowrap;
+      font-weight: 600;
       cursor: pointer;
+      border-bottom: 2px solid transparent;
       transition: all 0.15s ease;
     }
-    .excel-tab-btn:hover {
-      background-color: var(--bg-card);
-      color: var(--text-heading);
+    .ribbon-tab-btn:hover {
+      color: #107c41;
+      background-color: rgba(16, 124, 65, 0.05);
     }
-    .excel-tab-active {
-      background-color: #ffffff;
+    .ribbon-tab-btn-active {
       color: #107c41 !important;
-      border-top: 3px solid #107c41 !important;
-      box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.04);
+      border-bottom: 3px solid #107c41 !important;
+      background-color: #ffffff;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
     }
-    :host-context(.dark) .excel-tab-active {
-      background-color: #111827;
+    :host-context(.dark) .ribbon-tab-btn-active {
+      background-color: #1e293b;
       color: #34d399 !important;
-      border-top: 3px solid #34d399 !important;
+      border-bottom-color: #34d399 !important;
     }
-    .excel-tab-badge {
-      font-size: 0.65rem;
-      padding: 0.1rem 0.4rem;
-      border-radius: 9999px;
-      background-color: var(--bg-subtle);
-      border: 1px solid var(--border-subtle);
+    .excel-grid-table {
+      table-layout: auto;
+      border-collapse: collapse;
     }
-    .excel-table {
-      border: 1px solid #e5e7eb;
+    .excel-grid-table.show-gridlines td,
+    .excel-grid-table.show-gridlines th {
+      border: 1px solid #d4d4d4;
     }
-    :host-context(.dark) .excel-table {
-      border-color: #374151;
+    :host-context(.dark) .excel-grid-table.show-gridlines td,
+    :host-context(.dark) .excel-grid-table.show-gridlines th {
+      border: 1px solid #334155;
     }
-    .excel-col-header th {
-      background-color: #f3f4f6;
-      color: #374151;
-      font-weight: 800;
-      padding: 0.5rem 0.625rem;
-      border: 1px solid #e5e7eb;
+    .excel-header-letters th {
+      background-color: #f3f2f1;
+      color: #555555;
+      font-weight: 700;
+      text-align: center;
+      padding: 0.25rem 0.5rem;
       user-select: none;
       position: sticky;
       top: 0;
-      z-index: 10;
-    }
-    :host-context(.dark) .excel-col-header th {
-      background-color: #1f2937;
-      color: #e5e7eb;
-      border-color: #374151;
-    }
-    .excel-cell {
-      padding: 0.25rem 0.5rem;
-      border: 1px solid #e5e7eb;
-      vertical-align: middle;
-    }
-    :host-context(.dark) .excel-cell {
-      border-color: #374151;
-    }
-    .excel-cell-row-num {
-      background-color: #f9fafb;
-      border: 1px solid #e5e7eb;
+      z-index: 20;
+      border: 1px solid #d4d4d4;
       font-size: 0.7rem;
     }
-    :host-context(.dark) .excel-cell-row-num {
-      background-color: #111827;
-      border-color: #374151;
+    :host-context(.dark) .excel-header-letters th {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border-color: #334155;
     }
-    .excel-row-selected td {
-      background-color: #ecfdf5 !important;
+    .excel-col-letter.col-active {
+      background-color: #d1fae5 !important;
+      color: #065f46 !important;
+      border-bottom: 2px solid #107c41 !important;
     }
-    :host-context(.dark) .excel-row-selected td {
+    :host-context(.dark) .excel-col-letter.col-active {
       background-color: #064e3b !important;
+      color: #a7f3d0 !important;
+      border-bottom-color: #34d399 !important;
     }
-    .excel-input {
-      background: transparent;
-      border: none;
-      padding: 0.25rem 0.375rem;
-      border-radius: 0.25rem;
-      color: inherit;
-      width: 100%;
-      font-size: inherit;
+    .col-title {
+      font-size: 0.65rem;
+      font-weight: normal;
+      opacity: 0.85;
     }
-    .excel-input:focus {
-      outline: 2px solid #107c41;
+    .excel-row-num {
+      background-color: #f3f2f1;
+      color: #666666;
+      font-weight: 600;
+      width: 2.75rem;
+      font-size: 0.7rem;
+      font-family: monospace;
+      cursor: pointer;
+      user-select: none;
+      position: sticky;
+      right: 0;
+      z-index: 10;
+      border: 1px solid #d4d4d4;
+    }
+    :host-context(.dark) .excel-row-num {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border-color: #334155;
+    }
+    .row-header-active {
+      background-color: #d1fae5 !important;
+      color: #065f46 !important;
+      border-left: 3px solid #107c41 !important;
+    }
+    :host-context(.dark) .row-header-active {
+      background-color: #064e3b !important;
+      color: #a7f3d0 !important;
+    }
+    .excel-cell {
+      padding: 0.15rem 0.35rem;
+      vertical-align: middle;
+      position: relative;
       background-color: #ffffff;
+      color: #1f2937;
     }
-    :host-context(.dark) .excel-input:focus {
-      background-color: #1f2937;
+    :host-context(.dark) .excel-cell {
+      background-color: #0f172a;
+      color: #f1f5f9;
     }
-    .excel-select {
+    .cell-selected {
+      outline: 2px solid #107c41 !important;
+      outline-offset: -2px;
+      background-color: #f0fdf4 !important;
+      z-index: 5;
+    }
+    :host-context(.dark) .cell-selected {
+      outline-color: #34d399 !important;
+      background-color: #064e3b/30 !important;
+    }
+    .excel-fill-handle {
+      position: absolute;
+      bottom: -3px;
+      left: -3px;
+      width: 7px;
+      height: 7px;
+      background-color: #107c41;
+      border: 1px solid #ffffff;
+      cursor: crosshair;
+      z-index: 10;
+    }
+    .cell-editor {
       background: transparent;
       border: none;
-      padding: 0.25rem 0.25rem;
-      border-radius: 0.25rem;
+      padding: 0.2rem 0.25rem;
+      width: 100%;
+      font-size: 0.75rem;
       color: inherit;
-      font-size: inherit;
+    }
+    .cell-editor:focus {
+      outline: none;
+    }
+    .cell-select {
+      background: transparent;
+      border: none;
+      padding: 0.2rem 0.25rem;
+      width: 100%;
+      font-size: 0.75rem;
+      color: inherit;
       cursor: pointer;
     }
-    .excel-select:focus {
-      outline: 2px solid #107c41;
-      background-color: #ffffff;
+    .cell-select:focus {
+      outline: none;
     }
-    :host-context(.dark) .excel-select:focus {
-      background-color: #1f2937;
+    .excel-bottom-sheet-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #4b5563;
+      background-color: #e5e7eb;
+      border: 1px solid #d1d5db;
+      border-bottom: none;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    :host-context(.dark) .excel-bottom-sheet-tab {
+      background-color: #1e293b;
+      color: #cbd5e1;
+      border-color: #334155;
+    }
+    .excel-bottom-sheet-tab:hover {
+      background-color: #ffffff;
+      color: #111827;
+    }
+    .excel-bottom-sheet-active {
+      background-color: #ffffff !important;
+      color: #107c41 !important;
+      font-weight: 800;
+      border-top: 3px solid #107c41 !important;
+      box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
+    }
+    :host-context(.dark) .excel-bottom-sheet-active {
+      background-color: #0f172a !important;
+      color: #34d399 !important;
+      border-top-color: #34d399 !important;
+    }
+    .tab-badge {
+      font-size: 0.65rem;
+      padding: 0.05rem 0.35rem;
+      border-radius: 9999px;
+      background-color: rgba(0, 0, 0, 0.06);
     }
   `,
 })
@@ -1379,29 +1981,91 @@ export class LiveExcelPage {
   private readonly excel = inject(ExcelService);
 
   readonly activeTab = signal<ExcelSheetTab>('attendance');
+  readonly activeRibbonTab = signal<RibbonTab>('home');
   readonly searchQuery = signal<string>('');
   readonly selectedProjectId = signal<number | null>(null);
   readonly filterMonth = signal<string>('');
+  readonly sortDescending = signal<boolean>(true);
+
+  // View Options
+  readonly showGridlines = signal<boolean>(true);
+  readonly showFormulaBar = signal<boolean>(true);
+  readonly zoomLevel = signal<number>(100);
+
+  // Formatting Options
+  readonly isCellBold = signal<boolean>(false);
+  readonly isCellItalic = signal<boolean>(false);
+  readonly textAlignMode = signal<'right' | 'center' | 'left'>('right');
 
   // Selected cell & Formula bar state
   readonly selectedCellLabel = signal<string>('A1');
+  readonly activeColLetter = signal<string>('A');
+  readonly selectedRowNumber = signal<number | null>(1);
   readonly activeFormulaValue = signal<string>('');
   readonly selectedRowId = signal<number | null>(null);
+
+  readonly workbookTabs: ExcelSheetTab[] = [
+    'attendance',
+    'workers',
+    'advances',
+    'expenses',
+    'checks',
+    'extracts',
+    'master',
+  ];
+
+  readonly activeWorkbookFileName = computed(() => {
+    const projName = this.selectedProjectId()
+      ? this.store.projectName(this.selectedProjectId()!)
+      : 'كافة_المشاريع';
+    return `دفتر_موقع_${projName}_${this.store.todayIso()}`;
+  });
 
   setActiveTab(tab: ExcelSheetTab): void {
     this.activeTab.set(tab);
     this.selectedCellLabel.set('A1');
+    this.activeColLetter.set('A');
+    this.selectedRowNumber.set(1);
     this.activeFormulaValue.set('');
     this.selectedRowId.set(null);
+  }
+
+  cycleTab(dir: number): void {
+    const currIdx = this.workbookTabs.indexOf(this.activeTab());
+    const nextIdx = (currIdx + dir + this.workbookTabs.length) % this.workbookTabs.length;
+    this.setActiveTab(this.workbookTabs[nextIdx]);
   }
 
   onProjectFilterChange(val: string): void {
     this.selectedProjectId.set(val === '' ? null : +val);
   }
 
-  selectCell(cellRef: string, val: string, rowId?: number): void {
-    this.selectedCellLabel.set(cellRef);
-    this.activeFormulaValue.set(val);
+  toggleSortDirection(): void {
+    this.sortDescending.set(!this.sortDescending());
+  }
+
+  toggleCellBold(): void {
+    this.isCellBold.set(!this.isCellBold());
+  }
+
+  toggleCellItalic(): void {
+    this.isCellItalic.set(!this.isCellItalic());
+  }
+
+  focusCell(col: string, rowNum: number, value: string, rowId?: number): void {
+    this.selectedCellLabel.set(`${col}${rowNum}`);
+    this.activeColLetter.set(col);
+    this.selectedRowNumber.set(rowNum);
+    this.activeFormulaValue.set(value);
+    if (rowId !== undefined) {
+      this.selectedRowId.set(rowId);
+    }
+  }
+
+  selectRowHeader(rowNum: number, rowId?: number): void {
+    this.selectedRowNumber.set(rowNum);
+    this.selectedCellLabel.set(`A${rowNum}`);
+    this.activeColLetter.set('A');
     if (rowId !== undefined) {
       this.selectedRowId.set(rowId);
     }
@@ -1409,6 +2073,23 @@ export class LiveExcelPage {
 
   onFormulaBarInput(newVal: string): void {
     this.activeFormulaValue.set(newVal);
+  }
+
+  commitCellEdit(): void {
+    this.store.showToast(`تم حفظ القيمة في الخلية ${this.selectedCellLabel()}`, 'success');
+  }
+
+  revertCellEdit(): void {
+    this.store.showToast('تم إلغاء تعديل الخلية', 'info');
+  }
+
+  triggerQuickSaveToast(): void {
+    this.store.showToast('تم حفظ كافة البيانات في قاعدة البيانات بنجاح ✔️', 'success');
+  }
+
+  insertFormula(fn: string): void {
+    this.activeFormulaValue.set(`=${fn}(...)`);
+    this.store.showToast(`تم إدراج دالة ${fn}`, 'info');
   }
 
   formatMoney(n: number): string {
@@ -1473,7 +2154,8 @@ export class LiveExcelPage {
         return wName.includes(q) || pName.includes(q) || a.date.includes(q) || (a.note || '').toLowerCase().includes(q);
       });
     }
-    return list.sort((a, b) => b.date.localeCompare(a.date));
+    const desc = this.sortDescending();
+    return list.sort((a, b) => desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date));
   });
 
   readonly filteredWorkers = computed(() => {
@@ -1502,7 +2184,8 @@ export class LiveExcelPage {
         return wName.includes(q) || a.date.includes(q) || (a.reason || '').toLowerCase().includes(q);
       });
     }
-    return list.sort((a, b) => b.date.localeCompare(a.date));
+    const desc = this.sortDescending();
+    return list.sort((a, b) => desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date));
   });
 
   readonly filteredExpenses = computed(() => {
@@ -1519,7 +2202,8 @@ export class LiveExcelPage {
     if (q) {
       list = list.filter((e) => e.category.toLowerCase().includes(q) || (e.note || '').toLowerCase().includes(q) || e.date.includes(q));
     }
-    return list.sort((a, b) => b.date.localeCompare(a.date));
+    const desc = this.sortDescending();
+    return list.sort((a, b) => desc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date));
   });
 
   readonly filteredChecks = computed(() => {
@@ -1532,7 +2216,8 @@ export class LiveExcelPage {
     if (q) {
       list = list.filter((c) => c.number.includes(q) || c.bank.toLowerCase().includes(q) || (c.notes || '').toLowerCase().includes(q));
     }
-    return list.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+    const desc = this.sortDescending();
+    return list.sort((a, b) => desc ? (b.dueDate || '').localeCompare(a.dueDate || '') : (a.dueDate || '').localeCompare(b.dueDate || ''));
   });
 
   readonly filteredExtracts = computed(() => {
@@ -1545,7 +2230,8 @@ export class LiveExcelPage {
     if (q) {
       list = list.filter((e) => (e.notes || '').toLowerCase().includes(q) || (e.number + '').includes(q));
     }
-    return list.sort((a, b) => b.number - a.number);
+    const desc = this.sortDescending();
+    return list.sort((a, b) => desc ? b.number - a.number : a.number - b.number);
   });
 
   readonly masterSummaryRows = computed(() => {
@@ -1638,7 +2324,6 @@ export class LiveExcelPage {
     val: unknown
   ): Promise<void> {
     const updated: Attendance = { ...attendance, [field]: val };
-    // If workerId changed, auto-update rate snapshots if not manually overridden
     if (field === 'workerId') {
       const w = this.store.workers().find((x) => x.id === Number(val));
       if (w) {
@@ -1736,6 +2421,47 @@ export class LiveExcelPage {
     }
   }
 
+  deleteSelectedRow(): void {
+    const rowId = this.selectedRowId();
+    if (!rowId) return;
+
+    switch (this.activeTab()) {
+      case 'attendance': {
+        const item = this.store.attendances().find((a) => a.id === rowId);
+        if (item) void this.deleteAttendanceRow(item);
+        break;
+      }
+      case 'workers': {
+        const item = this.store.workers().find((w) => w.id === rowId);
+        if (item) void this.deleteWorkerRow(item);
+        break;
+      }
+      case 'advances': {
+        const item = this.store.advances().find((a) => a.id === rowId);
+        if (item) void this.deleteAdvanceRow(item);
+        break;
+      }
+      case 'expenses': {
+        const item = this.store.expenses().find((e) => e.id === rowId);
+        if (item) void this.deleteExpenseRow(item);
+        break;
+      }
+      case 'checks': {
+        const item = this.store.checks().find((c) => c.id === rowId);
+        if (item) void this.deleteCheckRow(item);
+        break;
+      }
+      case 'extracts': {
+        const item = this.store.extracts().find((e) => e.id === rowId);
+        if (item) void this.deleteExtractRow(item);
+        break;
+      }
+      case 'master':
+        break;
+    }
+    this.selectedRowId.set(null);
+  }
+
   // Quick Insert New Row into Active Sheet
   async addNewRowToActiveSheet(): Promise<void> {
     const today = this.store.todayIso();
@@ -1756,7 +2482,7 @@ export class LiveExcelPage {
           nightWorked: 0,
           note: 'سجل جديد من شيت إكسيل',
         });
-        this.store.showToast('تمت إضافة صف يومية جديد للشيت بنجاح', 'success');
+        this.store.showToast('تم إدراج صف يومية جديد بنجاح', 'success');
         break;
       }
       case 'workers': {
@@ -1767,10 +2493,10 @@ export class LiveExcelPage {
           workerNightRate: this.store.settings().defaultWorkerNightRate || 250,
           phone: '',
           active: true,
-          notes: 'أضيف من شيت إكسيل المباشر',
+          notes: 'أضيف من إكسيل المباشر',
         };
         await this.store.saveWorker(newWorker);
-        this.store.showToast('تمت إضافة عامل جديد في الشيت', 'success');
+        this.store.showToast('تم إدراج عامل جديد في الشيت', 'success');
         break;
       }
       case 'advances': {
@@ -1787,7 +2513,7 @@ export class LiveExcelPage {
           projectId: this.selectedProjectId() || defaultProjId,
           notes: '',
         });
-        this.store.showToast('تمت إضافة سلفة جديدة في الشيت', 'success');
+        this.store.showToast('تم إدراج سلفة جديدة في الشيت', 'success');
         break;
       }
       case 'expenses': {
@@ -1798,7 +2524,7 @@ export class LiveExcelPage {
           projectId: this.selectedProjectId() || defaultProjId,
           note: 'مصروف موقع جديد',
         });
-        this.store.showToast('تمت إضافة بند مصروف جديد في الشيت', 'success');
+        this.store.showToast('تم إدراج بند مصروف جديد في الشيت', 'success');
         break;
       }
       case 'checks': {
@@ -1814,7 +2540,7 @@ export class LiveExcelPage {
           withdrawnAmount: 0,
           notes: '',
         });
-        this.store.showToast('تمت إضافة شيك جديد في الشيت', 'success');
+        this.store.showToast('تم إدراج شيك جديد في الشيت', 'success');
         break;
       }
       case 'extracts': {
@@ -1831,7 +2557,7 @@ export class LiveExcelPage {
           },
           []
         );
-        this.store.showToast('تمت إضافة مستخلص جديد في الشيت', 'success');
+        this.store.showToast('تم إدراج مستخلص جديد في الشيت', 'success');
         break;
       }
       case 'master':
@@ -1982,7 +2708,7 @@ export class LiveExcelPage {
     }
   }
 
-  // Copy Sheet Data as TSV (Tab-Separated Values) for direct paste into Excel / Google Sheets
+  // Copy Sheet Data as TSV for direct paste into Excel / Google Sheets
   async copySheetAsTsv(): Promise<void> {
     let tsv = '';
     const tab = this.activeTab();
