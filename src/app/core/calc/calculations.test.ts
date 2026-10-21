@@ -14,6 +14,8 @@ import {
   formatCurrency,
   getDueChecksAlerts,
   getPayday15CycleInfo,
+  calculateDailyDateReport,
+  mergeArraysByIdAndSignature,
 } from './calculations.ts';
 import type {
   Advance,
@@ -680,5 +682,183 @@ test('Contractor Exact Scenario: 100,000 company check deposited in bank, withdr
   assert.equal(summary.withdrawalFee, 40);
   assert.equal(summary.netRemainingInPocket, 460); // 500 - 40 = 460 ج.م صافي في الجيب
 });
+
+test('calculateDailyDateReport for 2026-10-20 computes opening cash, spent, worker count, profit, and splits workers with/without advance', () => {
+  const report = calculateDailyDateReport({
+    date: '2026-10-20',
+    projects: [
+      {
+        id: 1,
+        name: 'مشروع الكوبري الجديد',
+        companyDayRate: 500,
+        companyNightRate: 250,
+        active: true,
+        notes: '',
+      },
+    ],
+    workers: [
+      {
+        id: 1,
+        name: 'كريم محمود',
+        role: 'نحات',
+        workerDayRate: 500,
+        workerNightRate: 250,
+        phone: '01000000001',
+        active: true,
+        notes: '',
+      },
+      {
+        id: 2,
+        name: 'حسن علي',
+        role: 'عامل',
+        workerDayRate: 300,
+        workerNightRate: 150,
+        phone: '01000000002',
+        active: true,
+        notes: '',
+      },
+      {
+        id: 3,
+        name: 'سعيد طارق',
+        role: 'عامل',
+        workerDayRate: 300,
+        workerNightRate: 150,
+        phone: '01000000003',
+        active: true,
+        notes: '',
+      },
+    ],
+    attendances: [
+      {
+        id: 1,
+        date: '2026-10-20',
+        workerId: 1,
+        projectId: 1,
+        dayWorked: 1,
+        nightWorked: 1,
+        workerDayRateSnapshot: 500,
+        workerNightRateSnapshot: 250,
+        companyDayRateSnapshot: 700,
+        companyNightRateSnapshot: 350,
+        note: 'شغل واجهة',
+      },
+      {
+        id: 2,
+        date: '2026-10-20',
+        workerId: 2,
+        projectId: 1,
+        dayWorked: 1,
+        nightWorked: 0,
+        workerDayRateSnapshot: 300,
+        workerNightRateSnapshot: 150,
+        companyDayRateSnapshot: 500,
+        companyNightRateSnapshot: 250,
+        note: '',
+      },
+    ],
+    advances: [
+      {
+        id: 1,
+        date: '2026-10-19',
+        workerId: 1,
+        amount: 400,
+        reason: 'سلفة أمس',
+        settlementId: null,
+        projectId: 1,
+        notes: '',
+      },
+      {
+        id: 2,
+        date: '2026-10-20',
+        workerId: 1,
+        amount: 200,
+        reason: 'سلفة غداء',
+        settlementId: null,
+        projectId: 1,
+        notes: '',
+      },
+    ],
+    deductions: [],
+    settlements: [],
+    expenses: [
+      {
+        id: 1,
+        date: '2026-10-20',
+        category: 'مواصلات',
+        amount: 100,
+        projectId: 1,
+        note: 'عربية نقل',
+      },
+    ],
+    extras: [],
+    checks: [
+      {
+        id: 1,
+        direction: 'وارد',
+        number: 'CHK-101',
+        bank: 'البنك الأهلي',
+        amount: 50000,
+        withdrawnAmount: 5000,
+        dueDate: '2026-10-18',
+        status: 'اتصرف',
+        projectId: 1,
+        extractId: null,
+        notes: '',
+      },
+    ],
+    incomingPayments: [],
+    headcounts: [],
+  });
+
+  // Opening cash before 2026-10-20: 5000 withdrawn on 10-18 minus 400 advance on 10-19 = 4600
+  assert.equal(report.openingCashBeforeDay, 4600);
+  assert.equal(report.totalAvailableOnDay, 4600);
+  // Spent on 2026-10-20: 200 advance + 100 expense = 300
+  assert.equal(report.advancesSpentOnDay, 200);
+  assert.equal(report.expensesSpentOnDay, 100);
+  assert.equal(report.totalSpentOnDay, 300);
+  assert.equal(report.closingCashEndOfDay, 4300);
+
+  // Workers who worked on 2026-10-20: 2 (1 sculptor, 1 regular worker), 1 absent
+  assert.equal(report.totalWorkersWhoWorked, 2);
+  assert.equal(report.sculptorsWhoWorked, 1);
+  assert.equal(report.regularWorkersWhoWorked, 1);
+  assert.equal(report.workersWhoWorkedWithAdvanceCount, 1); // Karim took 200 advance
+  assert.equal(report.workersWhoWorkedWithoutAdvanceCount, 1); // Hassan took 0 advance
+  assert.equal(report.absentWorkersCount, 1); // Saeed was absent
+
+  // Profit on 2026-10-20:
+  // Karim: company 1050 (700+350), worker 750 (500+250) => margin 300
+  // Hassan: company 500, worker 300 => margin 200
+  // Total labor margin = 500; minus 100 expense = 400 net profit
+  assert.equal(report.companyEntitlementOnDay, 1550);
+  assert.equal(report.workerGrossWagesOnDay, 1050);
+  assert.equal(report.grossLaborMarginOnDay, 500);
+  assert.equal(report.netProfitOnDay, 400);
+});
+
+test('mergeArraysByIdAndSignature merges offline local records and remote database records without data loss or ID collision', () => {
+  const localAdvances: Advance[] = [
+    { id: 1, date: '2026-10-18', workerId: 1, amount: 500, reason: 'سلفة قديمة', settlementId: null, notes: '' },
+    { id: 2, date: '2026-10-20', workerId: 2, amount: 300, reason: 'سلفة مسجلة أوفلاين', settlementId: null, notes: '' },
+  ];
+  const remoteAdvances: Advance[] = [
+    { id: 1, date: '2026-10-18', workerId: 1, amount: 500, reason: 'سلفة قديمة', settlementId: null, notes: '' },
+    { id: 2, date: '2026-10-20', workerId: 3, amount: 450, reason: 'سلفة من قاعدة البيانات', settlementId: null, notes: '' },
+  ];
+
+  const sig = (a: Advance) => `${a.date}|${a.workerId}|${a.amount}|${a.reason}`;
+  const res = mergeArraysByIdAndSignature(localAdvances, remoteAdvances, sig);
+
+  assert.equal(res.merged.length, 3);
+  assert.equal(res.addedFromLocal.length, 1);
+  assert.equal(res.addedFromLocal[0].reason, 'سلفة مسجلة أوفلاين');
+  assert.equal(res.addedFromRemote.length, 1);
+  assert.equal(res.addedFromRemote[0].reason, 'سلفة من قاعدة البيانات');
+  // Verify all 3 merged items have unique IDs
+  const uniqueIds = new Set(res.merged.map((m) => m.id));
+  assert.equal(uniqueIds.size, 3);
+});
+
 
 

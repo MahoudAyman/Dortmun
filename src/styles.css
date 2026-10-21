@@ -84,6 +84,10 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  .font-mono {
+    font-family: 'IBM Plex Sans Arabic', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
 }
 
 /* Focus Rings for Accessibility (WCAG 4.5:1) */

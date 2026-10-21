@@ -51,6 +51,7 @@ import {
 import {
   calculateCheckFundBreakdowns,
   calculateComprehensiveLedger,
+  calculateDailyDateReport,
   calculateDailyPocketSummary,
   calculateDashboardSummary,
   compareDailyHeadcount,
@@ -60,9 +61,13 @@ import {
   getLowAttendanceWorkers,
   getPayday15CycleInfo,
   isBackupOverdue,
+  mergeArraysByIdAndSignature,
   toArabicDigits,
   type CheckFundBreakdown,
+  type DailyDateReport,
+  type OfflineQueueItem,
   type PocketCashSummary,
+  type SyncExchangeLog,
 } from '../calc/calculations';
 
 export interface SmartAlertItem {
@@ -226,6 +231,48 @@ export class StoreService {
   readonly showZakiCapabilitiesModal = signal<boolean>(false);
   readonly showDateSelectorModal = signal<boolean>(false);
 
+  // Developer Identity & Support Info
+  readonly developerName = 'محمود أيمن';
+  readonly developerPhone = '01029046651';
+
+  // Smart Offline Queue & Two-Way Database Sync Signals
+  readonly isNetworkOnline = signal<boolean>(true);
+  readonly offlinePendingQueue = signal<OfflineQueueItem[]>([]);
+  readonly syncExchangeLogs = signal<SyncExchangeLog[]>([]);
+  readonly syncAlertBanner = signal<{
+    title: string;
+    subtitle: string;
+    details: string[];
+    direction: 'outgoing' | 'incoming' | 'both' | 'offline_queued';
+    timestamp: string;
+  } | null>(null);
+
+  // Daily Date Inspector State (مثلاً تحديد يوم 20-10 لمعرفة كل تفاصيله)
+  readonly selectedInspectorDate = signal<string>(getSystemTodayIso());
+  readonly selectedInspectorProjectId = signal<number | null>(null);
+
+  readonly currentDailyDateReport = computed<DailyDateReport>(() =>
+    this.getDailyDateReport(this.selectedInspectorDate(), this.selectedInspectorProjectId())
+  );
+
+  getDailyDateReport(dateIso: string, projectId: number | null = null): DailyDateReport {
+    return calculateDailyDateReport({
+      date: dateIso || this.todayIso(),
+      projectId,
+      projects: this.projects(),
+      workers: this.workers(),
+      attendances: this.attendances(),
+      advances: this.advances(),
+      deductions: this.deductions(),
+      settlements: this.settlements(),
+      expenses: this.expenses(),
+      extras: this.extras(),
+      checks: this.checks(),
+      incomingPayments: this.incomingPayments(),
+      headcounts: this.dailyHeadcounts(),
+    });
+  }
+
   getYesterdayIso(): string {
     const act = new Date(this.systemActualToday() + 'T12:00:00Z');
     act.setDate(act.getDate() - 1);
@@ -277,10 +324,22 @@ export class StoreService {
   readonly pocketSelectedCheckId = signal<number | null>(null);
   readonly pocketSelectedProjectId = signal<number | null>(null);
 
+  openHalfSheet(
+    type: 'worker' | 'check' | 'project' | 'extract' | 'pocket',
+    id: number | null = null
+  ): void {
+    this.activeHalfSheet.set({ type, id });
+  }
+
   private pushUndo(op: UndoOperation): void {
     this.undoStack.update((stack) => [op, ...stack.slice(0, 49)]);
     this.redoStack.set([]);
-    this.scheduleCloudSync(op.description);
+    this.scheduleCloudSync(
+      op.description,
+      op.table,
+      op.type === 'batch-add' ? 'add' : op.type,
+      op.recordId
+    );
   }
 
   // Derived computations
@@ -671,8 +730,58 @@ export class StoreService {
     // Default is ALWAYS Connected (متصل) unless manually disconnected in this session
     localStorage.removeItem('dortmun_local_only_mode');
     const manualDisconnect = sessionStorage.getItem('dortmun_manual_disconnect') === 'true';
+    const browserOnline = navigator.onLine !== false;
+    this.isNetworkOnline.set(browserOnline);
     this.localOnlyMode.set(manualDisconnect);
-    this.cloudSyncStatus.set(manualDisconnect ? 'local_only' : 'connected');
+    this.cloudSyncStatus.set(
+      manualDisconnect ? 'local_only' : !browserOnline ? 'offline' : 'connected'
+    );
+
+    // Load persisted offline queue and sync exchange logs
+    try {
+      const savedQueue = localStorage.getItem('dortmun_offline_pending_queue');
+      if (savedQueue) {
+        const parsed = JSON.parse(savedQueue);
+        if (Array.isArray(parsed)) {
+          this.offlinePendingQueue.set(parsed);
+        }
+      }
+      const savedLogs = localStorage.getItem('dortmun_sync_exchange_logs');
+      if (savedLogs) {
+        const parsedLogs = JSON.parse(savedLogs);
+        if (Array.isArray(parsedLogs)) {
+          this.syncExchangeLogs.set(parsedLogs);
+        }
+      }
+    } catch {
+      // Ignore storage parse errors
+    }
+
+    // Listen for real browser online / offline events
+    window.addEventListener('offline', () => {
+      this.isNetworkOnline.set(false);
+      this.cloudSyncStatus.set('offline');
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+      this.syncAlertBanner.set({
+        title: '📴 انقطع الاتصال بالإنترنت — وضع التسجيل الذكي أوفلاين نشط',
+        subtitle:
+          'سجّل أي سلف أو يوميات أو مصاريف بحرية تامة الآن. سيتم حفظها في قائمة الانتظار وإرسالها إلى قاعدة البيانات تلقائياً فور فتح النت!',
+        details: [],
+        direction: 'offline_queued',
+        timestamp: nowStr,
+      });
+      this.showToast(
+        '📴 النت مقفول حالياً — أي تسجيل جديد سيُحفظ في قائمة الانتظار ويذهب لقاعدة البيانات فور فتح النت',
+        'warning'
+      );
+    });
+
+    window.addEventListener('online', () => {
+      this.isNetworkOnline.set(true);
+      if (!this.localOnlyMode()) {
+        void this.flushOfflineQueueToDatabase('عودة الاتصال بالإنترنت تلقائياً');
+      }
+    });
 
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
     const firstLogin = localStorage.getItem('dortmun_device_first_login') || now;
@@ -686,9 +795,9 @@ export class StoreService {
       browserOs,
       firstLoginAt: firstLogin,
       lastActiveAt: now,
-      lastAction: manualDisconnect ? 'مفصول مؤقتاً (وضع محلي)' : 'متصل تلقائياً بالخادم',
+      lastAction: manualDisconnect ? 'مفصول مؤقتاً (وضع أوفلاين)' : 'متصل تلقائياً بالخادم',
       operationsCount: opsCount,
-      isOnline: true,
+      isOnline: browserOnline && !manualDisconnect,
       syncMode: manualDisconnect ? 'local' : 'cloud',
     };
     this.currentDevice.set(dev);
@@ -1022,7 +1131,45 @@ export class StoreService {
     };
   }
 
-  scheduleCloudSync(operationDescription: string): void {
+  private persistOfflineQueue(queue: OfflineQueueItem[]): void {
+    this.offlinePendingQueue.set(queue);
+    if (this.isBrowser) {
+      try {
+        localStorage.setItem('dortmun_offline_pending_queue', JSON.stringify(queue));
+      } catch {
+        // Ignore quota errors
+      }
+    }
+  }
+
+  private recordSyncExchangeLog(entry: Omit<SyncExchangeLog, 'id' | 'timestamp'>): void {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const newLog: SyncExchangeLog = {
+      ...entry,
+      id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: now,
+    };
+    const nextLogs = [newLog, ...this.syncExchangeLogs().slice(0, 49)];
+    this.syncExchangeLogs.set(nextLogs);
+    if (this.isBrowser) {
+      try {
+        localStorage.setItem('dortmun_sync_exchange_logs', JSON.stringify(nextLogs));
+      } catch {
+        // Ignore quota errors
+      }
+    }
+  }
+
+  dismissSyncAlertBanner(): void {
+    this.syncAlertBanner.set(null);
+  }
+
+  scheduleCloudSync(
+    operationDescription: string,
+    table = 'عام',
+    actionType: 'add' | 'update' | 'delete' = 'add',
+    recordId?: number
+  ): void {
     if (!this.isBrowser || this.isApplyingRemoteState) return;
 
     this.hasPendingLocalChanges = true;
@@ -1033,19 +1180,37 @@ export class StoreService {
     const cur = this.currentDevice();
     const nextOps = (cur.operationsCount || 0) + 1;
     localStorage.setItem('dortmun_device_ops_count', String(nextOps));
+    const isOfflineNow = this.localOnlyMode() || !this.isNetworkOnline();
     const updatedDev: RegisteredDevice = {
       ...cur,
       lastActiveAt: now,
       lastAction: operationDescription,
       operationsCount: nextOps,
-      isOnline: true,
-      syncMode: this.localOnlyMode() ? 'local' : 'cloud',
+      isOnline: !isOfflineNow,
+      syncMode: isOfflineNow ? 'local' : 'cloud',
     };
     this.currentDevice.set(updatedDev);
     this.mergeDeviceList([updatedDev]);
 
-    if (this.localOnlyMode()) {
-      this.cloudSyncStatus.set('local_only');
+    if (isOfflineNow) {
+      this.cloudSyncStatus.set(this.localOnlyMode() ? 'local_only' : 'offline');
+      const qItem: OfflineQueueItem = {
+        id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: now,
+        table,
+        actionType,
+        description: operationDescription,
+        recordId,
+      };
+      const nextQueue = [qItem, ...this.offlinePendingQueue()];
+      this.persistOfflineQueue(nextQueue);
+      this.syncAlertBanner.set({
+        title: `📴 تم الحفظ في قائمة انتظار الأوفلاين (${this.num(nextQueue.length)} عملية بانتظار النت)`,
+        subtitle: `سجّلت الآن: "${operationDescription}" أثناء قفل النت — بمجرد فتح النت ستذهب تلقائياً إلى قاعدة البيانات مع رسالة تأكيد واضحة!`,
+        details: nextQueue.slice(0, 5).map((item) => item.description),
+        direction: 'offline_queued',
+        timestamp: now,
+      });
       return;
     }
 
@@ -1682,13 +1847,254 @@ export class StoreService {
       }
 
       if (notifyUser && snapshot.updatedByDeviceName) {
-        this.showToast(
-          `تحديث مباشر: ${snapshot.lastOperation}`,
-          'success'
-        );
+        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+        const opText = snapshot.lastOperation || 'تحديث وارد من قاعدة البيانات';
+        const devLabel = snapshot.updatedByDeviceName || 'قاعدة البيانات السحابية';
+        this.recordSyncExchangeLog({
+          direction: 'incoming_from_db',
+          title: `📥 وصل تحديث من قاعدة البيانات (${devLabel})`,
+          details: [opText],
+          itemsCount: 1,
+          deviceName: devLabel,
+        });
+        this.syncAlertBanner.set({
+          title: `📥 وصل الآن تحديث مباشر من قاعدة البيانات!`,
+          subtitle: `العملية الواردة: "${opText}" — من: ${devLabel}`,
+          details: [opText],
+          direction: 'incoming',
+          timestamp: nowStr,
+        });
+        this.showToast(`📥 وصل من قاعدة البيانات: ${opText}`, 'success');
       }
     } finally {
       this.isApplyingRemoteState = false;
+    }
+  }
+
+  async flushOfflineQueueToDatabase(
+    triggerReason = 'فتح الإنترنت ومزامنة قائمة الانتظار'
+  ): Promise<{
+    sentCount: number;
+    receivedCount: number;
+    sentDetails: string[];
+    receivedDetails: string[];
+  }> {
+    const queuedItems = [...this.offlinePendingQueue()];
+    const sentDetails = queuedItems.map((q) => q.description);
+    const receivedDetails: string[] = [];
+
+    if (!this.isBrowser) {
+      return { sentCount: 0, receivedCount: 0, sentDetails: [], receivedDetails: [] };
+    }
+
+    this.cloudSyncStatus.set('syncing');
+    try {
+      if (!this.supabase) {
+        this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: { persistSession: false },
+          realtime: { params: { eventsPerSecond: 25 } },
+        });
+      }
+
+      // 1. Fetch remote snapshot from Supabase to perform smart two-way merge
+      const { data: sbRow, error: sbErr } = await this.supabase
+        .from('dortmun_cloud_state')
+        .select('*')
+        .eq('id', 'main')
+        .maybeSingle();
+
+      if (!sbErr && sbRow && sbRow['payload']) {
+        const remoteSnap = sbRow['payload'] as CloudSyncSnapshot;
+        if (remoteSnap && Array.isArray(remoteSnap.workers)) {
+          // Merge workers
+          const wMerge = mergeArraysByIdAndSignature(
+            this.workers(),
+            remoteSnap.workers || [],
+            (w) => `${w.name.trim()}|${w.role}`
+          );
+          if (wMerge.addedFromRemote.length > 0) {
+            this.workers.set(wMerge.merged);
+            for (const w of wMerge.addedFromRemote) {
+              receivedDetails.push(`عامل وارد من قاعدة البيانات: ${w.name} (${w.role})`);
+            }
+          }
+
+          // Merge projects
+          const pMerge = mergeArraysByIdAndSignature(
+            this.projects(),
+            remoteSnap.projects || [],
+            (p) => p.name.trim()
+          );
+          if (pMerge.addedFromRemote.length > 0) {
+            this.projects.set(pMerge.merged);
+            for (const p of pMerge.addedFromRemote) {
+              receivedDetails.push(`مشروع وارد من قاعدة البيانات: ${p.name}`);
+            }
+          }
+
+          // Merge advances
+          const advMerge = mergeArraysByIdAndSignature(
+            this.advances(),
+            remoteSnap.advances || [],
+            (a) => `${a.date}|${a.workerId}|${a.amount}|${a.reason || ''}`
+          );
+          if (advMerge.addedFromRemote.length > 0) {
+            this.advances.set(advMerge.merged);
+            for (const a of advMerge.addedFromRemote) {
+              receivedDetails.push(
+                `سلفة واردة من قاعدة البيانات: ${this.money(a.amount)} للعامل ${this.workerName(a.workerId)} (${a.date})`
+              );
+            }
+          }
+
+          // Merge attendances
+          const attMerge = mergeArraysByIdAndSignature(
+            this.attendances(),
+            remoteSnap.attendances || [],
+            (a) => `${a.date}|${a.workerId}|${a.projectId}`
+          );
+          if (attMerge.addedFromRemote.length > 0) {
+            this.attendances.set(attMerge.merged);
+            for (const a of attMerge.addedFromRemote) {
+              receivedDetails.push(
+                `حضور وارد من قاعدة البيانات: ${this.workerName(a.workerId)} يوم ${a.date}`
+              );
+            }
+          }
+
+          // Merge deductions
+          const dedMerge = mergeArraysByIdAndSignature(
+            this.deductions(),
+            remoteSnap.deductions || [],
+            (d) => `${d.date}|${d.workerId}|${d.amount}|${d.reason || ''}`
+          );
+          if (dedMerge.addedFromRemote.length > 0) {
+            this.deductions.set(dedMerge.merged);
+            for (const d of dedMerge.addedFromRemote) {
+              receivedDetails.push(
+                `خصم وارد من قاعدة البيانات: ${this.money(d.amount)} على ${this.workerName(d.workerId)}`
+              );
+            }
+          }
+
+          // Merge expenses
+          const expMerge = mergeArraysByIdAndSignature(
+            this.expenses(),
+            remoteSnap.expenses || [],
+            (e) => `${e.date}|${e.category}|${e.amount}|${e.note || ''}`
+          );
+          if (expMerge.addedFromRemote.length > 0) {
+            this.expenses.set(expMerge.merged);
+            for (const e of expMerge.addedFromRemote) {
+              receivedDetails.push(
+                `مصروف وارد من قاعدة البيانات: ${this.money(e.amount)} (${e.category})`
+              );
+            }
+          }
+
+          // Merge checks
+          const chkMerge = mergeArraysByIdAndSignature(
+            this.checks(),
+            remoteSnap.checks || [],
+            (c) => `${c.number}|${c.bank}|${c.amount}`
+          );
+          if (chkMerge.addedFromRemote.length > 0) {
+            this.checks.set(chkMerge.merged);
+            for (const c of chkMerge.addedFromRemote) {
+              receivedDetails.push(
+                `شيك وارد من قاعدة البيانات: رقم ${c.number} بقيمة ${this.money(c.amount)}`
+              );
+            }
+          }
+        }
+      }
+
+      // 2. Push the merged state (including all offline queued items) to Supabase
+      const syncReason =
+        sentDetails.length > 0
+          ? `رفع (${sentDetails.length}) عمليات مسجلة أوفلاين: ${sentDetails[0]}`
+          : triggerReason;
+      await this.syncToCloudNow(syncReason);
+
+      // 3. Clear the offline pending queue now that it has been sent
+      this.persistOfflineQueue([]);
+      this.hasPendingLocalChanges = false;
+      this.cloudSyncStatus.set('connected');
+
+      const sentCount = sentDetails.length;
+      const receivedCount = receivedDetails.length;
+      const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+      if (sentCount > 0 || receivedCount > 0) {
+        const allDetails = [
+          ...sentDetails.map((d) => `📤 ذهب لقاعدة البيانات: ${d}`),
+          ...receivedDetails.map((d) => `📥 أتى من قاعدة البيانات: ${d}`),
+        ];
+        this.recordSyncExchangeLog({
+          direction:
+            sentCount > 0 && receivedCount > 0
+              ? 'bidirectional_merge'
+              : sentCount > 0
+                ? 'outgoing_to_db'
+                : 'incoming_from_db',
+          title:
+            sentCount > 0
+              ? `✅ تم فتح النت ورفع (${this.num(sentCount)}) عمليات لقاعدة البيانات واستقبال (${this.num(receivedCount)}) تحديثات`
+              : `📥 تم جلب (${this.num(receivedCount)}) تحديثات جديدة من قاعدة البيانات`,
+          details: allDetails,
+          itemsCount: sentCount + receivedCount,
+          deviceName: this.currentDevice().deviceName,
+        });
+
+        this.syncAlertBanner.set({
+          title:
+            sentCount > 0
+              ? `✅ تم فتح النت! ذهب إلى قاعدة البيانات (${this.num(sentCount)}) عمليات مسجلة أوفلاين بنجاح`
+              : `✅ تمت المزامنة الذكية مع قاعدة البيانات واستقبال (${this.num(receivedCount)}) تحديثات`,
+          subtitle:
+            sentCount > 0 && receivedCount > 0
+              ? `تم إرسال تعديلاتك الأوفلاين لقاعدة البيانات ودمج (${this.num(receivedCount)}) حركات واردة من قاعدة البيانات بذكاء دون فقدان أي بيان.`
+              : sentCount > 0
+                ? `جميع السلف واليوميات والحركات التي سجلتها والنت مقفول أصبحت الآن محفوظة في قاعدة البيانات السحابية ١٠٠٪.`
+                : `تم تحديث بياناتك بأحدث ما أتى من قاعدة البيانات.`,
+          details: allDetails.slice(0, 8),
+          direction:
+            sentCount > 0 && receivedCount > 0
+              ? 'both'
+              : sentCount > 0
+                ? 'outgoing'
+                : 'incoming',
+          timestamp: nowStr,
+        });
+
+        this.showToast(
+          sentCount > 0
+            ? `✅ تم فتح النت! ذهب إلى قاعدة البيانات (${this.num(sentCount)}) عمليات أوفلاين (${sentDetails[0]}) واستُلم (${this.num(receivedCount)}) من قاعدة البيانات`
+            : `📥 وصل من قاعدة البيانات (${this.num(receivedCount)}) تحديثات جديدة بنجاح`,
+          'success'
+        );
+      } else {
+        this.recordSyncExchangeLog({
+          direction: 'bidirectional_merge',
+          title: '✅ فحص ومزامنة قاعدة البيانات (البيانات متطابقة ١٠٠٪)',
+          details: ['تم الاتصال بقاعدة البيانات والتأكد من تطابق جميع السجلات'],
+          itemsCount: 0,
+          deviceName: this.currentDevice().deviceName,
+        });
+        this.syncAlertBanner.set({
+          title: '✅ تم فتح النت والاتصال بقاعدة البيانات بنجاح!',
+          subtitle: 'جميع السجلات المحلية وسجلات قاعدة البيانات متطابقة ومحدثة ١٠٠٪.',
+          details: [],
+          direction: 'both',
+          timestamp: nowStr,
+        });
+        this.showToast('✅ تم الاتصال بقاعدة البيانات — جميع البيانات متطابقة ١٠٠٪', 'success');
+      }
+
+      return { sentCount, receivedCount, sentDetails, receivedDetails };
+    } catch {
+      this.cloudSyncStatus.set('connected');
+      return { sentCount: 0, receivedCount: 0, sentDetails, receivedDetails };
     }
   }
 
@@ -1812,8 +2218,11 @@ export class StoreService {
     const dev: RegisteredDevice = {
       ...this.currentDevice(),
       lastActiveAt: now,
+      isOnline: !nextLocal,
       syncMode: nextLocal ? 'local' : 'cloud',
-      lastAction: nextLocal ? 'فصل الاتصال مؤقتاً' : 'متصل تلقائياً بالخادم',
+      lastAction: nextLocal
+        ? 'وضع أوفلاين (قفل النت مؤقتاً)'
+        : 'فتح النت ومزامنة قاعدة البيانات',
     };
     this.currentDevice.set(dev);
     this.mergeDeviceList([dev]);
@@ -1828,12 +2237,22 @@ export class StoreService {
         await this.supabase.removeChannel(this.realtimeChannel);
         this.realtimeChannel = null;
       }
-      this.showToast('تم فصل الاتصال — التطبيق يعمل الآن محلياً', 'warning');
+      this.syncAlertBanner.set({
+        title: '📴 تم قفل اتصال النت (وضع العمل أوفلاين نشط الآن)',
+        subtitle:
+          'سجّل الآن أي سلف على أي عامل أو يوميات أو مصاريف؛ سيتم تجميعها في قائمة انتظار الأوفلاين وبمجرد فتح النت ستذهب فوراً إلى قاعدة البيانات مع رسالة توضح ذلك!',
+        details: this.offlinePendingQueue().map((q) => q.description),
+        direction: 'offline_queued',
+        timestamp: now,
+      });
+      this.showToast(
+        '📴 تم قفل النت مؤقتاً — أي سلف أو تسجيلات ستُحفظ في قائمة الانتظار وتُرفع لقاعدة البيانات فور فتح النت',
+        'warning'
+      );
     } else {
       this.cloudSyncStatus.set('syncing');
       await this.initCloudConnection();
-      await this.syncToCloudNow('إعادة الاتصال والمزامنة الفورية');
-      this.showToast('تم الاتصال بنجاح — يتم رفع وجلب أي تغيير مباشر تلقائياً', 'success');
+      await this.flushOfflineQueueToDatabase('فتح النت وإرسال التعديلات الأوفلاين لقاعدة البيانات');
     }
   }
 

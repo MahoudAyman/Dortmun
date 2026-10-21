@@ -103,6 +103,110 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
         </div>
       </div>
 
+      <!-- NEW: Daily Date Inspector (20-10) + Smart Offline/Online Sync Quick Hub + Developer Attribution -->
+      @let dayRep = store.currentDailyDateReport();
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 reveal-section">
+        <!-- Daily Date Inspector Quick Card (7 cols) -->
+        <div class="lg:col-span-7 ceramic-card p-4 sm:p-5 border border-indigo-500/30 bg-gradient-to-l from-indigo-500/10 via-[var(--bg-card)] to-sky-500/5 flex flex-col justify-between gap-3">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black">جديد وذكي</span>
+                <h2 class="text-sm sm:text-base font-black text-[var(--text-heading)]">
+                  📆 كشف اليوم بالتاريخ ({{ store.digits(dayRep.date) }}) — كان معاك كام واتصرف كام ومين اشتغل
+                </h2>
+              </div>
+              <p class="text-xs text-[var(--text-secondary)] mt-1">
+                اختر أي يوم (مثل ٢٠-١٠) لمعرفة السيولة المتاحة، المصروف، المكسب، والعمال اللي اشتغلوا بالسلف واللي مخدوش سلف.
+              </p>
+            </div>
+            <a
+              routerLink="/daily-inspector"
+              class="px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black inline-flex items-center gap-1 shrink-0 shadow-xs"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">calendar_month</mat-icon>
+              <span>فتح كشف اليوم الكامل</span>
+            </a>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[10px] font-bold text-[var(--text-secondary)]">كان معايا متاح</div>
+              <div class="text-xs font-black text-emerald-600 tabular-nums mt-0.5">{{ store.money(dayRep.totalAvailableOnDay) }}</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[10px] font-bold text-[var(--text-secondary)]">اتصرف في اليوم</div>
+              <div class="text-xs font-black text-rose-600 tabular-nums mt-0.5">{{ store.money(dayRep.totalSpentOnDay) }}</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)]">
+              <div class="text-[10px] font-bold text-[var(--text-secondary)]">اشتغلوا (بسلف / بدون)</div>
+              <div class="text-xs font-black text-[#3390EC] tabular-nums mt-0.5">
+                {{ store.num(dayRep.totalWorkersWhoWorked) }} ({{ store.num(dayRep.workersWhoWorkedWithAdvanceCount) }} سلف / {{ store.num(dayRep.workersWhoWorkedWithoutAdvanceCount) }} بدون)
+              </div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+              <div class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">مكسب اليوم</div>
+              <div class="text-xs font-black text-emerald-600 tabular-nums mt-0.5">{{ store.money(dayRep.netProfitOnDay) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Smart Offline Sync & Developer Credit Card (5 cols) -->
+        <div class="lg:col-span-5 ceramic-card p-4 sm:p-5 border border-amber-500/30 bg-gradient-to-l from-amber-500/10 via-[var(--bg-card)] to-emerald-500/10 flex flex-col justify-between gap-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="w-2.5 h-2.5 rounded-full"
+                  [class.bg-amber-500]="store.localOnlyMode() || !store.isNetworkOnline()"
+                  [class.bg-emerald-500]="!store.localOnlyMode() && store.isNetworkOnline()"
+                ></span>
+                <h3 class="text-sm font-black text-[var(--text-heading)]">
+                  🔄 المزامنة الذكية (أوفلاين وقاعدة البيانات)
+                </h3>
+              </div>
+              <p class="text-[11px] text-[var(--text-secondary)] mt-1">
+                سجّل سلف أو يوميات وأنت قافل النت، وعند فتح النت يذهب لقاعدة البيانات ويأتي الجديد برسالة تفصيلية.
+              </p>
+            </div>
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] font-black shrink-0">
+              بالانتظار: {{ store.num(store.offlinePendingQueue().length) }}
+            </span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode()"
+              class="flex-1 py-2 px-3 rounded-xl font-black text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              [class.bg-emerald-600]="store.localOnlyMode()"
+              [class.text-white]="store.localOnlyMode()"
+              [class.bg-amber-500]="!store.localOnlyMode()"
+              [class.text-slate-950]="!store.localOnlyMode()"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">{{ store.localOnlyMode() ? 'wifi' : 'wifi_off' }}</mat-icon>
+              <span>{{ store.localOnlyMode() ? 'فتح النت ومزامنة الطابور الآن' : 'قفل النت مؤقتاً (وضع أوفلاين)' }}</span>
+            </button>
+            <a
+              routerLink="/sync-center"
+              class="py-2 px-3 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[#3390EC] text-xs font-black text-[var(--text-heading)] inline-flex items-center gap-1"
+            >
+              <span>مركز المزامنة</span>
+            </a>
+          </div>
+
+          <div class="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between text-[11px] font-black">
+            <span class="text-[var(--text-heading)] flex items-center gap-1">
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#3390EC]">verified</mat-icon>
+              <span>المطور: م/ {{ store.developerName }}</span>
+            </span>
+            <a [href]="'tel:' + store.developerPhone" class="text-emerald-600 dark:text-emerald-400 hover:underline tabular-nums" dir="ltr">
+              {{ store.developerPhone }}
+            </a>
+          </div>
+        </div>
+      </div>
+
       <!-- Mandatory Daily Headcount & Payday 15 Command Banner -->
       @let hc = store.todayHeadcountMatch();
       @let payday = store.payday15Info();

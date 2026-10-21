@@ -22,6 +22,7 @@ import {
 
 export type ExcelSheetTab =
   | 'attendance'
+  | 'daily_day'
   | 'workers'
   | 'advances'
   | 'expenses'
@@ -81,18 +82,32 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
           </button>
         </div>
 
-        <!-- Center: Workbook Title -->
+        <!-- Center: Workbook Title & Live Database Sync Status -->
         <div
           class="flex items-center gap-2 text-center truncate font-bold text-xs"
         >
           <span class="truncate">
             {{ activeWorkbookFileName() }} - Excel
           </span>
-          <span
-            class="text-[10px] bg-emerald-800/80 px-2 py-0.5 rounded text-emerald-200 border border-emerald-400/20"
-          >
-            تم الحفظ محلياً
-          </span>
+          @if (store.localOnlyMode() || !store.isNetworkOnline()) {
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode(false)"
+              class="text-[10px] bg-amber-500 hover:bg-amber-400 px-2 py-0.5 rounded text-slate-950 font-extrabold cursor-pointer"
+              title="انقر لفتح النت ومزامنة قائمة الانتظار مع قاعدة البيانات"
+            >
+              📴 أوفلاين ({{ store.offlinePendingQueue().length }} بالانتظار) — افتح النت
+            </button>
+          } @else {
+            <button
+              type="button"
+              (click)="store.toggleLocalOnlyMode(true)"
+              class="text-[10px] bg-emerald-800/80 hover:bg-emerald-700 px-2 py-0.5 rounded text-emerald-100 border border-emerald-400/20 cursor-pointer"
+              title="انقر لتجربة وضع قفل النت والتسجيل أوفلاين"
+            >
+              🌐 متصل بقاعدة البيانات ١٠٠٪
+            </button>
+          }
         </div>
 
         <!-- Right: Search & Window Tools -->
@@ -1708,6 +1723,145 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
             </tbody>
           </table>
         }
+
+        <!-- TAB 8: DAILY DATE INSPECTOR SHEET (شيت كشف اليوم الشامل مثلاً ٢٠-١٠) -->
+        @if (activeTab() === 'daily_day') {
+          @let dRep = excelDailyReport();
+          <div class="bg-[#f8fafc] dark:bg-[#1e293b] border-b border-[#d4d4d4] dark:border-[#334155] p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-extrabold text-[#107c41] dark:text-emerald-400">📅 اختر تاريخ اليوم في الشيت:</span>
+              <input
+                type="date"
+                [value]="excelInspectorDate()"
+                (input)="excelInspectorDate.set($any($event.target).value)"
+                class="px-2.5 py-1 rounded border-2 border-[#107c41] bg-white dark:bg-slate-900 font-bold text-xs tabular-nums"
+              />
+              <button
+                type="button"
+                (click)="excelInspectorDate.set(store.systemActualToday())"
+                class="px-2 py-1 rounded bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-[11px] font-bold cursor-pointer"
+              >
+                اليوم
+              </button>
+              <button
+                type="button"
+                (click)="excelInspectorDate.set('2026-10-20')"
+                class="px-2 py-1 rounded bg-emerald-600 text-white text-[11px] font-bold cursor-pointer"
+              >
+                يوم ٢٠-١٠
+              </button>
+              <select
+                [value]="excelDailyWorkerFilter()"
+                (change)="excelDailyWorkerFilter.set($any($event.target).value)"
+                class="px-2 py-1 rounded border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[11px] font-bold"
+              >
+                <option value="all">جميع العمال ({{ dRep.workerRows.length }})</option>
+                <option value="worked">كل من اشتغلوا اليوم ({{ dRep.totalWorkersWhoWorked }})</option>
+                <option value="with_advance">اشتغلوا وأخدوا سلف اليوم ({{ dRep.workersWhoWorkedWithAdvanceCount }})</option>
+                <option value="without_advance">اشتغلوا بدون سلف اليوم ({{ dRep.workersWhoWorkedWithoutAdvanceCount }})</option>
+              </select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 font-mono text-[11px] font-bold">
+              <span>كان معايا: <strong class="text-blue-600">{{ formatMoney(dRep.totalAvailableOnDay) }}</strong></span>
+              <span>|</span>
+              <span>اتصرف اليوم: <strong class="text-amber-600">{{ formatMoney(dRep.totalSpentOnDay) }}</strong></span>
+              <span>|</span>
+              <span>اشتغلوا: <strong class="text-emerald-700">{{ dRep.totalWorkersWhoWorked }} فرد</strong></span>
+              <span>|</span>
+              <span>مكسب اليوم: <strong class="text-[#107c41]">{{ formatMoney(dRep.netProfitOnDay) }}</strong></span>
+            </div>
+          </div>
+
+          <table
+            class="excel-grid-table w-full text-right text-xs border-collapse"
+            [class.show-gridlines]="showGridlines()"
+          >
+            <thead>
+              <tr class="excel-header-letters">
+                <th class="excel-corner-header text-center w-12 select-none">◰</th>
+                <th class="excel-col-letter min-w-[160px]" [class.col-active]="activeColLetter() === 'A'">A<br><span class="col-title">اسم العامل / النحات</span></th>
+                <th class="excel-col-letter w-24" [class.col-active]="activeColLetter() === 'B'">B<br><span class="col-title">المهنة</span></th>
+                <th class="excel-col-letter min-w-[140px]" [class.col-active]="activeColLetter() === 'C'">C<br><span class="col-title">المشروع</span></th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'D'">D<br><span class="col-title">يومية نهار</span></th>
+                <th class="excel-col-letter w-24 text-center" [class.col-active]="activeColLetter() === 'E'">E<br><span class="col-title">سهرة</span></th>
+                <th class="excel-col-letter w-32 text-left" [class.col-active]="activeColLetter() === 'F'">F<br><span class="col-title">أجر العامل اليوم</span></th>
+                <th class="excel-col-letter w-32 text-left bg-blue-50 text-blue-700" [class.col-active]="activeColLetter() === 'G'">G<br><span class="col-title">حساب الشركة اليوم</span></th>
+                <th class="excel-col-letter w-32 text-left bg-emerald-50 text-[#107c41]" [class.col-active]="activeColLetter() === 'H'">H<br><span class="col-title">مكسبك منه اليوم</span></th>
+                <th class="excel-col-letter w-36 text-left bg-amber-50 text-amber-800" [class.col-active]="activeColLetter() === 'I'">I<br><span class="col-title">سلفة اليوم (+ إضافة)</span></th>
+                <th class="excel-col-letter min-w-[150px]" [class.col-active]="activeColLetter() === 'J'">J<br><span class="col-title">حالة السلفة والبيان</span></th>
+                <th class="excel-col-letter w-32 text-left font-black" [class.col-active]="activeColLetter() === 'K'">K<br><span class="col-title">صافي باقي اليوم</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of filteredExcelDailyWorkerRows(); track r.workerId; let rowIdx = $index) {
+                <tr
+                  class="excel-row"
+                  [class.excel-row-active]="selectedRowNumber() === (rowIdx + 1)"
+                >
+                  <td
+                    class="excel-row-num text-center select-none"
+                    [class.row-header-active]="selectedRowNumber() === (rowIdx + 1)"
+                    (click)="selectRowHeader(rowIdx + 1, r.workerId)"
+                  >
+                    {{ rowIdx + 1 }}
+                  </td>
+                  <td class="excel-cell font-bold">{{ r.workerName }}</td>
+                  <td class="excel-cell text-center">{{ r.role }}</td>
+                  <td class="excel-cell">{{ r.projectName }}</td>
+                  <td class="excel-cell text-center">
+                    <select
+                      [value]="r.dayWorked"
+                      (change)="updateExcelDailyWorkerAttendance(r.workerId, +$any($event.target).value, r.nightWorked, r.projectId)"
+                      class="cell-select text-center font-mono font-bold"
+                    >
+                      <option [value]="0">0 (غائب)</option>
+                      <option [value]="0.5">0.5 (نصف)</option>
+                      <option [value]="1">1 (كامل)</option>
+                      <option [value]="1.5">1.5 (يوم ونصف)</option>
+                    </select>
+                  </td>
+                  <td class="excel-cell text-center">
+                    <select
+                      [value]="r.nightWorked"
+                      (change)="updateExcelDailyWorkerAttendance(r.workerId, r.dayWorked, +$any($event.target).value, r.projectId)"
+                      class="cell-select text-center font-mono font-bold"
+                    >
+                      <option [value]="0">0</option>
+                      <option [value]="0.5">0.5</option>
+                      <option [value]="1">1 (سهرة)</option>
+                      <option [value]="2">2 (سهرتين)</option>
+                    </select>
+                  </td>
+                  <td class="excel-cell text-left font-mono font-bold">{{ formatMoney(r.workerGrossToday) }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-blue-700">{{ formatMoney(r.companyEntitlementToday) }}</td>
+                  <td class="excel-cell text-left font-mono font-bold text-[#107c41]">{{ formatMoney(r.contractorProfitFromWorkerToday) }}</td>
+                  <td class="excel-cell text-left font-mono">
+                    <input
+                      type="number"
+                      [value]="r.advanceAmountToday"
+                      (change)="updateExcelDailyWorkerAdvance(r.workerId, +$any($event.target).value, r.projectId)"
+                      class="cell-editor text-left font-mono font-bold text-amber-700"
+                      title="اكتب مبلغ السلفة لهذا العامل في هذا اليوم واضغط Enter"
+                    />
+                  </td>
+                  <td class="excel-cell text-xs">
+                    @if (r.tookAdvanceToday) {
+                      <span class="font-bold text-amber-700">أخذ سلفة ({{ r.advanceReasonsToday }})</span>
+                    } @else if (r.workedToday) {
+                      <span class="text-emerald-700 font-semibold">اشتغل بدون سلفة ✅</span>
+                    } @else {
+                      <span class="text-gray-400">لم يحضر ولم يسحب</span>
+                    }
+                  </td>
+                  <td class="excel-cell text-left font-mono font-black" [class.text-emerald-700]="r.netRemainingForWorkerToday >= 0" [class.text-rose-600]="r.netRemainingForWorkerToday < 0">
+                    {{ formatMoney(r.netRemainingForWorkerToday) }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
       </div>
 
       <!-- 6. BOTTOM WORKBOOK SHEETS BAR (شريط أوراق العمل السفلي الكلاسيكي لبرنامج إكسيل) -->
@@ -1735,6 +1889,15 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
             >
               <span>📅 سجل اليوميات والحضور</span>
               <span class="tab-badge">{{ store.attendances().length }}</span>
+            </button>
+
+            <button
+              type="button"
+              (click)="setActiveTab('daily_day')"
+              class="excel-bottom-sheet-tab"
+              [class.excel-bottom-sheet-active]="activeTab() === 'daily_day'"
+            >
+              <span>📆 كشف اليوم بالتاريخ ({{ excelInspectorDate() }})</span>
             </button>
 
             <button
@@ -1900,7 +2063,7 @@ export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
   `,
   styles: `
     .excel-app-window {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-family: 'IBM Plex Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     .ribbon-tab-btn {
       padding: 0.375rem 0.75rem;
@@ -2135,6 +2298,7 @@ export class LiveExcelPage {
 
   readonly workbookTabs: ExcelSheetTab[] = [
     'attendance',
+    'daily_day',
     'workers',
     'advances',
     'expenses',
@@ -2142,6 +2306,32 @@ export class LiveExcelPage {
     'extracts',
     'master',
   ];
+
+  // Excel Daily Inspector Sheet State (شيت كشف اليوم مثلاً ٢٠-١٠)
+  readonly excelInspectorDate = signal<string>(this.store.todayIso());
+  readonly excelDailyWorkerFilter = signal<'all' | 'worked' | 'with_advance' | 'without_advance'>('all');
+
+  readonly excelDailyReport = computed(() =>
+    this.store.getDailyDateReport(this.excelInspectorDate(), this.selectedProjectId())
+  );
+
+  readonly filteredExcelDailyWorkerRows = computed(() => {
+    const rep = this.excelDailyReport();
+    const f = this.excelDailyWorkerFilter();
+    let rows = rep.workerRows;
+    if (f === 'worked') rows = rep.workersWhoWorkedRows;
+    else if (f === 'with_advance') rows = rep.workersWhoWorkedWithAdvanceRows;
+    else if (f === 'without_advance') rows = rep.workersWhoWorkedWithoutAdvanceRows;
+
+    const q = this.searchQuery().trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.workerName.toLowerCase().includes(q) ||
+        r.role.toLowerCase().includes(q) ||
+        r.projectName.toLowerCase().includes(q)
+    );
+  });
 
   readonly activeWorkbookFileName = computed(() => {
     const projName = this.selectedProjectId()
@@ -2469,6 +2659,8 @@ export class LiveExcelPage {
     switch (this.activeTab()) {
       case 'attendance':
         return this.filteredAttendances().length;
+      case 'daily_day':
+        return this.filteredExcelDailyWorkerRows().length;
       case 'workers':
         return this.filteredWorkers().length;
       case 'advances':
@@ -2491,6 +2683,8 @@ export class LiveExcelPage {
           (acc, a) => acc + (a.dayWorked * a.workerDayRateSnapshot + a.nightWorked * a.workerNightRateSnapshot),
           0
         );
+      case 'daily_day':
+        return this.filteredExcelDailyWorkerRows().reduce((acc, r) => acc + r.workerGrossToday, 0);
       case 'workers':
         return this.filteredWorkers().reduce((acc, w) => acc + w.workerDayRate, 0);
       case 'advances':
@@ -2652,9 +2846,60 @@ export class LiveExcelPage {
         break;
       }
       case 'master':
+      case 'daily_day':
         break;
     }
     this.selectedRowId.set(null);
+  }
+
+  async updateExcelDailyWorkerAttendance(
+    workerId: number,
+    dayWorked: number,
+    nightWorked: number,
+    projectId: number | null
+  ): Promise<void> {
+    const pid = projectId || this.selectedProjectId() || this.store.projects()[0]?.id || 1;
+    await this.store.recordAttendance({
+      date: this.excelInspectorDate(),
+      workerId,
+      projectId: pid,
+      dayWorked: (dayWorked > 0 ? 1 : 0) as 0 | 1,
+      nightWorked: (nightWorked > 0 ? 1 : 0) as 0 | 1,
+      note: `تعديل من شيت كشف يوم ${this.excelInspectorDate()}`,
+    });
+  }
+
+  async updateExcelDailyWorkerAdvance(
+    workerId: number,
+    newTotalAdvance: number,
+    projectId: number | null
+  ): Promise<void> {
+    const date = this.excelInspectorDate();
+    const existing = this.store
+      .advances()
+      .filter((a) => a.workerId === workerId && a.date === date);
+    if (newTotalAdvance <= 0) {
+      for (const adv of existing) {
+        if (adv.id) await this.store.deleteAdvance(adv.id);
+      }
+      return;
+    }
+    if (existing.length > 0 && existing[0].id) {
+      await this.store.saveAdvance({
+        ...existing[0],
+        amount: newTotalAdvance,
+      });
+    } else {
+      await this.store.addAdvance({
+        date,
+        workerId,
+        amount: newTotalAdvance,
+        reason: `سلفة يوم ${date} (شيت إكسيل)`,
+        settlementId: null,
+        projectId: projectId || this.selectedProjectId() || this.store.projects()[0]?.id || null,
+        notes: '',
+      });
+    }
   }
 
   // Quick Insert New Row into Active Sheet

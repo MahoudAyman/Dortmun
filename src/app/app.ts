@@ -174,6 +174,7 @@ export class App implements AfterViewInit, OnDestroy {
       category: '📊 الرئيسية والحساب الشامل',
       items: [
         { path: '/dashboard', label: 'الرئيسية', icon: 'dashboard', description: 'نظرة شمولية حية ومؤشرات الأداء المالي' },
+        { path: '/daily-inspector', label: 'كشف اليوم بالتاريخ (٢٠-١٠)', icon: 'event_note', description: 'كان معايا كام واتصرف كام ومين اشتغل بالسلف والربح', badge: 'جديد' },
         { path: '/my-ledger', label: 'حسابي الشامل والخزنة', icon: 'account_balance_wallet', description: 'تحليل الخزنة، كاش الجيب، ورصيد البنك' },
       ],
     },
@@ -203,9 +204,10 @@ export class App implements AfterViewInit, OnDestroy {
       ],
     },
     {
-      category: '🛠️ الإكسيل والتقارير والذكاء',
+      category: '🛠️ الإكسيل والمزامنة والتقارير',
       items: [
         { path: '/live-excel', label: 'شيت إكسيل المباشر (Excel)', icon: 'grid_on', description: 'جداول بيانات تفاعلية مباشرة كبرنامج إكسيل', badge: 'LIVE' },
+        { path: '/sync-center', label: 'المزامنة الذكية والأوفلاين', icon: 'cloud_sync', description: 'قائمة انتظار الأوفلاين والرفع والاستقبال من قاعدة البيانات', badge: 'SYNC' },
         { path: '/reports', label: 'التقارير والتصدير', icon: 'table_view', description: 'تقارير معتمدة للطباعة وWhatsApp وPDF' },
         { path: '/zaki', label: 'المساعد زكي الذكي', icon: 'smart_toy', description: 'المساعد الذكي للأوامر الصوتية والنصية', badge: 'AI' },
         { path: '/settings', label: 'الإعدادات والمشاريع', icon: 'settings', description: 'إدارة المشاريع، الإغلاق، والنسخ الاحتياطي' },

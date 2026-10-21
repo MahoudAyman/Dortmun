@@ -1987,6 +1987,499 @@ export function calculateCheckFundBreakdowns(params: {
   });
 }
 
+export interface DailyDateWorkerRow {
+  workerId: number;
+  workerName: string;
+  role: string;
+  phone: string;
+  workedToday: boolean;
+  projectId: number | null;
+  projectName: string;
+  dayWorked: number;
+  nightWorked: number;
+  attendanceId?: number;
+  attendanceNote: string;
+  workerDayRate: number;
+  workerNightRate: number;
+  companyDayRate: number;
+  companyNightRate: number;
+  workerGrossToday: number;
+  companyEntitlementToday: number;
+  contractorProfitFromWorkerToday: number;
+  tookAdvanceToday: boolean;
+  advanceAmountToday: number;
+  advanceReasonsToday: string;
+  advancesListToday: Advance[];
+  deductionAmountToday: number;
+  deductionReasonsToday: string;
+  netRemainingForWorkerToday: number;
+  statusCategory:
+    | 'worked_with_advance'
+    | 'worked_without_advance'
+    | 'advance_without_work'
+    | 'absent';
+}
+
+export interface DailyDateReport {
+  date: string;
+  projectId: number | null;
+  projectName: string;
+
+  // 1. السيولة والخزنة في هذا اليوم (كان معايا كام واتصرف كام وباقي كام)
+  openingCashBeforeDay: number;
+  incomingOnDay: number;
+  totalAvailableOnDay: number;
+  advancesSpentOnDay: number;
+  expensesSpentOnDay: number;
+  settlementsPaidOnDay: number;
+  totalSpentOnDay: number;
+  closingCashEndOfDay: number;
+
+  // 2. العمالة والإنتاج في هذا اليوم (كام واحد اشتغل)
+  totalWorkersWhoWorked: number;
+  regularWorkersWhoWorked: number;
+  sculptorsWhoWorked: number;
+  totalDayUnits: number;
+  totalNightUnits: number;
+  workersWhoWorkedWithAdvanceCount: number;
+  workersWhoWorkedWithoutAdvanceCount: number;
+  workersWithAdvanceOnlyCount: number;
+  absentWorkersCount: number;
+
+  // 3. الأرباح والمستحقات في هذا اليوم (المكسب وكل حاجة)
+  companyEntitlementOnDay: number;
+  extrasAmountOnDay: number;
+  workerGrossWagesOnDay: number;
+  grossLaborMarginOnDay: number;
+  deductionsOnDay: number;
+  netProfitOnDay: number;
+
+  // 4. قوائم وتفاصيل العمال والحركات في هذا اليوم
+  workerRows: DailyDateWorkerRow[];
+  workersWhoWorkedRows: DailyDateWorkerRow[];
+  workersWhoWorkedWithAdvanceRows: DailyDateWorkerRow[];
+  workersWhoWorkedWithoutAdvanceRows: DailyDateWorkerRow[];
+  workersWithAdvanceOnlyRows: DailyDateWorkerRow[];
+  absentWorkerRows: DailyDateWorkerRow[];
+  advancesOnDayList: {
+    id?: number;
+    workerId: number;
+    workerName: string;
+    role: string;
+    amount: number;
+    reason: string;
+    projectName: string;
+  }[];
+  expensesOnDayList: Expense[];
+  extrasOnDayList: ExtraItem[];
+  headcountMatch: ReturnType<typeof compareDailyHeadcount>;
+}
+
+export function calculateDailyDateReport(params: {
+  date: string;
+  projectId?: number | null;
+  projects: Project[];
+  workers: Worker[];
+  attendances: Attendance[];
+  advances: Advance[];
+  deductions: Deduction[];
+  settlements: Settlement[];
+  expenses: Expense[];
+  extras: ExtraItem[];
+  checks: CheckItem[];
+  incomingPayments?: IncomingPayment[];
+  headcounts?: DailyHeadcount[];
+}): DailyDateReport {
+  const {
+    date,
+    projectId = null,
+    projects,
+    workers,
+    attendances,
+    advances,
+    deductions,
+    settlements,
+    expenses,
+    extras,
+    checks,
+    incomingPayments = [],
+    headcounts = [],
+  } = params;
+
+  const projectMap = new Map<number, Project>();
+  for (const p of projects) {
+    if (p.id !== undefined) projectMap.set(p.id, p);
+  }
+  const workerMap = new Map<number, Worker>();
+  for (const w of workers) {
+    if (w.id !== undefined) workerMap.set(w.id, w);
+  }
+
+  const selectedProject = projectId ? projectMap.get(projectId) || null : null;
+  const projectName = selectedProject ? selectedProject.name : 'جميع المشاريع';
+  const defaultProject = selectedProject || projects[0] || null;
+
+  // 1. Calculate Opening Cash before `date`, Incoming on `date`, and Spent on `date`
+  const matchesProj = (pid?: number | null) => !projectId || pid === projectId || pid == null;
+
+  // Incoming cash before `date`
+  const checksBefore = checks.filter(
+    (c) =>
+      c.direction === 'وارد' &&
+      matchesProj(c.projectId) &&
+      c.dueDate < date &&
+      ((c.withdrawnAmount ?? 0) > 0 || c.status === 'اتصرف')
+  );
+  const incomingPaymentsBefore = incomingPayments.filter(
+    (inc) => matchesProj(inc.projectId) && inc.date < date
+  );
+  const totalInBefore =
+    checksBefore.reduce(
+      (s, c) => s + ((c.withdrawnAmount ?? 0) > 0 ? Number(c.withdrawnAmount) : Number(c.amount) || 0),
+      0
+    ) + incomingPaymentsBefore.reduce((s, inc) => s + (Number(inc.amount) || 0), 0);
+
+  // Spent before `date`
+  const advancesBefore = advances
+    .filter((a) => matchesProj(a.projectId) && a.date < date)
+    .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const expensesBefore = expenses
+    .filter((e) => matchesProj(e.projectId) && e.date < date)
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const settlementsBefore = settlements
+    .filter((st) => matchesProj(st.projectId) && st.date < date)
+    .reduce((s, st) => s + (Number(st.netPaid) || 0), 0);
+  const totalOutBefore = advancesBefore + expensesBefore + settlementsBefore;
+
+  // If no checks had a date strictly before `date`, fall back to active cashed/withdrawn checks on/before `date`
+  const allActiveWithdrawnChecks = checks.filter(
+    (c) =>
+      c.direction === 'وارد' &&
+      matchesProj(c.projectId) &&
+      c.dueDate <= date &&
+      ((c.withdrawnAmount ?? 0) > 0 || c.status === 'اتصرف')
+  );
+  const checksOnDay = allActiveWithdrawnChecks.filter((c) => c.dueDate === date);
+  const incomingPaymentsOnDay = incomingPayments.filter(
+    (inc) => matchesProj(inc.projectId) && inc.date === date
+  );
+
+  const incomingOnDay =
+    checksOnDay.reduce(
+      (s, c) => s + ((c.withdrawnAmount ?? 0) > 0 ? Number(c.withdrawnAmount) : Number(c.amount) || 0),
+      0
+    ) + incomingPaymentsOnDay.reduce((s, inc) => s + (Number(inc.amount) || 0), 0);
+
+  const openingCashBeforeDay = totalInBefore - totalOutBefore;
+  const totalAvailableOnDay = openingCashBeforeDay + incomingOnDay;
+
+  // Movements on `date`
+  const dayAttendances = attendances.filter(
+    (a) => a.date === date && (!projectId || a.projectId === projectId)
+  );
+  const dayAdvances = advances.filter(
+    (a) => a.date === date && (!projectId || a.projectId === projectId || a.projectId == null)
+  );
+  const dayDeductions = deductions.filter(
+    (d) => d.date === date && (!projectId || d.projectId === projectId || d.projectId == null)
+  );
+  const dayExpenses = expenses.filter(
+    (e) => e.date === date && (!projectId || e.projectId === projectId || e.projectId == null)
+  );
+  const daySettlements = settlements.filter(
+    (st) => st.date === date && (!projectId || st.projectId === projectId || st.projectId == null)
+  );
+  const dayExtras = extras.filter(
+    (ex) => ex.date === date && (!projectId || ex.projectId === projectId)
+  );
+
+  const advancesSpentOnDay = dayAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const expensesSpentOnDay = dayExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const settlementsPaidOnDay = daySettlements.reduce((s, st) => s + (Number(st.netPaid) || 0), 0);
+  const totalSpentOnDay = advancesSpentOnDay + expensesSpentOnDay + settlementsPaidOnDay;
+  const closingCashEndOfDay = totalAvailableOnDay - totalSpentOnDay;
+
+  // Build per-worker breakdown for `date`
+  const workerRows: DailyDateWorkerRow[] = [];
+
+  for (const w of workers) {
+    if (w.id === undefined) continue;
+    const wAtts = dayAttendances.filter((a) => a.workerId === w.id);
+    const wAdvs = dayAdvances.filter((a) => a.workerId === w.id);
+    const wDeds = dayDeductions.filter((d) => d.workerId === w.id);
+
+    if (!w.active && wAtts.length === 0 && wAdvs.length === 0 && wDeds.length === 0) {
+      continue;
+    }
+
+    const dayWorked = wAtts.reduce((s, a) => s + (Number(a.dayWorked) || 0), 0);
+    const nightWorked = wAtts.reduce((s, a) => s + (Number(a.nightWorked) || 0), 0);
+    const workedToday = dayWorked > 0 || nightWorked > 0;
+
+    const firstAtt = wAtts[0];
+    const attProjId = firstAtt?.projectId ?? projectId ?? defaultProject?.id ?? null;
+    const attProj = attProjId ? projectMap.get(attProjId) : defaultProject;
+    const wProjName = attProj ? attProj.name : 'غير محدد';
+
+    const workerDayRate = firstAtt?.workerDayRateSnapshot ?? w.workerDayRate ?? 0;
+    const workerNightRate = firstAtt?.workerNightRateSnapshot ?? w.workerNightRate ?? 0;
+    const companyDayRate =
+      firstAtt?.companyDayRateSnapshot ?? (attProj?.companyDayRate || workerDayRate);
+    const companyNightRate =
+      firstAtt?.companyNightRateSnapshot ?? (attProj?.companyNightRate || workerNightRate);
+
+    const workerGrossToday = wAtts.reduce(
+      (s, a) =>
+        s +
+        (Number(a.dayWorked) || 0) * (Number(a.workerDayRateSnapshot) || w.workerDayRate || 0) +
+        (Number(a.nightWorked) || 0) * (Number(a.workerNightRateSnapshot) || w.workerNightRate || 0),
+      0
+    );
+
+    const companyEntitlementToday = wAtts.reduce(
+      (s, a) =>
+        s +
+        (Number(a.dayWorked) || 0) * (Number(a.companyDayRateSnapshot) || companyDayRate) +
+        (Number(a.nightWorked) || 0) * (Number(a.companyNightRateSnapshot) || companyNightRate),
+      0
+    );
+
+    const contractorProfitFromWorkerToday = companyEntitlementToday - workerGrossToday;
+
+    const advanceAmountToday = wAdvs.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const tookAdvanceToday = advanceAmountToday > 0;
+    const advanceReasonsToday = wAdvs
+      .map((a) => a.reason || 'سلفة نقدية')
+      .filter(Boolean)
+      .join(' + ');
+
+    const deductionAmountToday = wDeds.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+    const deductionReasonsToday = wDeds
+      .map((d) => d.reason || 'خصم')
+      .filter(Boolean)
+      .join(' + ');
+
+    const netRemainingForWorkerToday =
+      workerGrossToday - advanceAmountToday - deductionAmountToday;
+
+    let statusCategory: DailyDateWorkerRow['statusCategory'] = 'absent';
+    if (workedToday && tookAdvanceToday) {
+      statusCategory = 'worked_with_advance';
+    } else if (workedToday && !tookAdvanceToday) {
+      statusCategory = 'worked_without_advance';
+    } else if (!workedToday && tookAdvanceToday) {
+      statusCategory = 'advance_without_work';
+    }
+
+    workerRows.push({
+      workerId: w.id,
+      workerName: w.name,
+      role: w.role,
+      phone: w.phone || '',
+      workedToday,
+      projectId: attProjId,
+      projectName: wProjName,
+      dayWorked,
+      nightWorked,
+      attendanceId: firstAtt?.id,
+      attendanceNote: wAtts
+        .map((a) => a.note)
+        .filter(Boolean)
+        .join(' · '),
+      workerDayRate,
+      workerNightRate,
+      companyDayRate,
+      companyNightRate,
+      workerGrossToday,
+      companyEntitlementToday,
+      contractorProfitFromWorkerToday,
+      tookAdvanceToday,
+      advanceAmountToday,
+      advanceReasonsToday,
+      advancesListToday: wAdvs,
+      deductionAmountToday,
+      deductionReasonsToday,
+      netRemainingForWorkerToday,
+      statusCategory,
+    });
+  }
+
+  // Sort: worked with advance first, then worked without advance, then advance without work, then absent
+  const statusPriority: Record<DailyDateWorkerRow['statusCategory'], number> = {
+    worked_with_advance: 1,
+    worked_without_advance: 2,
+    advance_without_work: 3,
+    absent: 4,
+  };
+  workerRows.sort((a, b) => {
+    const pDiff = statusPriority[a.statusCategory] - statusPriority[b.statusCategory];
+    if (pDiff !== 0) return pDiff;
+    return b.workerGrossToday - a.workerGrossToday;
+  });
+
+  const workersWhoWorkedRows = workerRows.filter((r) => r.workedToday);
+  const workersWhoWorkedWithAdvanceRows = workerRows.filter(
+    (r) => r.statusCategory === 'worked_with_advance'
+  );
+  const workersWhoWorkedWithoutAdvanceRows = workerRows.filter(
+    (r) => r.statusCategory === 'worked_without_advance'
+  );
+  const workersWithAdvanceOnlyRows = workerRows.filter(
+    (r) => r.statusCategory === 'advance_without_work'
+  );
+  const absentWorkerRows = workerRows.filter((r) => r.statusCategory === 'absent');
+
+  const totalWorkersWhoWorked = workersWhoWorkedRows.length;
+  const regularWorkersWhoWorked = workersWhoWorkedRows.filter((r) => r.role === 'عامل').length;
+  const sculptorsWhoWorked = workersWhoWorkedRows.filter((r) => r.role === 'نحات').length;
+  const totalDayUnits = workersWhoWorkedRows.reduce((s, r) => s + r.dayWorked, 0);
+  const totalNightUnits = workersWhoWorkedRows.reduce((s, r) => s + r.nightWorked, 0);
+
+  const extrasAmountOnDay = dayExtras.reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+  const companyEntitlementOnDay =
+    workersWhoWorkedRows.reduce((s, r) => s + r.companyEntitlementToday, 0) + extrasAmountOnDay;
+  const workerGrossWagesOnDay = workersWhoWorkedRows.reduce((s, r) => s + r.workerGrossToday, 0);
+  const grossLaborMarginOnDay = companyEntitlementOnDay - workerGrossWagesOnDay;
+  const deductionsOnDay = dayDeductions.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  const netProfitOnDay = grossLaborMarginOnDay - expensesSpentOnDay + deductionsOnDay;
+
+  const advancesOnDayList = dayAdvances.map((adv) => {
+    const w = workerMap.get(adv.workerId);
+    const p = adv.projectId ? projectMap.get(adv.projectId) : defaultProject;
+    return {
+      id: adv.id,
+      workerId: adv.workerId,
+      workerName: w?.name || `عامل #${adv.workerId}`,
+      role: w?.role || 'عامل',
+      amount: Number(adv.amount) || 0,
+      reason: adv.reason || 'سلفة نقدية',
+      projectName: p?.name || 'الخزنة العامة',
+    };
+  });
+
+  const headcountMatch = compareDailyHeadcount({
+    date,
+    projectId,
+    headcounts,
+    attendances,
+    workers,
+  });
+
+  return {
+    date,
+    projectId,
+    projectName,
+    openingCashBeforeDay,
+    incomingOnDay,
+    totalAvailableOnDay,
+    advancesSpentOnDay,
+    expensesSpentOnDay,
+    settlementsPaidOnDay,
+    totalSpentOnDay,
+    closingCashEndOfDay,
+    totalWorkersWhoWorked,
+    regularWorkersWhoWorked,
+    sculptorsWhoWorked,
+    totalDayUnits,
+    totalNightUnits,
+    workersWhoWorkedWithAdvanceCount: workersWhoWorkedWithAdvanceRows.length,
+    workersWhoWorkedWithoutAdvanceCount: workersWhoWorkedWithoutAdvanceRows.length,
+    workersWithAdvanceOnlyCount: workersWithAdvanceOnlyRows.length,
+    absentWorkersCount: absentWorkerRows.length,
+    companyEntitlementOnDay,
+    extrasAmountOnDay,
+    workerGrossWagesOnDay,
+    grossLaborMarginOnDay,
+    deductionsOnDay,
+    netProfitOnDay,
+    workerRows,
+    workersWhoWorkedRows,
+    workersWhoWorkedWithAdvanceRows,
+    workersWhoWorkedWithoutAdvanceRows,
+    workersWithAdvanceOnlyRows,
+    absentWorkerRows,
+    advancesOnDayList,
+    expensesOnDayList: dayExpenses,
+    extrasOnDayList: dayExtras,
+    headcountMatch,
+  };
+}
+
+export interface OfflineQueueItem {
+  id: string;
+  timestamp: string;
+  table: string;
+  actionType: 'add' | 'update' | 'delete';
+  description: string;
+  amount?: number;
+  workerName?: string;
+  projectName?: string;
+  recordId?: number;
+}
+
+export interface SyncExchangeLog {
+  id: string;
+  timestamp: string;
+  direction: 'outgoing_to_db' | 'incoming_from_db' | 'bidirectional_merge';
+  title: string;
+  details: string[];
+  itemsCount: number;
+  deviceName: string;
+}
+
+export function mergeArraysByIdAndSignature<T extends { id?: number }>(
+  localItems: T[],
+  remoteItems: T[],
+  getSignature: (item: T) => string,
+  deletedSignatures: Set<string> = new Set()
+): { merged: T[]; addedFromRemote: T[]; addedFromLocal: T[] } {
+  const remoteSigs = new Set(remoteItems.map(getSignature));
+  const localSigs = new Set(localItems.map(getSignature));
+
+  const addedFromRemote = remoteItems.filter(
+    (r) => !localSigs.has(getSignature(r)) && !deletedSignatures.has(getSignature(r))
+  );
+  const addedFromLocal = localItems.filter((l) => !remoteSigs.has(getSignature(l)));
+
+  // Start with all local items (which include offline edits/additions)
+  const mergedMap = new Map<string, T>();
+  for (const item of localItems) {
+    mergedMap.set(getSignature(item), { ...item });
+  }
+  // Add any remote items that were not deleted locally and not already present by signature
+  for (const rItem of remoteItems) {
+    const sig = getSignature(rItem);
+    if (!mergedMap.has(sig) && !deletedSignatures.has(sig)) {
+      mergedMap.set(sig, { ...rItem });
+    }
+  }
+
+  // Ensure unique sequential IDs if any collision occurred between offline-assigned ID and remote ID
+  const usedIds = new Set<number>();
+  let maxId = 0;
+  for (const item of mergedMap.values()) {
+    if (typeof item.id === 'number' && item.id > maxId) {
+      maxId = item.id;
+    }
+  }
+
+  const merged: T[] = [];
+  for (const item of mergedMap.values()) {
+    if (typeof item.id === 'number' && !usedIds.has(item.id)) {
+      usedIds.add(item.id);
+      merged.push(item);
+    } else {
+      maxId += 1;
+      usedIds.add(maxId);
+      merged.push({ ...item, id: maxId });
+    }
+  }
+
+  return { merged, addedFromRemote, addedFromLocal };
+}
+
+
+
 
 
 

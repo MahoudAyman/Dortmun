@@ -124,12 +124,12 @@
       }
     </nav>
 
-    <!-- Sidebar Footer: Install PWA -->
-    <div class="p-3.5 border-t border-[var(--border-subtle)] space-y-2">
+    <!-- Sidebar Footer: Install PWA + Developer Credit -->
+    <div class="p-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
       <button
         type="button"
         (click)="triggerPwaInstall()"
-        class="w-full py-2.5 px-4 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] hover:bg-[#3390EC] hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+        class="w-full py-2 px-4 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] hover:bg-[#3390EC] hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
       >
         <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -138,6 +138,21 @@
         </svg>
         <span>تثبيت التطبيق على الموبايل</span>
       </button>
+
+      <!-- Developer Credit Badge -->
+      <div class="p-2.5 rounded-2xl bg-gradient-to-l from-indigo-500/10 via-[var(--bg-app)] to-emerald-500/10 border border-[var(--border-subtle)] text-center space-y-0.5">
+        <div class="text-[11px] font-black text-[var(--text-heading)] flex items-center justify-center gap-1">
+          <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#3390EC]">verified</mat-icon>
+          <span>المطور: م/ {{ store.developerName }}</span>
+        </div>
+        <a
+          [href]="'tel:' + store.developerPhone"
+          class="text-[11px] font-black text-emerald-600 dark:text-emerald-400 hover:underline tabular-nums inline-flex items-center justify-center gap-1"
+        >
+          <mat-icon class="!w-3 !h-3 !text-[13px]">call</mat-icon>
+          <span dir="ltr">{{ store.developerPhone }}</span>
+        </a>
+      </div>
     </div>
   </aside>
 
@@ -779,6 +794,22 @@
         </button>
 
         <a
+          routerLink="/daily-inspector"
+          class="px-3.5 py-1.5 rounded-full bg-indigo-600 text-white hover:bg-indigo-500 text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">event_Repeat</mat-icon>
+          <span>📆 كشف اليوم بالتاريخ (مثال: ٢٠-١٠)</span>
+        </a>
+
+        <a
+          routerLink="/sync-center"
+          class="px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[var(--text-heading)] hover:bg-amber-500 hover:text-slate-950 text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-600 dark:text-amber-400">sync_lock</mat-icon>
+          <span>🔄 المزامنة الذكية والأوفلاين ({{ store.num(store.offlinePendingQueue().length) }})</span>
+        </a>
+
+        <a
           routerLink="/live-excel"
           class="px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-400 dark:border-emerald-700 text-[#107c41] dark:text-emerald-300 hover:bg-[#107c41] hover:text-white text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
         >
@@ -981,6 +1012,12 @@
               </div>
             }
           </nav>
+          <div class="pt-3 border-t border-[var(--border-subtle)] text-center space-y-1">
+            <div class="text-xs font-black text-[var(--text-heading)]">المطور: م/ {{ store.developerName }}</div>
+            <a [href]="'tel:' + store.developerPhone" class="text-xs font-black text-emerald-600 dark:text-emerald-400 tabular-nums block" dir="ltr">
+              {{ store.developerPhone }}
+            </a>
+          </div>
         </div>
       </div>
     }
@@ -1059,7 +1096,81 @@
         </section>
       }
 
+      <!-- SMART OFFLINE / ONLINE DATABASE SYNC NOTIFICATION BANNER -->
+      @if (store.syncAlertBanner(); as syncBanner) {
+        <section
+          aria-label="إشعار المزامنة الذكية مع قاعدة البيانات"
+          class="rounded-2xl border p-3.5 sm:p-4 shadow-sm no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in"
+          [class.bg-amber-500/15]="syncBanner.direction === 'offline_queued'"
+          [class.border-amber-500/40]="syncBanner.direction === 'offline_queued'"
+          [class.bg-emerald-500/15]="syncBanner.direction !== 'offline_queued'"
+          [class.border-emerald-500/40]="syncBanner.direction !== 'offline_queued'"
+        >
+          <div class="flex items-start gap-3 min-w-0">
+            <span
+              class="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-xs"
+              [class.bg-amber-500]="syncBanner.direction === 'offline_queued'"
+              [class.bg-emerald-600]="syncBanner.direction !== 'offline_queued'"
+            >
+              <mat-icon class="!w-5 !h-5 !text-[20px]">
+                {{ syncBanner.direction === 'offline_queued' ? 'cloud_off' : 'cloud_done' }}
+              </mat-icon>
+            </span>
+            <div class="space-y-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs sm:text-sm font-black text-[var(--text-heading)]">{{ syncBanner.title }}</span>
+                <span class="px-2 py-0.5 rounded-md bg-[var(--bg-card)] text-[10px] font-bold text-[var(--text-secondary)]">
+                  {{ syncBanner.timestamp }}
+                </span>
+              </div>
+              <p class="text-xs font-bold text-[var(--text-secondary)] leading-relaxed">{{ syncBanner.subtitle }}</p>
+              @if (syncBanner.details.length > 0) {
+                <div class="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px] font-black">
+                  @for (detail of syncBanner.details; track $index) {
+                    <span class="px-2.5 py-0.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-heading)]">
+                      {{ detail }}
+                    </span>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <a
+              routerLink="/sync-center"
+              class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#3390EC] text-xs font-black text-[var(--text-heading)] whitespace-nowrap"
+            >
+              سجل المزامنة
+            </a>
+            <button
+              type="button"
+              (click)="store.dismissSyncAlertBanner()"
+              class="px-2.5 py-1.5 rounded-xl bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-heading)] text-xs font-bold cursor-pointer"
+            >
+              إخفاء
+            </button>
+          </div>
+        </section>
+      }
+
       <router-outlet />
+
+      <!-- Global Developer Attribution Footer -->
+      <footer class="mt-8 pt-4 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[var(--text-secondary)] no-print">
+        <div class="flex items-center gap-2 font-bold">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>{{ store.settings().companyName }} — نظام إدارة المقاولات والحسابات الذكي وشيت الإكسيل المباشر</span>
+        </div>
+        <div class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] font-black text-[var(--text-heading)] shadow-2xs">
+          <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">code</mat-icon>
+          <span>المطور: م/ {{ store.developerName }}</span>
+          <span class="text-[var(--text-secondary)]">|</span>
+          <a [href]="'tel:' + store.developerPhone" class="text-emerald-600 dark:text-emerald-400 hover:underline tabular-nums" dir="ltr">
+            {{ store.developerPhone }}
+          </a>
+        </div>
+      </footer>
     </main>
 
     <!-- Floating Mobile Bottom Navigation Bar (5 Ergonomic Thumb-Zone Slots) -->

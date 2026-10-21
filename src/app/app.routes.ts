@@ -79,6 +79,20 @@ export const routes: Routes = [
       import('./features/live-excel/live-excel').then((m) => m.LiveExcelPage),
   },
   {
+    path: 'daily-inspector',
+    loadComponent: () =>
+      import('./features/daily-inspector/daily-inspector').then(
+        (m) => m.DailyInspectorPage
+      ),
+  },
+  {
+    path: 'sync-center',
+    loadComponent: () =>
+      import('./features/sync-center/sync-center').then(
+        (m) => m.SyncCenterPage
+      ),
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings').then((m) => m.SettingsPage),

@@ -581,6 +581,30 @@
       "operationsCount": 0,
       "isOnline": true,
       "syncMode": "cloud"
+    },
+    "dev-mvi7nmea-dcwx": {
+      "deviceId": "dev-mvi7nmea-dcwx",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-21 14:31",
+      "lastActiveAt": "2026-10-21 14:32",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
+    },
+    "dev-mvi7s6df-1zwh": {
+      "deviceId": "dev-mvi7s6df-1zwh",
+      "deviceName": "كمبيوتر محمود (Linux)",
+      "deviceType": "desktop",
+      "browserOs": "Chrome · Linux",
+      "firstLoginAt": "2026-10-21 14:35",
+      "lastActiveAt": "2026-10-21 14:35",
+      "lastAction": "متصل تلقائياً وجاهز للمزامنة الفورية",
+      "operationsCount": 0,
+      "isOnline": true,
+      "syncMode": "cloud"
     }
   },
   "backups": []
