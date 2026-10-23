@@ -30,68 +30,103 @@
 }
 
 <div class="min-h-screen w-full max-w-full overflow-x-clip flex bg-[var(--bg-app)] text-[var(--text-heading)]">
-  <!-- Desktop Right Sidebar Navigation (Sticky full-height RTL sidebar) -->
-  <aside class="hidden lg:flex lg:flex-col lg:w-70 lg:sticky lg:top-0 lg:h-screen shrink-0 bg-[var(--bg-card)] border-l border-[var(--border-subtle)] no-print">
-    <!-- Brand Header -->
-    <div class="p-5 border-b border-[var(--border-subtle)] flex items-center gap-3.5">
-      <div class="w-11 h-11 rounded-2xl bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] flex items-center justify-center font-bold text-lg shrink-0 shadow-xs">
-        د
+  <!-- =========================================================================
+       MODERN ARCHITECTURAL SIDEBAR DOCK (100% Solid Surface — Fast & Structured)
+       ========================================================================= -->
+  <aside class="hidden lg:flex lg:flex-col lg:w-72 lg:sticky lg:top-0 lg:h-screen shrink-0 bg-[var(--bg-sidebar)] border-l border-[var(--border-subtle)] no-print z-30">
+    <!-- Top Brand Identity & System Status -->
+    <div class="p-4 border-b border-[var(--border-subtle)] space-y-3">
+      <div class="flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-xl bg-[#2563EB] text-white flex items-center justify-center font-black text-lg shrink-0 relative">
+            <span>د</span>
+            <span
+              class="absolute -bottom-1 -left-1 w-3 h-3 rounded-full border-2 border-white dark:border-slate-900"
+              [class.bg-emerald-500]="!store.localOnlyMode()"
+              [class.bg-amber-500]="store.localOnlyMode()"
+            ></span>
+          </div>
+          <div class="min-w-0">
+            <div class="font-black text-sm sm:text-base text-[var(--text-heading)] truncate">
+              {{ store.settings().companyName }}
+            </div>
+            <div class="text-[11px] font-bold text-[#2563EB] dark:text-blue-400 truncate">
+              نظام الإدارة الهندسية والمالية الحديث
+            </div>
+          </div>
+        </div>
+        <span class="px-2 py-0.5 rounded-md bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[10px] font-black text-[var(--text-secondary)] shrink-0">
+          ERP v5
+        </span>
       </div>
-      <div class="min-w-0">
-        <div class="font-bold text-base text-[var(--text-heading)] truncate">
-          {{ store.settings().companyName }}
-        </div>
-        <div class="text-xs text-[var(--text-secondary)] truncate">
-          نظام إدارة المقاولات والحسابات الذكي
-        </div>
+
+      <!-- Solid Mode & Speed Controls -->
+      <div class="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          (click)="store.toggleDarkMode()"
+          class="px-2.5 py-2 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-[11px] font-extrabold text-[var(--text-heading)] flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+          title="تبديل المظهر السادة بين الوضع الليلي والنهاري"
+        >
+          <mat-icon class="!w-4 !h-4 !text-[15px]" [class.text-amber-500]="store.settings().darkMode" [class.text-[#2563EB]]="!store.settings().darkMode">
+            {{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}
+          </mat-icon>
+          <span>{{ store.settings().darkMode ? 'مظهر نهاري سادة' : 'مظهر ليلي سادة' }}</span>
+        </button>
+
+        <button
+          type="button"
+          (click)="store.toggleLitePerformanceMode()"
+          class="px-2.5 py-2 rounded-lg border text-[11px] font-extrabold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+          [class]="
+            store.litePerformanceMode()
+              ? 'bg-emerald-600 text-white border-emerald-700'
+              : 'bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border-[var(--border-subtle)] hover:border-emerald-600'
+          "
+          title="تسريع النظام للأجهزة الضعيفة"
+        >
+          <mat-icon class="!w-4 !h-4 !text-[15px]">bolt</mat-icon>
+          <span>{{ store.litePerformanceMode() ? 'سرعة قصوى ✓' : 'أداء سريع' }}</span>
+        </button>
       </div>
     </div>
 
-    <!-- Mandatory Daily Headcount Mini Status Card in Sidebar -->
+    <!-- Mandatory Daily Headcount Structured Widget -->
     @let hc = store.todayHeadcountMatch();
-    <div class="px-3.5 pt-3.5">
+    <div class="px-3.5 pt-3">
       <button
         type="button"
         (click)="openHeadcountModal()"
-        class="w-full text-right p-3.5 rounded-[18px] border transition-all flex items-center justify-between gap-2"
-        [class.bg-[#E7C78F]/20]="!hc.hasMandatoryRecord || (hc.hasMandatoryRecord && !hc.isExactMatch)"
-        [class.border-[#E7C78F]]="!hc.hasMandatoryRecord || (hc.hasMandatoryRecord && !hc.isExactMatch)"
-        [class.bg-emerald-50]="hc.isExactMatch"
-        [class.border-emerald-200]="hc.isExactMatch"
-        [class.dark:bg-emerald-950/30]="hc.isExactMatch"
-        [class.dark:border-emerald-800]="hc.isExactMatch"
+        class="w-full text-right p-3 rounded-xl border transition-colors flex items-center justify-between gap-2 cursor-pointer bg-[var(--bg-surface-muted)]"
+        [class.border-amber-500]="!hc.hasMandatoryRecord || (hc.hasMandatoryRecord && !hc.isExactMatch)"
+        [class.border-emerald-600]="hc.isExactMatch"
       >
         <div class="min-w-0">
-          <div class="text-xs font-bold text-[var(--text-heading)] flex items-center gap-1.5">
-            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-              <path d="m9 16 2 2 4-4"></path>
-            </svg>
+          <div class="text-xs font-extrabold text-[var(--text-heading)] flex items-center gap-1.5">
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB] shrink-0">fact_check</mat-icon>
             <span>العدد اليومي الإجباري</span>
           </div>
           <div
-            class="text-[11px] font-semibold mt-0.5 truncate"
-            [class.text-amber-800]="!hc.isExactMatch"
-            [class.dark:text-[#E7C78F]]="!hc.isExactMatch"
-            [class.text-emerald-700]="hc.isExactMatch"
+            class="text-[11px] font-bold mt-0.5 truncate"
+            [class.text-amber-600]="!hc.isExactMatch"
+            [class.dark:text-amber-400]="!hc.isExactMatch"
+            [class.text-emerald-600]="hc.isExactMatch"
+            [class.dark:text-emerald-400]="hc.isExactMatch"
           >
             {{ hc.statusLabel }}
           </div>
         </div>
-        <span class="px-3 py-1 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-[11px] font-bold shrink-0">
+        <span class="px-2.5 py-1 rounded-lg bg-[#2563EB] text-white text-[11px] font-black shrink-0">
           تسجيل
         </span>
       </button>
     </div>
 
-    <!-- Categorized Navigation Links with Descriptions & Badges -->
+    <!-- Categorized Architectural Navigation Tree -->
     <nav class="flex-1 p-3 space-y-3.5 overflow-y-auto" aria-label="القائمة الرئيسية">
-      @for (group of navItems; track group.category) {
+      @for (group of navItems; track group.category; let gIdx = $index) {
         <div class="space-y-1">
-          <div class="px-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]/90 flex items-center justify-between">
+          <div class="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)] flex items-center justify-between border-b border-[var(--border-subtle)]/60">
             <span>{{ group.category }}</span>
           </div>
           @for (item of group.items; track item.path) {
@@ -99,22 +134,35 @@
               [routerLink]="item.path"
               routerLinkActive="sidebar-nav-active"
               [title]="item.description"
-              class="sidebar-nav-item flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all group hover:bg-[var(--bg-subtle)]"
+              class="sidebar-nav-item flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap group"
             >
               <div class="flex items-center gap-2.5 min-w-0">
-                <mat-icon class="!w-4 !h-4 !text-[18px] text-[var(--text-secondary)] group-hover:text-[#3390EC] shrink-0">
-                  {{ item.icon }}
-                </mat-icon>
+                <div
+                  class="w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105"
+                  [class]="
+                    gIdx === 0
+                      ? 'bg-[var(--tint-blue)] border-blue-500/20 text-[#2563EB] dark:text-blue-400'
+                      : gIdx === 1
+                        ? 'bg-[var(--tint-emerald)] border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                        : gIdx === 2
+                          ? 'bg-[var(--tint-amber)] border-amber-500/20 text-amber-600 dark:text-amber-400'
+                          : 'bg-[var(--tint-violet)] border-purple-500/20 text-purple-600 dark:text-purple-400'
+                  "
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px]">
+                    {{ item.icon }}
+                  </mat-icon>
+                </div>
                 <div class="flex flex-col min-w-0">
                   <span class="truncate font-bold text-[var(--text-heading)] text-[12px]">{{ item.label }}</span>
-                  <span class="text-[10px] text-[var(--text-secondary)] truncate font-normal max-w-[160px] opacity-80 group-hover:opacity-100">
+                  <span class="text-[10px] text-[var(--text-secondary)] truncate font-normal max-w-[152px]">
                     {{ item.description }}
                   </span>
                 </div>
               </div>
 
               @if (item.badge) {
-                <span class="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-600 text-white shrink-0">
                   {{ item.badge }}
                 </span>
               }
@@ -124,25 +172,22 @@
       }
     </nav>
 
+
     <!-- Sidebar Footer: Install PWA + Developer Credit -->
-    <div class="p-3.5 border-t border-[var(--border-subtle)] space-y-2.5">
+    <div class="p-3.5 border-t border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] space-y-2.5">
       <button
         type="button"
         (click)="triggerPwaInstall()"
-        class="w-full py-2 px-4 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] hover:bg-[#3390EC] hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+        class="w-full py-2 px-3 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-colors"
       >
-        <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="7 10 12 15 17 10"></polyline>
-          <line x1="12" y1="15" x2="12" y2="3"></line>
-        </svg>
-        <span>تثبيت التطبيق على الموبايل</span>
+        <mat-icon class="!w-4 !h-4 !text-[16px]">install_mobile</mat-icon>
+        <span>تثبيت التطبيق على الهاتف</span>
       </button>
 
-      <!-- Developer Credit Badge -->
-      <div class="p-2.5 rounded-2xl bg-gradient-to-l from-indigo-500/10 via-[var(--bg-app)] to-emerald-500/10 border border-[var(--border-subtle)] text-center space-y-0.5">
+      <!-- Developer Credit Solid Card -->
+      <div class="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-center space-y-0.5">
         <div class="text-[11px] font-black text-[var(--text-heading)] flex items-center justify-center gap-1">
-          <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#3390EC]">verified</mat-icon>
+          <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#2563EB]">verified</mat-icon>
           <span>المطور: م/ {{ store.developerName }}</span>
         </div>
         <a
@@ -156,60 +201,55 @@
     </div>
   </aside>
 
-  <!-- Main Content Area -->
+  <!-- Main Workspace Area -->
   <div class="flex-1 flex flex-col min-w-0">
-    <!-- PINNED TWO-TIER TOP BANNER (ثبّت البانر العلوي بالكامل: الشريط الرئيسي + شريط الاختصارات والمؤشرات السريعة) -->
-    <div class="sticky top-0 z-40 bg-[var(--bg-card)]/95 backdrop-blur-xl border-b border-[var(--border-subtle)] shadow-xs no-print">
-      <!-- Tier 1: Main Top App Bar (Mobile-optimized compact height + Desktop full controls + Three-Dots ⋮ Menu) -->
-      <header class="h-14 sm:h-16 px-2.5 sm:px-4 lg:px-6 flex items-center justify-between gap-1.5 sm:gap-2 border-b border-[var(--border-subtle)]/70">
-        <!-- Zone 1: Mobile Menu Trigger + Back Button + Brand Wordmark + Quick Action Button -->
-        <div class="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
+    <!-- =======================================================================
+         MODERN SOLID COMMAND HEADER & STRUCTURED ACTION RIBBON
+         ======================================================================= -->
+    <div class="sticky top-0 z-40 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] no-print">
+      <!-- Tier 1: Unified Executive Command Bar -->
+      <header class="h-14 sm:h-15 w-full max-w-full px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-1.5 sm:gap-2 border-b border-[var(--border-subtle)]">
+        <!-- Zone 1: Mobile Menu + Back + Brand + Instant Record Button -->
+        <div class="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 sm:flex-initial">
           <button
             type="button"
             (click)="mobileMenuOpen.set(!mobileMenuOpen())"
-            class="lg:hidden min-w-[40px] min-h-[40px] p-2 rounded-full border border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)] flex items-center justify-center shrink-0 cursor-pointer"
+            class="lg:hidden w-9 h-9 min-w-[36px] min-h-[36px] p-1.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-[var(--text-heading)] flex items-center justify-center shrink-0 cursor-pointer"
             aria-label="فتح القائمة الجانبية"
           >
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="4" x2="20" y1="12" y2="12"></line>
-              <line x1="4" x2="20" y1="6" y2="6"></line>
-              <line x1="4" x2="20" y1="18" y2="18"></line>
-            </svg>
+            <mat-icon class="!w-5 !h-5 !text-[20px]">menu</mat-icon>
           </button>
 
-          <!-- Direct Back Button (زر الرجوع السريع) -->
           @if (currentRoutePath() !== '/dashboard') {
             <button
               type="button"
               (click)="goBackPage()"
               title="الرجوع للصفحة السابقة"
               aria-label="الرجوع للصفحة السابقة"
-              class="min-w-[38px] min-h-[38px] px-2.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-app)] hover:border-[var(--color-primary)] text-[var(--text-heading)] text-xs font-bold inline-flex items-center justify-center gap-1 shrink-0 cursor-pointer transition-colors"
+              class="w-8 h-8 sm:w-auto sm:min-w-[36px] sm:min-h-[36px] px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-[var(--text-heading)] text-xs font-bold inline-flex items-center justify-center gap-1 shrink-0 cursor-pointer transition-colors"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">arrow_forward</mat-icon>
               <span class="hidden sm:inline">رجوع</span>
             </button>
           }
 
-          <a routerLink="/dashboard" class="text-sm sm:text-lg font-bold tracking-tight text-[var(--text-heading)] truncate max-w-[115px] sm:max-w-none whitespace-nowrap">
+          <a routerLink="/dashboard" class="text-xs sm:text-base font-black tracking-tight text-[var(--text-heading)] truncate min-w-0">
             {{ store.settings().companyName }}
           </a>
 
-          <!-- Instant Quick Action Hub Button (+ تسجيل فوري سريع) -->
+          <!-- Primary Quick Record Action (+ تسجيل فوري) -->
           <button
             type="button"
             (click)="openQuickActionModal('incoming')"
             title="تسجيل فوري أو أمر ذكي بالصوت والكتابة (Ctrl+K)"
-            class="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1 shadow-2xs whitespace-nowrap shrink-0 cursor-pointer"
+            class="w-8 h-8 sm:w-auto px-2 sm:px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
           >
-            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14"></path>
-            </svg>
+            <mat-icon class="!w-4 !h-4 !text-[16px]">add</mat-icon>
             <span class="hidden sm:inline">تسجيل فوري</span>
           </button>
         </div>
 
-        <!-- Zone 2: Global Search across Workers, Extracts, Checks (Desktop) -->
+        <!-- Zone 2: Global Search Bar (Solid Surface) -->
         <div class="relative flex-1 max-w-md hidden xl:block">
           <label for="global-search" class="sr-only">بحث شامل في العمال والنحاتية والمستخلصات والشيكات</label>
           <input
@@ -217,80 +257,64 @@
             type="text"
             [value]="store.globalSearchQuery()"
             (input)="store.globalSearchQuery.set($any($event.target).value)"
-            placeholder="بحث شامل في العمال والنحاتية والمستخلصات والشيكات..."
-            class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] focus:border-[var(--color-primary)] rounded-full pr-10 pl-4 py-2 text-xs text-[var(--text-heading)] placeholder:text-[var(--text-secondary)] focus:outline-none transition-colors"
+            placeholder="بحث شامل في العمال، النحاتية، المستخلصات، الشيكات..."
+            class="w-full bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] focus:border-[#2563EB] rounded-lg pr-9 pl-4 py-1.5 text-xs font-semibold text-[var(--text-heading)] placeholder:text-[var(--text-secondary)] focus:outline-none transition-colors"
           />
-          <svg class="w-4 h-4 absolute right-3.5 top-2.5 text-[var(--text-secondary)] pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.3-4.3"></path>
-          </svg>
+          <mat-icon class="!w-4 !h-4 !text-[17px] absolute right-3 top-2 text-[var(--text-secondary)] pointer-events-none">search</mat-icon>
 
           @if (searchResults().length > 0) {
-            <div class="absolute right-0 left-0 top-11 bg-[var(--bg-card)] rounded-[18px] shadow-lg border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] z-50 overflow-hidden">
+            <div class="absolute right-0 left-0 top-10 bg-[var(--bg-card)] rounded-xl shadow-lg border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] z-50 overflow-hidden">
               @for (res of searchResults(); track $index) {
                 <button
                   type="button"
                   (click)="navigateFromSearch(res.route)"
-                  class="w-full text-right px-4 py-2.5 hover:bg-[var(--color-primary-soft)] flex items-center justify-between"
+                  class="w-full text-right px-4 py-2.5 hover:bg-[var(--bg-surface-muted)] flex items-center justify-between cursor-pointer"
                 >
                   <div>
                     <div class="text-xs font-bold text-[var(--text-heading)]">{{ res.title }}</div>
                     <div class="text-[11px] text-[var(--text-secondary)]">{{ res.subtitle }}</div>
                   </div>
-                  <span class="px-2.5 py-0.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold">تحويل</span>
+                  <span class="px-2 py-0.5 rounded bg-[#2563EB] text-white text-[10px] font-bold">فتح</span>
                 </button>
               }
             </div>
           }
         </div>
 
-        <!-- Zone 3: Cloud Status + Notifications + Desktop Controls + Three-Dots (⋮) Overflow Button -->
+        <!-- Zone 3: System Controls & Utilities -->
         <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
-          <!-- Smart Direct Connect / Disconnect Toggle Button -->
+          <!-- Network / Cloud Sync Status Toggle -->
           <button
             type="button"
             (click)="store.toggleLocalOnlyMode()"
-            [title]="store.localOnlyMode() ? 'الاتصال مفصول حالياً — اضغط للاتصال الفوري والمزامنة التلقائية' : 'متصل تلقائياً (يرفع ويجلب أي تغيير مباشر) — اضغط لفصل الاتصال'"
+            [title]="store.localOnlyMode() ? 'الاتصال مفصول حالياً — اضغط للاتصال الفوري والمزامنة التلقائية' : 'متصل تلقائياً — اضغط لفصل الاتصال'"
             aria-label="زر الاتصال وفصل الاتصال"
-            class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full border text-xs font-bold whitespace-nowrap transition-all cursor-pointer"
-            [class.bg-emerald-50]="!store.localOnlyMode()"
-            [class.dark:bg-emerald-950/40]="!store.localOnlyMode()"
-            [class.border-emerald-400]="!store.localOnlyMode()"
-            [class.text-emerald-700]="!store.localOnlyMode()"
-            [class.dark:text-emerald-300]="!store.localOnlyMode()"
-            [class.bg-[var(--color-secondary-soft)]]="store.localOnlyMode()"
-            [class.border-[#E7C78F]]="store.localOnlyMode()"
-            [class.text-[var(--text-heading)]]="store.localOnlyMode()"
+            class="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border text-[11px] sm:text-xs font-bold whitespace-nowrap transition-colors cursor-pointer"
+            [class]="
+              store.localOnlyMode()
+                ? 'bg-amber-500 text-slate-950 border-amber-600'
+                : 'bg-[var(--bg-surface-muted)] text-emerald-700 dark:text-emerald-400 border-[var(--border-subtle)]'
+            "
           >
             @if (store.localOnlyMode()) {
-              <span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
-              <span>اتصال</span>
+              <span class="w-2 h-2 rounded-full bg-slate-950 shrink-0"></span>
+              <span>أوفلاين</span>
             } @else {
-              <span
-                class="w-2 h-2 rounded-full shrink-0"
-                [class.bg-emerald-500]="store.cloudSyncStatus() === 'connected'"
-                [class.bg-[#3390EC]]="store.cloudSyncStatus() === 'syncing'"
-                [class.animate-ping]="store.cloudSyncStatus() === 'syncing'"
-              ></span>
-              <span>{{ store.cloudSyncStatus() === 'syncing' ? 'يزامن...' : 'متصل' }}</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+              <span>{{ store.cloudSyncStatus() === 'syncing' ? 'يزامن' : 'متصل' }}</span>
             }
           </button>
 
-          <!-- Smart Contractor Calculator Trigger (Desktop direct + inside ⋮ on mobile) -->
+          <!-- Site Calculator -->
           <button
             type="button"
             (click)="siteCalculatorOpen.set(true)"
-            title="حاسبة المقاول السريعة (حساب اليوميات والسهرات وفارق الشركة)"
+            title="حاسبة المقاول السريعة"
             aria-label="حاسبة الموقع السريعة"
-            class="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap cursor-pointer"
+            class="hidden lg:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold whitespace-nowrap cursor-pointer"
           >
-            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect width="16" height="20" x="4" y="2" rx="2"></rect>
-              <line x1="8" x2="16" y1="6" y2="6"></line>
-              <line x1="16" x2="16" y1="14" y2="18"></line>
-              <path d="M16 10h.01M12 10h.01M8 10h.01M12 14h.01M8 14h.01M12 18h.01M8 18h.01"></path>
-            </svg>
-            <span>حاسبة الموقع</span>
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">calculate</mat-icon>
+            <span>الحاسبة</span>
           </button>
 
           <!-- Smart Notifications Bell -->
@@ -298,44 +322,35 @@
             <button
               type="button"
               (click)="notificationsOpen.set(!notificationsOpen())"
-              class="relative inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-semibold whitespace-nowrap cursor-pointer"
+              class="relative inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold whitespace-nowrap cursor-pointer"
               aria-label="مركز التنبيهات الذكية"
             >
-              <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-              </svg>
+              <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">notifications</mat-icon>
               <span class="hidden sm:inline">التنبيهات</span>
-              <span class="px-1.5 py-0.5 rounded-full bg-[#3390EC] text-white text-[10px] font-bold tabular-nums">
+              <span class="px-1.5 py-0.2 rounded bg-[#2563EB] text-white text-[10px] font-black tabular-nums">
                 {{ store.num(store.smartAlerts().length) }}
               </span>
             </button>
 
             @if (notificationsOpen()) {
-              <div class="fixed sm:absolute left-3 sm:left-0 right-3 sm:right-auto top-15 sm:top-12 sm:w-96 ceramic-card p-4 z-50 space-y-3">
+              <div class="fixed sm:absolute left-3 sm:left-0 right-3 sm:right-auto top-14 sm:top-11 sm:w-96 ceramic-card p-4 z-50 space-y-3">
                 <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2.5">
-                  <span class="text-xs font-bold text-[var(--text-heading)]">
+                  <span class="text-xs font-extrabold text-[var(--text-heading)]">
                     التنبيهات الذكية الفورية ({{ store.num(store.smartAlerts().length) }})
                   </span>
                   <button
                     type="button"
                     (click)="notificationsOpen.set(false)"
-                    class="text-[var(--text-secondary)] hover:text-[var(--text-heading)] text-xs font-bold"
+                    class="text-[var(--text-secondary)] hover:text-[var(--text-heading)] text-xs font-bold cursor-pointer"
                     aria-label="إغلاق التنبيهات"
                   >
                     إغلاق
                   </button>
                 </div>
 
-                <div class="max-h-80 overflow-y-auto space-y-2.5">
+                <div class="max-h-80 overflow-y-auto space-y-2">
                   @for (alert of store.smartAlerts(); track alert.id) {
-                    <div
-                      class="p-3 rounded-[16px] border flex items-center justify-between gap-3"
-                      [class.bg-[#E7C78F]/20]="alert.severity === 'danger' || alert.severity === 'warning'"
-                      [class.border-[#E7C78F]]="alert.severity === 'danger' || alert.severity === 'warning'"
-                      [class.bg-[var(--bg-app)]]="alert.severity === 'info' || alert.severity === 'success'"
-                      [class.border-[var(--border-subtle)]]="alert.severity === 'info' || alert.severity === 'success'"
-                    >
+                    <div class="p-3 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
                       <div class="min-w-0 flex-1">
                         <div class="text-xs font-bold text-[var(--text-heading)]">
                           {{ alert.title }}
@@ -347,9 +362,9 @@
                       <button
                         type="button"
                         (click)="navigateAndCloseAlert(alert.route)"
-                        class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-[11px] font-bold shrink-0 inline-flex items-center gap-1"
+                        class="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-[11px] font-bold shrink-0 cursor-pointer"
                       >
-                        <span>{{ alert.actionLabel }}</span>
+                        {{ alert.actionLabel }}
                       </button>
                     </div>
                   }
@@ -358,136 +373,118 @@
             }
           </div>
 
-          <!-- Undo Button (Desktop direct + inside ⋮ on mobile) -->
+          <!-- Undo / Redo (Desktop) -->
           <button
             type="button"
             (click)="store.undoLastOperation()"
             [disabled]="!store.lastUndo()"
             [title]="store.lastUndo() ? 'تراجع عن: ' + store.lastUndo()!.description : 'لا توجد عملية للتراجع'"
             aria-label="تراجع عن آخر عملية"
-            class="hidden lg:inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap cursor-pointer"
+            class="hidden lg:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold disabled:opacity-40 whitespace-nowrap cursor-pointer"
           >
-            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 7v6h6"></path>
-              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
-            </svg>
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">undo</mat-icon>
             <span>تراجع</span>
             @if (store.undoStack().length > 0) {
-              <span class="px-1.5 py-0.2 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-[10px] font-bold tabular-nums">
+              <span class="px-1.5 py-0.2 rounded bg-blue-600 text-white text-[10px] font-bold tabular-nums">
                 {{ store.num(store.undoStack().length) }}
               </span>
             }
           </button>
 
-          <!-- Redo Button (Desktop direct + inside ⋮ on mobile) -->
           <button
             type="button"
             (click)="store.redoLastOperation()"
             [disabled]="!store.lastRedo()"
             [title]="store.lastRedo() ? 'رد التراجع: ' + store.lastRedo()!.description : 'لا توجد عملية متراجع عنها لردّها'"
             aria-label="رد التراجع وإعادة العملية"
-            class="hidden lg:inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold disabled:opacity-40 whitespace-nowrap cursor-pointer"
+            class="hidden lg:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold disabled:opacity-40 whitespace-nowrap cursor-pointer"
           >
-            <svg class="w-4 h-4 text-[#3390EC] dark:text-[#4EA4F6] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 7v6h-6"></path>
-              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path>
-            </svg>
-            <span>رد التراجع</span>
-            @if (store.redoStack().length > 0) {
-              <span class="px-1.5 py-0.2 rounded-full bg-[#E7C78F]/30 text-[var(--text-heading)] text-[10px] font-bold tabular-nums">
-                {{ store.num(store.redoStack().length) }}
-              </span>
-            }
+            <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">redo</mat-icon>
+            <span>إعادة</span>
           </button>
 
           <button
             type="button"
             (click)="store.toggleNumeralMode()"
-            class="hidden lg:inline-flex px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap cursor-pointer"
+            class="hidden lg:inline-flex px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold whitespace-nowrap cursor-pointer"
             aria-label="تبديل الأرقام عربي أو إنجليزي"
           >
             {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
           </button>
 
-          <!-- Day / Night Mode Button (Desktop direct + inside ⋮ on mobile) -->
+          <!-- Day / Night Solid Theme Toggle -->
           <button
             type="button"
             (click)="store.toggleDarkMode()"
-            [title]="store.settings().darkMode ? 'التحويل إلى الوضع النهاري (الفاتح)' : 'التحويل إلى الوضع الليلي (الداكن)'"
+            [title]="store.settings().darkMode ? 'التحويل إلى الوضع النهاري السادة' : 'التحويل إلى الوضع الليلي السادة'"
             aria-label="تبديل الوضع الليلي والنهاري"
-            class="hidden lg:inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--color-primary)] text-xs font-bold whitespace-nowrap cursor-pointer"
+            class="hidden lg:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] hover:border-[#2563EB] text-xs font-bold whitespace-nowrap cursor-pointer"
           >
-            @if (store.settings().darkMode) {
-              <svg class="w-4 h-4 text-[#E7C78F] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="4"></circle>
-                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-              </svg>
-              <span>نهاري</span>
-            } @else {
-              <svg class="w-4 h-4 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-              </svg>
-              <span>ليلي</span>
-            }
+            <mat-icon class="!w-4 !h-4 !text-[16px]" [class.text-amber-500]="store.settings().darkMode" [class.text-[#2563EB]]="!store.settings().darkMode">
+              {{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}
+            </mat-icon>
+            <span>{{ store.settings().darkMode ? 'نهاري' : 'ليلي' }}</span>
           </button>
 
-          <!-- THREE-DOTS (⋮) MORE TOOLS & SHORTCUTS BUTTON ("زر بثلاث نقاط يفتح باقي التفاصيل والوضع الليلي والحاسبة والرجوع") -->
+          <!-- Tools Drawer Button (⋮ الثلاث نقاط) -->
           <button
             type="button"
             (click)="topBarMoreMenuOpen.set(!topBarMoreMenuOpen())"
-            title="قائمة الأدوات الكاملة (الرجوع · الوضع الليلي · الحاسبة · التراجع · الاختصارات)"
+            title="قائمة الأدوات الكاملة والاختصارات (⋮)"
             aria-label="قائمة الأدوات والاختصارات الإضافية"
             [attr.aria-expanded]="topBarMoreMenuOpen()"
-            class="min-w-[40px] min-h-[40px] px-2.5 py-1.5 rounded-full border transition-all inline-flex items-center justify-center gap-1 text-xs font-extrabold cursor-pointer shrink-0"
-            [class.bg-[#3390EC]]="topBarMoreMenuOpen()"
-            [class.text-white]="topBarMoreMenuOpen()"
-            [class.border-[#3390EC]]="topBarMoreMenuOpen()"
-            [class.bg-[var(--bg-card)]]="!topBarMoreMenuOpen()"
-            [class.text-[var(--text-heading)]]="!topBarMoreMenuOpen()"
-            [class.border-[var(--border-subtle)]]="!topBarMoreMenuOpen()"
+            class="w-9 h-9 sm:w-auto min-w-[36px] min-h-[36px] px-2 sm:px-2.5 py-1.5 rounded-lg border transition-colors inline-flex items-center justify-center gap-1 text-xs font-extrabold cursor-pointer shrink-0 polite-btn"
+            [class]="
+              topBarMoreMenuOpen()
+                ? 'bg-[#2563EB] text-white border-[#2563EB]'
+                : 'bg-[var(--tint-blue)] text-[#2563EB] dark:text-blue-400 border-blue-500/35 hover:border-[#2563EB]'
+            "
           >
-            <mat-icon class="!w-5 !h-5 !text-[20px]">more_vert</mat-icon>
+            <svg class="w-4 h-4 shrink-0 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="5" r="2.4"></circle>
+              <circle cx="12" cy="12" r="2.4"></circle>
+              <circle cx="12" cy="19" r="2.4"></circle>
+            </svg>
             <span class="hidden sm:inline">الأدوات</span>
           </button>
         </div>
       </header>
 
-      <!-- THREE-DOTS (⋮) EXPANDED DRAWER / POPOVER: يظهر كل أدوات البار العلوي والوضع الليلي والحاسبة والرجوع والبحث والاختصارات السريعة -->
+      <!-- Tools Drawer Modal (⋮) -->
       @if (topBarMoreMenuOpen()) {
         <div
-          class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center p-2.5 sm:p-4 pt-14 sm:pt-16 animate-fade-in"
+          class="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-2.5 sm:p-4 pt-14 sm:pt-16"
           (click)="topBarMoreMenuOpen.set(false)"
         >
           <div
-            class="ceramic-card w-full max-w-2xl rounded-3xl p-4 sm:p-5 space-y-4 max-h-[84vh] overflow-y-auto shadow-xl border border-[var(--border-subtle)]"
+            class="ceramic-card w-full max-w-2xl rounded-2xl p-4 sm:p-5 space-y-4 max-h-[84vh] overflow-y-auto shadow-xl border border-[var(--border-subtle)]"
             (click)="$event.stopPropagation()"
           >
-            <!-- Drawer Header -->
             <div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
               <div class="flex items-center gap-2.5">
-                <div class="w-9 h-9 rounded-2xl bg-[#3390EC] text-white flex items-center justify-center shrink-0">
-                  <mat-icon class="!w-5 !h-5 !text-[20px]">more_vert</mat-icon>
+                <div class="w-9 h-9 rounded-lg bg-[#2563EB] text-white flex items-center justify-center shrink-0">
+                  <mat-icon class="!w-5 !h-5 !text-[20px]">widgets</mat-icon>
                 </div>
                 <div>
                   <h3 class="text-sm sm:text-base font-extrabold text-[var(--text-heading)]">
-                    قائمة أدوات واختصارات البار العلوي الكاملة
+                    مركز الأدوات والاختصارات السريعة
                   </h3>
                   <p class="text-[11px] text-[var(--text-secondary)]">
-                    الرجوع · الوضع الليلي · حاسبة الموقع · التراجع · البحث · وكل الاختصارات السريعة
+                    البحث الشامل · المظهر السادة · الحاسبة · التراجع · والوصول الفوري للأقسام
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 (click)="topBarMoreMenuOpen.set(false)"
-                class="p-1.5 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-heading)] cursor-pointer"
+                class="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-heading)] cursor-pointer"
                 aria-label="إغلاق قائمة الأدوات"
               >
                 <mat-icon>close</mat-icon>
               </button>
             </div>
 
-            <!-- 1. Mobile & Quick Global Search Bar -->
+            <!-- Search Inside Drawer -->
             <div class="relative">
               <label for="mobile-more-search" class="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">
                 بحث شامل فوري (عمال · نحاتية · مستخلصات · شيكات):
@@ -499,43 +496,42 @@
                   [value]="store.globalSearchQuery()"
                   (input)="store.globalSearchQuery.set($any($event.target).value)"
                   placeholder="اكتب اسم عامل أو رقم شيك أو مستخلص..."
-                  class="w-full bg-[var(--bg-app)] border border-[var(--border-subtle)] focus:border-[var(--color-primary)] rounded-2xl pr-10 pl-4 py-2.5 text-xs font-bold text-[var(--text-heading)]"
+                  class="w-full bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] focus:border-[#2563EB] rounded-lg pr-10 pl-4 py-2.5 text-xs font-bold text-[var(--text-heading)]"
                 />
                 <mat-icon class="absolute right-3 top-2.5 text-[var(--text-secondary)] !w-4 !h-4 !text-[18px]">search</mat-icon>
               </div>
               @if (searchResults().length > 0) {
-                <div class="mt-2 bg-[var(--bg-app)] rounded-2xl border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] overflow-hidden">
+                <div class="mt-2 bg-[var(--bg-surface-muted)] rounded-lg border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)] overflow-hidden">
                   @for (res of searchResults(); track $index) {
                     <button
                       type="button"
                       (click)="navigateFromSearch(res.route); topBarMoreMenuOpen.set(false)"
-                      class="w-full text-right px-3.5 py-2.5 hover:bg-[var(--color-primary-soft)] flex items-center justify-between"
+                      class="w-full text-right px-3.5 py-2.5 hover:bg-[var(--bg-card)] flex items-center justify-between"
                     >
                       <div>
                         <div class="text-xs font-bold text-[var(--text-heading)]">{{ res.title }}</div>
                         <div class="text-[11px] text-[var(--text-secondary)]">{{ res.subtitle }}</div>
                       </div>
-                      <span class="px-2.5 py-0.5 rounded-full bg-[#3390EC] text-white text-[10px] font-bold">فتح</span>
+                      <span class="px-2 py-0.5 rounded bg-[#2563EB] text-white text-[10px] font-bold">فتح</span>
                     </button>
                   }
                 </div>
               }
             </div>
 
-            <!-- 2. Primary Top Bar Tools Grid (الرجوع · الوضع الليلي · حاسبة الموقع · التراجع · رد التراجع · الأرقام · الخادم) -->
+            <!-- Control Tools Grid -->
             <div>
               <div class="text-xs font-extrabold text-[var(--text-secondary)] mb-2">
-                أدوات التحكم السريعة في الهاتف وسطح المكتب:
+                أدوات التحكم السريعة:
               </div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                <!-- زر الرجوع -->
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   (click)="goBackPage()"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-[#3390EC]/15 text-[#3390EC] flex items-center justify-center shrink-0">
-                    <mat-icon class="!w-5 !h-5 !text-[20px]">arrow_forward</mat-icon>
+                  <div class="w-8 h-8 rounded-md bg-blue-600 text-white flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[18px]">arrow_forward</mat-icon>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">رجوع للخلف</div>
@@ -543,49 +539,44 @@
                   </div>
                 </button>
 
-                <!-- زر الوضع الليلي / النهاري -->
                 <button
                   type="button"
                   (click)="store.toggleDarkMode()"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0">
-                    <mat-icon class="!w-5 !h-5 !text-[20px]">{{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
+                  <div class="w-8 h-8 rounded-md bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[18px]">{{ store.settings().darkMode ? 'light_mode' : 'dark_mode' }}</mat-icon>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">
-                      {{ store.settings().darkMode ? 'الوضع النهاري' : 'الوضع الليلي' }}
+                      {{ store.settings().darkMode ? 'المظهر النهاري' : 'المظهر الليلي' }}
                     </div>
-                    <div class="text-[10px] text-[var(--text-secondary)] truncate">
-                      {{ store.settings().darkMode ? 'تفعيل الإضاءة الفاتحة' : 'تفعيل الوضع الداكن' }}
-                    </div>
+                    <div class="text-[10px] text-[var(--text-secondary)] truncate">ألوان سادة مريحة</div>
                   </div>
                 </button>
 
-                <!-- زر حاسبة الموقع السريعة -->
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); siteCalculatorOpen.set(true)"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <mat-icon class="!w-5 !h-5 !text-[20px]">calculate</mat-icon>
+                  <div class="w-8 h-8 rounded-md bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[18px]">calculate</mat-icon>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">حاسبة الموقع</div>
-                    <div class="text-[10px] text-[var(--text-secondary)] truncate">يوميات وسهرات وفرق شركة</div>
+                    <div class="text-[10px] text-[var(--text-secondary)] truncate">يوميات وفارق شركة</div>
                   </div>
                 </button>
 
-                <!-- زر التراجع Undo -->
                 <button
                   type="button"
                   (click)="store.undoLastOperation()"
                   [disabled]="!store.lastUndo()"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] disabled:opacity-45 flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] disabled:opacity-45 flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                    <mat-icon class="!w-5 !h-5 !text-[20px]">undo</mat-icon>
+                  <div class="w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[18px]">undo</mat-icon>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">
@@ -597,19 +588,18 @@
                   </div>
                 </button>
 
-                <!-- زر رد التراجع Redo -->
                 <button
                   type="button"
                   (click)="store.redoLastOperation()"
                   [disabled]="!store.lastRedo()"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] disabled:opacity-45 flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] disabled:opacity-45 flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                    <mat-icon class="!w-5 !h-5 !text-[20px]">redo</mat-icon>
+                  <div class="w-8 h-8 rounded-md bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[18px]">redo</mat-icon>
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">
-                      رد التراجع ({{ store.num(store.redoStack().length) }})
+                      إعادة ({{ store.num(store.redoStack().length) }})
                     </div>
                     <div class="text-[10px] text-[var(--text-secondary)] truncate">
                       {{ store.lastRedo() ? store.lastRedo()!.description : 'لا توجد عملية' }}
@@ -617,35 +607,32 @@
                   </div>
                 </button>
 
-                <!-- زر تبديل الأرقام -->
                 <button
                   type="button"
                   (click)="store.toggleNumeralMode()"
-                  class="p-3 rounded-2xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] flex items-center gap-2.5 text-right transition-all cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] hover:border-[#2563EB] flex items-center gap-2.5 text-right cursor-pointer"
                 >
-                  <div class="w-9 h-9 rounded-xl bg-slate-500/15 text-[var(--text-heading)] flex items-center justify-center font-black text-xs shrink-0">
+                  <div class="w-8 h-8 rounded-md bg-slate-200 dark:bg-slate-800 text-[var(--text-heading)] flex items-center justify-center font-black text-xs shrink-0">
                     {{ store.settings().numeralMode === 'ar' ? '١٢٣' : '123' }}
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-[var(--text-heading)]">نظام الأرقام</div>
-                    <div class="text-[10px] text-[var(--text-secondary)] truncate">
-                      {{ store.settings().numeralMode === 'ar' ? 'عربي (١٢٣) — اضغط للإنجليزي' : 'إنجليزي (123) — اضغط للعربي' }}
-                    </div>
+                    <div class="text-[10px] text-[var(--text-secondary)] truncate">عربي / إنجليزي</div>
                   </div>
                 </button>
               </div>
             </div>
 
-            <!-- 3. All Quick Shortcuts & Cloud Actions in Organized Grid -->
+            <!-- Direct Shortcuts Grid -->
             <div>
               <div class="text-xs font-extrabold text-[var(--text-secondary)] mb-2">
-                جميع اختصارات الموقع السريعة (تفتح مباشرة):
+                اختصارات الأقسام والعمليات المباشرة:
               </div>
               <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <a
                   routerLink="/my-ledger"
                   (click)="topBarMoreMenuOpen.set(false)"
-                  class="p-2.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold flex items-center gap-1.5"
+                  class="p-2.5 rounded-lg bg-emerald-600 text-white text-xs font-extrabold flex items-center gap-1.5"
                 >
                   <mat-icon class="!w-4 !h-4 !text-[16px]">account_balance_wallet</mat-icon>
                   <span class="truncate">حسابي الشامل والخزنة</span>
@@ -654,7 +641,7 @@
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); openQuickActionModal('incoming')"
-                  class="p-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-amber-600 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
                 >
                   <mat-icon class="!w-4 !h-4 !text-[16px]">add_card</mat-icon>
                   <span class="truncate">+ وصلني مبلغ</span>
@@ -663,43 +650,43 @@
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); openHeadcountModal()"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">fact_check</mat-icon>
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">fact_check</mat-icon>
                   <span class="truncate">العدد اليومي الإجباري</span>
                 </button>
 
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); openQuickActionModal('deduction')"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-500">gavel</mat-icon>
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-600">gavel</mat-icon>
                   <span class="truncate">خصم فوري لعامل</span>
                 </button>
 
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); openQuickActionModal('advance')"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">payments</mat-icon>
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">payments</mat-icon>
                   <span class="truncate">سلفة سريعة</span>
                 </button>
 
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); store.showZakiCapabilitiesModal.set(true)"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-amber-500/40 text-[var(--text-heading)] text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
                 >
                   <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-500">smart_toy</mat-icon>
-                  <span class="truncate">قدرات البوت زكي</span>
+                  <span class="truncate">قدرات المساعد زكي</span>
                 </button>
 
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); copyDailyWhatsAppSummary()"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-600">share</mat-icon>
                   <span class="truncate">نسخ تقرير واتساب</span>
@@ -708,18 +695,18 @@
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); openCloudHubModal('devices')"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">cloud_sync</mat-icon>
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">cloud_sync</mat-icon>
                   <span class="truncate">مركز الخادم والأجهزة</span>
                 </button>
 
                 <button
                   type="button"
                   (click)="topBarMoreMenuOpen.set(false); triggerPwaInstall()"
-                  class="p-2.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  class="p-2.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#3390EC]">install_mobile</mat-icon>
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-[#2563EB]">install_mobile</mat-icon>
                   <span class="truncate">تثبيت التطبيق بالهاتف</span>
                 </button>
               </div>
@@ -728,246 +715,177 @@
         </div>
       }
 
-      <!-- Tier 2: Single-Line Horizontal Swipeable Quick Shortcuts Ribbon (شريط الاختصارات السريعة القابل للسحب على الهاتف) -->
-      <div class="px-3 lg:px-6 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-        <span class="text-xs font-bold text-[var(--text-secondary)] shrink-0 inline-flex items-center gap-1 whitespace-nowrap">
-          <svg class="w-4 h-4 text-[#3390EC]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-          </svg>
-          <span>اختصارات سريعة:</span>
-        </span>
-
-        <!-- Dynamic Active Working Date Selector Pill (يحدد اليوم أو أمس أو تاريخ مخصص) -->
+      <!-- Tier 2: Structured Architectural Operations Strip (Rectangular Modules instead of Bubble Pills) -->
+      <div class="px-3 lg:px-6 py-2 bg-[var(--bg-surface-muted)] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <!-- Active Working Date Module -->
         <button
           type="button"
           (click)="store.showDateSelectorModal.set(true)"
-          class="px-3.5 py-1.5 rounded-full border text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer transition-all shadow-xs"
-          [class.bg-emerald-600]="!store.isCustomDateActive()"
-          [class.text-white]="!store.isCustomDateActive()"
-          [class.border-emerald-600]="!store.isCustomDateActive()"
-          [class.bg-amber-500]="store.isCustomDateActive()"
-          [class.text-slate-950]="store.isCustomDateActive()"
-          [class.border-amber-600]="store.isCustomDateActive()"
+          class="px-3 py-1.5 rounded-lg border text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer transition-colors"
+          [class]="
+            store.isCustomDateActive()
+              ? 'bg-amber-500 text-slate-950 border-amber-600'
+              : 'bg-[var(--bg-card)] text-[var(--text-heading)] border-[var(--border-subtle)] hover:border-[#2563EB]'
+          "
           title="اضغط لتغيير تاريخ العمل أو الرجوع لتاريخ اليوم"
         >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5">calendar_today</mat-icon>
-          <span>تاريخ العمل: {{ store.dateDifferenceLabel() }} ({{ store.digits(store.todayIso()) }})</span>
-          @if (store.isCustomDateActive()) {
-            <span class="px-1.5 py-0.2 rounded-md bg-slate-950 text-amber-300 text-[10px] font-bold">تعديل</span>
-          }
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-[#2563EB]">calendar_today</mat-icon>
+          <span>التاريخ: {{ store.dateDifferenceLabel() }} ({{ store.digits(store.todayIso()) }})</span>
         </button>
 
+        <!-- Comprehensive Safe & Profit Module -->
         <a
           routerLink="/my-ledger"
-          class="px-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap shadow-xs hover:bg-emerald-500 transition-all"
+          class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors"
         >
           <mat-icon class="!text-sm !w-3.5 !h-3.5">account_balance_wallet</mat-icon>
-          <span>حسابي الشامل والخزنة (صافي ربح: {{ store.money(store.comprehensiveLedger().totalNetProfit) }})</span>
+          <span>الخزنة (صافي ربح: {{ store.money(store.comprehensiveLedger().totalNetProfit) }})</span>
         </a>
 
+        <!-- + Incoming Payment -->
         <button
           type="button"
           (click)="openQuickActionModal('incoming')"
-          class="px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[var(--text-heading)] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap hover:bg-amber-500 hover:text-slate-950 transition-all cursor-pointer"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-amber-500 text-[var(--text-heading)] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer transition-colors"
         >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-600 dark:text-amber-400">add_card</mat-icon>
-          <span>+ وصلني مبلغ (شيك / شركة / شخص)</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-600">add_card</mat-icon>
+          <span>+ وصلني مبلغ</span>
         </button>
 
+        <!-- Mandatory Headcount -->
         <button
           type="button"
           (click)="openHeadcountModal()"
-          class="px-3.5 py-1.5 rounded-full border text-[var(--text-heading)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
-          [class.bg-[var(--color-secondary-soft)]]="!store.todayHeadcountMatch().isExactMatch"
-          [class.border-[#E7C78F]]="!store.todayHeadcountMatch().isExactMatch"
-          [class.bg-emerald-50]="store.todayHeadcountMatch().isExactMatch"
-          [class.dark:bg-emerald-950/40]="store.todayHeadcountMatch().isExactMatch"
-          [class.border-emerald-300]="store.todayHeadcountMatch().isExactMatch"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border text-[var(--text-heading)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer transition-colors"
+          [class.border-amber-500]="!store.todayHeadcountMatch().isExactMatch"
+          [class.border-emerald-600]="store.todayHeadcountMatch().isExactMatch"
         >
-          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2"></rect>
-            <path d="m9 16 2 2 4-4"></path>
-          </svg>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-[#2563EB]">fact_check</mat-icon>
           <span>
-            العدد اليومي الإجباري ({{ store.num(store.todayHeadcountMatch().actualDays) }}/{{ store.num(store.todayHeadcountMatch().expectedDays) }} يومية · {{ store.num(store.todayHeadcountMatch().actualNights) }}/{{ store.num(store.todayHeadcountMatch().expectedNights) }} سهرة)
+            العدد الإجباري ({{ store.num(store.todayHeadcountMatch().actualDays) }}/{{ store.num(store.todayHeadcountMatch().expectedDays) }} ي · {{ store.num(store.todayHeadcountMatch().actualNights) }}/{{ store.num(store.todayHeadcountMatch().expectedNights) }} س)
           </span>
         </button>
 
+        <!-- Daily Date Inspector (20-10) -->
         <a
           routerLink="/daily-inspector"
-          class="px-3.5 py-1.5 rounded-full bg-indigo-600 text-white hover:bg-indigo-500 text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
+          class="px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors"
         >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5">event_Repeat</mat-icon>
-          <span>📆 كشف اليوم بالتاريخ (مثال: ٢٠-١٠)</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">event_note</mat-icon>
+          <span>كشف اليوم بالتاريخ (٢٠-١٠)</span>
         </a>
 
+        <!-- Smart Offline Sync Queue -->
         <a
           routerLink="/sync-center"
-          class="px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-[var(--text-heading)] hover:bg-amber-500 hover:text-slate-950 text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-[var(--text-heading)] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors"
         >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-600 dark:text-amber-400">sync_lock</mat-icon>
-          <span>🔄 المزامنة الذكية والأوفلاين ({{ store.num(store.offlinePendingQueue().length) }})</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-600">sync</mat-icon>
+          <span>المزامنة والأوفلاين ({{ store.num(store.offlinePendingQueue().length) }})</span>
         </a>
 
+        <!-- Live Excel Sheet -->
         <a
           routerLink="/live-excel"
-          class="px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-400 dark:border-emerald-700 text-[#107c41] dark:text-emerald-300 hover:bg-[#107c41] hover:text-white text-xs font-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors shadow-2xs"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-emerald-600 text-[var(--text-heading)] text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors"
         >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-emerald-600 dark:text-emerald-400">grid_on</mat-icon>
-          <span>📊 شيت إكسيل المباشر (Excel)</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-emerald-600">grid_on</mat-icon>
+          <span>شيت الإكسيل المباشر</span>
         </a>
 
+        <!-- Bulk Entry -->
         <a
           routerLink="/bulk"
-          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
         >
-          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 5v14M5 12h14"></path>
-          </svg>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-[#2563EB]">playlist_add</mat-icon>
           <span>تسجيل يوميات وسهرات</span>
         </a>
 
-        <button
-          type="button"
-          (click)="openQuickActionModal('deduction')"
-          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
-        >
-          <svg class="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M8 12h8"></path>
-          </svg>
-          <span>خصم فوري (يوم / نص / فلوس)</span>
-        </button>
-
+        <!-- Quick Advance -->
         <button
           type="button"
           (click)="openQuickActionModal('advance')"
-          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-[var(--color-primary)] text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
         >
-          <svg class="w-3.5 h-3.5 text-[#3390EC] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect width="20" height="14" x="2" y="5" rx="2"></rect>
-            <line x1="2" x2="22" y1="10" y2="10"></line>
-          </svg>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-[#2563EB]">payments</mat-icon>
           <span>سلفة سريعة</span>
         </button>
 
+        <!-- Quick Deduction -->
+        <button
+          type="button"
+          (click)="openQuickActionModal('deduction')"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-rose-500 text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
+        >
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-rose-600">remove_circle_outline</mat-icon>
+          <span>خصم فوري</span>
+        </button>
+
+        <!-- Payday 15th -->
         <a
           routerLink="/settlements"
-          class="px-3.5 py-1.5 rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[#2563EB] text-[var(--text-heading)] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
         >
-          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-          </svg>
-          <span>كشف قبض يوم ١٥ (باقي {{ store.num(store.payday15Info().daysUntilPayday) }} يوم)</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-[#2563EB]">request_quote</mat-icon>
+          <span>قبض ١٥ (باقي {{ store.num(store.payday15Info().daysUntilPayday) }} يوم)</span>
         </a>
 
-        <button
-          type="button"
-          (click)="copyDailyWhatsAppSummary()"
-          class="px-3.5 py-1.5 rounded-full bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:border-emerald-500 text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
-        >
-          <svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
-            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
-          </svg>
-          <span>نسخ ملخص واتساب</span>
-        </button>
-
+        <!-- Zaki AI Assistant -->
         <a
           routerLink="/zaki"
-          class="px-3.5 py-1.5 rounded-full bg-[#3390EC] dark:bg-[#4EA4F6] text-white dark:text-[#0E1621] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+          class="px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-blue-600 text-white text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
         >
-          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 8V4H8"></path>
-            <rect width="16" height="12" x="4" y="8" rx="2"></rect>
-          </svg>
-          <span>اسأل المساعد زكي</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5 text-amber-400">smart_toy</mat-icon>
+          <span>المساعد زكي (API + محلي)</span>
         </a>
 
-        <button
-          type="button"
-          (click)="store.showZakiCapabilitiesModal.set(true)"
-          class="px-3.5 py-1.5 rounded-full bg-amber-500 text-slate-950 text-xs font-extrabold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer shadow-xs"
-        >
-          <mat-icon class="!text-sm !w-3.5 !h-3.5">menu_book</mat-icon>
-          <span>ماذا يمكن للبوت فعله؟</span>
-        </button>
-
-        <!-- Instant 1-Click Cloud vs Local-Only Mode Switcher -->
-        <button
-          type="button"
-          (click)="store.toggleLocalOnlyMode()"
-          class="px-3.5 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
-          [class.border-emerald-400]="!store.localOnlyMode()"
-          [class.bg-emerald-50]="!store.localOnlyMode()"
-          [class.dark:bg-emerald-950/30]="!store.localOnlyMode()"
-          [class.text-emerald-700]="!store.localOnlyMode()"
-          [class.dark:text-emerald-300]="!store.localOnlyMode()"
-          [class.border-[#E7C78F]]="store.localOnlyMode()"
-          [class.bg-[var(--color-secondary-soft)]]="store.localOnlyMode()"
-          [class.text-[var(--text-heading)]]="store.localOnlyMode()"
-        >
-          @if (store.localOnlyMode()) {
-            <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_off</mat-icon>
-            <span>وضع محلي فقط (اضغط لتفعيل الخادم ١٠٠٪)</span>
-          } @else {
-            <mat-icon class="!text-sm !w-3.5 !h-3.5">cloud_done</mat-icon>
-            <span>مزامنة الخادم ١٠٠٪ (اضغط للوضع المحلي)</span>
-          }
-        </button>
-
+        <!-- Zero Reset -->
         <button
           type="button"
           (click)="confirmZeroResetOpen.set(true)"
-          class="px-3.5 py-1.5 rounded-full border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-rose-600 hover:border-rose-300 text-xs font-semibold inline-flex items-center gap-1 shrink-0 whitespace-nowrap mr-auto"
+          class="px-3 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-rose-600 hover:border-rose-400 text-xs font-bold inline-flex items-center gap-1 shrink-0 whitespace-nowrap mr-auto cursor-pointer"
         >
-          <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-            <path d="M3 3v5h5"></path>
-          </svg>
-          <span>تصفير الكل (٠)</span>
+          <mat-icon class="!text-sm !w-3.5 !h-3.5">restart_alt</mat-icon>
+          <span>تصفير (٠)</span>
         </button>
       </div>
 
-      <!-- SMART ACTIVE DATE WARNING BANNER (يظهر فوراً عند العمل أو التعديل على أمس أو أي يوم سابق) -->
+      <!-- Active Custom Date Warning Strip (Solid Amber) -->
       @if (store.isCustomDateActive()) {
-        <div class="px-3 lg:px-6 py-2.5 bg-gradient-to-l from-amber-500/25 via-amber-400/20 to-amber-500/25 border-t border-amber-500/40 text-slate-900 dark:text-amber-100 flex flex-wrap items-center justify-between gap-2.5 text-xs font-semibold animate-fade-in shadow-xs">
+        <div class="px-3 lg:px-6 py-2 bg-amber-500 text-slate-950 border-t border-amber-600 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="w-7 h-7 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-bold shadow-xs">
-              <mat-icon class="!w-4 !h-4 !text-[18px]">warning</mat-icon>
-            </div>
+            <mat-icon class="!w-4 !h-4 !text-[18px] shrink-0">warning</mat-icon>
             <div>
-              <span class="font-black text-amber-950 dark:text-amber-300 text-sm">خلي بالك وركّز:</span>
-              <span class="text-slate-800 dark:text-slate-100"> أنت الآن بتسجل وبتعدل على يوم <strong>{{ store.dateDifferenceLabel() }} ({{ store.digits(store.todayIso()) }})</strong> وليس تاريخ اليوم الفعلي! أي يوميات أو سلف أو مصاريف تسجلها هتتسجل في التاريخ ده.</span>
+              <span class="font-black">تنبيه التاريخ النشط:</span>
+              <span> أنت تسجل وتعدل الآن على يوم <strong>{{ store.dateDifferenceLabel() }} ({{ store.digits(store.todayIso()) }})</strong>.</span>
             </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               (click)="store.showDateSelectorModal.set(true)"
-              class="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs inline-flex items-center gap-1 cursor-pointer"
+              class="px-2.5 py-1 rounded bg-slate-900 text-white font-bold text-xs cursor-pointer"
             >
-              <mat-icon class="!w-4 !h-4 !text-[16px]">edit_calendar</mat-icon>
-              <span>تغيير التاريخ</span>
+              تغيير التاريخ
             </button>
             <button
               type="button"
               (click)="store.resetToSystemToday()"
-              class="px-3.5 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs inline-flex items-center gap-1.5 cursor-pointer shadow-sm transition-transform active:scale-95"
+              class="px-3 py-1 rounded bg-white text-slate-950 font-black text-xs cursor-pointer"
             >
-              <mat-icon class="!w-4 !h-4 !text-[16px]">restart_alt</mat-icon>
-              <span>العودة لتاريخ اليوم ({{ store.digits(store.systemActualToday()) }})</span>
+              العودة لليوم ({{ store.digits(store.systemActualToday()) }})
             </button>
           </div>
         </div>
       }
     </div>
 
-    <!-- Mobile Navigation Drawer -->
+    <!-- Mobile Navigation Drawer (Solid Surface) -->
     @if (mobileMenuOpen()) {
       <div class="fixed inset-0 z-50 lg:hidden flex">
         <div
-          class="fixed inset-0 bg-black/50"
+          class="fixed inset-0 bg-black/60"
           role="button"
           tabindex="0"
           aria-label="إغلاق القائمة"
@@ -975,17 +893,17 @@
           (keydown.enter)="mobileMenuOpen.set(false)"
           (keydown.escape)="mobileMenuOpen.set(false)"
         ></div>
-        <div class="relative w-72 max-w-[80vw] bg-[var(--bg-card)] h-full p-4 flex flex-col z-10 overflow-y-auto border-l border-[var(--border-subtle)]">
-          <div class="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
-            <span class="font-bold text-base text-[var(--text-heading)]">{{ store.settings().companyName }}</span>
-            <button type="button" (click)="mobileMenuOpen.set(false)" aria-label="إغلاق القائمة" class="p-1.5 rounded-full">
+        <div class="relative w-72 max-w-[82vw] bg-[var(--bg-card)] h-full p-4 flex flex-col z-10 overflow-y-auto border-l border-[var(--border-subtle)]">
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+            <span class="font-black text-base text-[var(--text-heading)]">{{ store.settings().companyName }}</span>
+            <button type="button" (click)="mobileMenuOpen.set(false)" aria-label="إغلاق القائمة" class="p-1.5 rounded-lg bg-[var(--bg-surface-muted)]">
               <mat-icon>close</mat-icon>
             </button>
           </div>
-          <nav class="py-3 px-1 space-y-4 flex-1 overflow-y-auto" aria-label="قائمة الموبايل الجانبية">
+          <nav class="py-3 px-1 space-y-3.5 flex-1 overflow-y-auto" aria-label="قائمة الموبايل الجانبية">
             @for (group of navItems; track group.category) {
               <div class="space-y-1">
-                <div class="px-3 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]/90">
+                <div class="px-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
                   {{ group.category }}
                 </div>
                 @for (item of group.items; track item.path) {
@@ -993,17 +911,17 @@
                     [routerLink]="item.path"
                     (click)="mobileMenuOpen.set(false)"
                     routerLinkActive="sidebar-nav-active"
-                    class="sidebar-nav-item flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all"
+                    class="sidebar-nav-item flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-xs font-bold"
                   >
                     <div class="flex items-center gap-2.5 min-w-0">
-                      <mat-icon class="!text-lg !w-5 !h-5 text-[#3390EC] shrink-0">{{ item.icon }}</mat-icon>
+                      <mat-icon class="!text-lg !w-5 !h-5 text-[#2563EB] shrink-0">{{ item.icon }}</mat-icon>
                       <div class="flex flex-col min-w-0">
                         <span class="truncate font-bold text-[var(--text-heading)]">{{ item.label }}</span>
-                        <span class="text-[10px] text-[var(--text-secondary)] font-normal truncate opacity-80">{{ item.description }}</span>
+                        <span class="text-[10px] text-[var(--text-secondary)] font-normal truncate">{{ item.description }}</span>
                       </div>
                     </div>
                     @if (item.badge) {
-                      <span class="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-500/15 text-emerald-600 shrink-0">
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-600 text-white shrink-0">
                         {{ item.badge }}
                       </span>
                     }

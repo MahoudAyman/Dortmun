@@ -2624,6 +2624,34 @@ export class StoreService {
     }
   }
 
+  readonly litePerformanceMode = signal<boolean>(false);
+
+  applyLitePerformanceMode(isLite: boolean): void {
+    this.litePerformanceMode.set(isLite);
+    if (!this.isBrowser) return;
+    if (isLite) {
+      document.documentElement.classList.add('lite-performance');
+    } else {
+      document.documentElement.classList.remove('lite-performance');
+    }
+    try {
+      localStorage.setItem('dortmun_lite_perf', isLite ? '1' : '0');
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  toggleLitePerformanceMode(): void {
+    const next = !this.litePerformanceMode();
+    this.applyLitePerformanceMode(next);
+    this.showToast(
+      next
+        ? 'تم تفعيل وضع السرعة القصوى للأجهزة الضعيفة ✓'
+        : 'تم تفعيل الوضع القياسي السريع بألوان سادة ✓',
+      'info'
+    );
+  }
+
   applyDarkMode(isDark: boolean): void {
     if (!this.isBrowser) return;
     if (isDark) {
@@ -2640,7 +2668,7 @@ export class StoreService {
     this.applyDarkMode(nextDark);
     await this.updateSettings({ darkMode: nextDark });
     this.showToast(
-      nextDark ? 'تم تفعيل الوضع الليلي (الداكن)' : 'تم تفعيل الوضع النهاري (الفاتح)',
+      nextDark ? 'تم تفعيل المظهر الليلي السادة فائق السرعة ✓' : 'تم تفعيل المظهر النهاري السادة فائق السرعة ✓',
       'success'
     );
   }

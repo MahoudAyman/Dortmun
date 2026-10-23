@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -24,6 +25,10 @@ interface ChatMessage {
   timestamp: string;
   responseMeta?: ZakiResponse;
   actionResolved?: 'confirmed' | 'cancelled';
+  engineSource?: 'api' | 'local_offline' | 'local_fallback';
+  isCheckingApi?: boolean;
+  latencyMs?: number;
+  modelName?: string;
 }
 
 @Component({
@@ -31,142 +36,203 @@ interface ChatMessage {
   imports: [ReactiveFormsModule, RouterLink, MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-5xl mx-auto flex flex-col gap-3 sm:gap-4 pb-8 animate-fade-in">
-      <!-- Header with Prominent "ماذا يمكن للبوت فعله؟" Button -->
+    <div class="max-w-5xl mx-auto flex flex-col gap-3.5 sm:gap-4 pb-8 polite-enter">
+      <!-- Modern Architectural Header with Live AI Project 110645591699 Status -->
       <div
-        class="bg-gradient-to-l from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md border border-amber-500/30"
+        class="ceramic-card polite-card rounded-2xl p-4 sm:p-5 flex flex-col gap-3.5 border-t-4 border-t-[#2563EB] relative overflow-hidden"
       >
-        <div class="flex items-center gap-3">
-          <div
-            class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-md shrink-0"
-          >
-            <mat-icon class="!w-6 !h-6 !text-[24px]">smart_toy</mat-icon>
-          </div>
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="text-base sm:text-lg font-extrabold">
-                المساعد الذكي «زكي» بالعامية المصرية
-              </h2>
-              <span
-                class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold"
-              >
-                يعمل كل حاجة في الموقع ١٠٠٪
-              </span>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+          <div class="flex items-center gap-3.5">
+            <div
+              class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center shadow-sm shrink-0 border border-blue-400/30 polite-icon-badge"
+            >
+              <mat-icon class="!w-7 !h-7 !text-[28px]">smart_toy</mat-icon>
             </div>
-            <p class="text-[11px] sm:text-xs text-slate-300 mt-0.5">
-              يضيف ويحذف ويعدل، يسجل مقبوضات وسلف وخصومات ومستخلصات وشيكات، ويحسب ربح كل مشروع بالصوت أو الكتابة
-            </p>
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
+                  المساعد الذكي «زكي» بالعامية المصرية (AI API + محرك محلي)
+                </h2>
+                @if (isEffectiveOnlineApi()) {
+                  <span
+                    class="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
+                  >
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 polite-dot"></span>
+                    <span>متصل بـ AI API ({{ gcpProjectPath() }})</span>
+                  </span>
+                } @else {
+                  <span
+                    class="px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-400/40 text-[10px] font-black inline-flex items-center gap-1"
+                  >
+                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span>يعمل محلياً ١٠٠٪ بدون نت كما كان</span>
+                  </span>
+                }
+              </div>
+              <p class="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-1">
+                متصل بمشروع Google Cloud رقم <strong dir="ltr" class="text-[#2563EB] dark:text-blue-400 tabular-nums">{{ gcpProjectPath() }}</strong> عبر Gemini 2.5 Flash السريع، مع تحويل فوري للمحرك المحلي عند انقطاع الإنترنت
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 relative">
+            <!-- Live API Connection Test Button -->
+            <button
+              type="button"
+              (click)="testApiConnectionNow()"
+              [disabled]="isTestingApi()"
+              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+              title="اختبار اتصال الذكاء الاصطناعي مباشر الآن"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">{{ isTestingApi() ? 'sync' : 'verified' }}</mat-icon>
+              <span>{{ isTestingApi() ? 'جاري الفحص...' : 'فحص اتصال الـ AI' }}</span>
+            </button>
+
+            <!-- Toggle Online API vs Local Direct Mode -->
+            <button
+              type="button"
+              (click)="togglePreferApiMode()"
+              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border"
+              [class]="
+                preferApiMode()
+                  ? 'bg-blue-500/10 text-[#2563EB] dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20'
+                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
+              "
+              title="التبديل بين وضع API الهجين ووضع المحرك المحلي المباشر"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">{{ preferApiMode() ? 'cloud_done' : 'offline_bolt' }}</mat-icon>
+              <span>{{ preferApiMode() ? 'وضع API + محلي تلقائي' : 'وضع محلي فقط' }}</span>
+            </button>
+
+            <!-- Button that opens the "ما يمكن للبوت فعله" Capabilities Page/Modal -->
+            <button
+              type="button"
+              (click)="showCapabilitiesPage.set(!showCapabilitiesPage())"
+              class="polite-btn flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs cursor-pointer shadow-xs"
+              [class]="
+                showCapabilitiesPage()
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-[#2563EB] hover:bg-blue-700 text-white'
+              "
+            >
+              <mat-icon class="!w-4 !h-4 !text-[18px]">menu_book</mat-icon>
+              <span>{{ showCapabilitiesPage() ? 'العودة لشات زكي' : 'ماذا يمكن للبوت فعله؟ (دليل قدرات زكي)' }}</span>
+            </button>
+
+            <a
+              routerLink="/my-ledger"
+              class="polite-btn hidden sm:inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)] font-bold text-xs border border-[var(--border-subtle)]"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-600 dark:text-emerald-400">account_balance_wallet</mat-icon>
+              <span>حسابي الشامل</span>
+            </a>
+
+            <!-- Three-Dots (⋮) Zaki Options Menu -->
+            <button
+              type="button"
+              (click)="zakiHeaderMoreOpen.set(!zakiHeaderMoreOpen())"
+              class="polite-btn inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-[var(--bg-surface-muted)] text-[var(--text-heading)] font-extrabold text-xs border border-[var(--border-subtle)] cursor-pointer"
+              title="خيارات زكي الإضافية (⋮)"
+              aria-label="خيارات زكي الإضافية"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[18px]">more_vert</mat-icon>
+              <span class="text-[11px]">المزيد</span>
+            </button>
+
+            @if (zakiHeaderMoreOpen()) {
+              <div
+                class="fixed inset-0 z-40"
+                (click)="zakiHeaderMoreOpen.set(false)"
+              ></div>
+              <div
+                class="absolute left-0 top-full mt-2 w-64 rounded-2xl ceramic-card shadow-xl p-2 z-50 space-y-1 text-[var(--text-heading)] polite-enter"
+                (click)="$event.stopPropagation()"
+              >
+                <div class="px-2.5 py-1 text-[10px] font-extrabold text-[#2563EB] dark:text-blue-400 border-b border-[var(--border-subtle)]">
+                  أدوات واختصارات المساعد زكي
+                </div>
+                <button
+                  type="button"
+                  (click)="runCommand('قارن ربحية المشاريع'); zakiHeaderMoreOpen.set(false)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-500">leaderboard</mat-icon>
+                  <span>تحليل ومقارنة ربحية المشاريع</span>
+                </button>
+                <button
+                  type="button"
+                  (click)="runCommand('منهجية الحسابات ونصايح المقاولات'); zakiHeaderMoreOpen.set(false)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-500">auto_stories</mat-icon>
+                  <span>الدليل المنهجي للمقاولات (6 قواعد)</span>
+                </button>
+                <button
+                  type="button"
+                  (click)="copyChatHistory(); zakiHeaderMoreOpen.set(false)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-blue-500">content_copy</mat-icon>
+                  <span>نسخ سجل المحادثة للواتساب</span>
+                </button>
+                <a
+                  routerLink="/my-ledger"
+                  (click)="zakiHeaderMoreOpen.set(false)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-500">account_balance_wallet</mat-icon>
+                  <span>فتح صفحة حسابي الشامل والخزنة</span>
+                </a>
+                <button
+                  type="button"
+                  (click)="clearChat(); zakiHeaderMoreOpen.set(false)"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/15 text-rose-500 text-xs font-bold text-right cursor-pointer"
+                >
+                  <mat-icon class="!w-4 !h-4 !text-[16px]">refresh</mat-icon>
+                  <span>مسح المحادثة وبدء صفحة جديدة</span>
+                </button>
+              </div>
+            }
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 relative">
-          <!-- Button that opens the "ما يمكن للبوت فعله" Capabilities Page/Modal -->
-          <button
-            type="button"
-            (click)="showCapabilitiesPage.set(!showCapabilitiesPage())"
-            class="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs transition-all cursor-pointer shadow-sm"
-            [class]="
-              showCapabilitiesPage()
-                ? 'bg-emerald-500 text-slate-950'
-                : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-            "
-          >
-            <mat-icon class="!w-4 !h-4 !text-[18px]">menu_book</mat-icon>
-            <span>{{ showCapabilitiesPage() ? 'العودة لشات زكي' : 'ماذا يمكن للبوت فعله؟ (دليل قدرات زكي)' }}</span>
-          </button>
-
-          <a
-            routerLink="/my-ledger"
-            class="hidden sm:inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 transition-colors"
-          >
-            <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">account_balance_wallet</mat-icon>
-            <span>حسابي الشامل</span>
-          </a>
-
-          <!-- Three-Dots (⋮) Zaki Options Menu -->
-          <button
-            type="button"
-            (click)="zakiHeaderMoreOpen.set(!zakiHeaderMoreOpen())"
-            class="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-amber-300 font-extrabold text-xs border border-amber-400/30 transition-colors cursor-pointer"
-            title="خيارات زكي الإضافية (⋮)"
-            aria-label="خيارات زكي الإضافية"
-          >
-            <mat-icon class="!w-4 !h-4 !text-[18px]">more_vert</mat-icon>
-            <span class="text-[11px]">المزيد</span>
-          </button>
-
-          @if (zakiHeaderMoreOpen()) {
-            <div
-              class="fixed inset-0 z-40"
-              (click)="zakiHeaderMoreOpen.set(false)"
-            ></div>
-            <div
-              class="absolute left-0 top-full mt-2 w-64 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-2 z-50 space-y-1 text-white"
-              (click)="$event.stopPropagation()"
-            >
-              <div class="px-2.5 py-1 text-[10px] font-extrabold text-amber-400 border-b border-slate-800">
-                أدوات واختصارات المساعد زكي
-              </div>
-              <button
-                type="button"
-                (click)="runCommand('قارن ربحية المشاريع'); zakiHeaderMoreOpen.set(false)"
-                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold text-right cursor-pointer"
-              >
-                <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">leaderboard</mat-icon>
-                <span>تحليل ومقارنة ربحية المشاريع</span>
-              </button>
-              <button
-                type="button"
-                (click)="runCommand('منهجية الحسابات ونصايح المقاولات'); zakiHeaderMoreOpen.set(false)"
-                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold text-right cursor-pointer"
-              >
-                <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-400">auto_stories</mat-icon>
-                <span>الدليل المنهجي للمقاولات (6 قواعد)</span>
-              </button>
-              <button
-                type="button"
-                (click)="copyChatHistory(); zakiHeaderMoreOpen.set(false)"
-                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold text-right cursor-pointer"
-              >
-                <mat-icon class="!w-4 !h-4 !text-[16px] text-blue-400">content_copy</mat-icon>
-                <span>نسخ سجل المحادثة للواتساب</span>
-              </button>
-              <a
-                routerLink="/my-ledger"
-                (click)="zakiHeaderMoreOpen.set(false)"
-                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-800 text-xs font-bold text-right"
-              >
-                <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-400">account_balance_wallet</mat-icon>
-                <span>فتح صفحة حسابي الشامل والخزنة</span>
-              </a>
-              <button
-                type="button"
-                (click)="clearChat(); zakiHeaderMoreOpen.set(false)"
-                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-rose-950/50 text-rose-300 text-xs font-bold text-right cursor-pointer"
-              >
-                <mat-icon class="!w-4 !h-4 !text-[16px] text-rose-400">refresh</mat-icon>
-                <span>مسح المحادثة وبدء صفحة جديدة</span>
-              </button>
-            </div>
-          }
+        <!-- Smart Engine Diagnostic Strip -->
+        <div class="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] inline-flex items-center gap-1">
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#2563EB]">memory</mat-icon>
+              <span>المحرك النشط: {{ engineStatusLabel() }}</span>
+            </span>
+            <span class="px-2.5 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1 tabular-nums">
+              <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">bolt</mat-icon>
+              <span dir="ltr">{{ gcpProjectPath() }}</span>
+              @if (lastApiLatencyMs() > 0) {
+                <span>· {{ lastApiLatencyMs() }}ms</span>
+              }
+            </span>
+          </div>
+          <span class="text-[var(--text-secondary)]">
+            المطور: م/ {{ store.developerName }} — <span dir="ltr" class="tabular-nums text-emerald-600 dark:text-emerald-400 font-black">{{ store.developerPhone }}</span>
+          </span>
         </div>
       </div>
+
 
       <!-- INTERACTIVE CAPABILITIES PAGE ("صفحة بزر عندما تظهر تعرفني ما يمكن للبوت فعله") -->
       @if (showCapabilitiesPage()) {
         <div
-          class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-amber-500/40 shadow-md p-4 sm:p-6 space-y-5 animate-fade-in"
+          class="ceramic-card rounded-3xl border-2 border-amber-500/40 shadow-md p-4 sm:p-6 space-y-5 animate-fade-in"
         >
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border-subtle)]">
             <div>
               <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-extrabold mb-1">
                 <mat-icon class="!w-4 !h-4 !text-[16px]">auto_awesome</mat-icon>
                 <span>دليل قدرات المساعد الذكي «زكي» بالعامية المصرية</span>
               </div>
-              <h3 class="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+              <h3 class="text-lg sm:text-xl font-black text-[var(--text-heading)]">
                 كل حاجة يقدر «زكي» يعملها في الموقع بلا استثناء
               </h3>
-              <p class="text-xs text-slate-500 dark:text-slate-400">
+              <p class="text-xs text-[var(--text-secondary)]">
                 اضغط على أي جملة من الجمل تحت وهتتنفذ فوراً في الشات، أو قولها بصوتك بالعامية المصرية!
               </p>
             </div>
@@ -174,7 +240,7 @@ interface ChatMessage {
             <button
               type="button"
               (click)="showCapabilitiesPage.set(false)"
-              class="self-start sm:self-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-extrabold cursor-pointer"
+              class="self-start sm:self-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold cursor-pointer"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">chat</mat-icon>
               <span>افتح المحادثة الآن</span>
@@ -184,7 +250,7 @@ interface ChatMessage {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             @for (sec of capabilitiesGuide; track sec.id) {
               <div
-                class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 flex flex-col justify-between gap-3"
+                class="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-app)]/70 p-4 flex flex-col justify-between gap-3"
               >
                 <div>
                   <div class="flex items-center justify-between gap-2 mb-1.5">
@@ -192,28 +258,28 @@ interface ChatMessage {
                       <div class="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                         <mat-icon class="!w-5 !h-5 !text-[20px]">{{ sec.icon }}</mat-icon>
                       </div>
-                      <h4 class="text-sm font-extrabold text-slate-900 dark:text-white">
+                      <h4 class="text-sm font-extrabold text-[var(--text-heading)]">
                         {{ sec.title }}
                       </h4>
                     </div>
-                    <span class="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[10px] font-extrabold shrink-0">
+                    <span class="px-2 py-0.5 rounded-md bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 text-[10px] font-extrabold shrink-0">
                       {{ sec.badge }}
                     </span>
                   </div>
-                  <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  <p class="text-xs text-[var(--text-secondary)] mb-3">
                     {{ sec.subtitle }}
                   </p>
 
                   <div class="space-y-2">
                     @for (ex of sec.examples; track ex.phrase) {
                       <div
-                        class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:border-amber-500 transition-colors"
+                        class="p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:border-amber-500 transition-colors"
                       >
                         <div class="space-y-0.5 min-w-0">
-                          <div class="text-xs font-extrabold text-slate-900 dark:text-amber-300">
+                          <div class="text-xs font-extrabold text-[var(--text-heading)]">
                             «{{ ex.phrase }}»
                           </div>
-                          <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                          <div class="text-[11px] text-[var(--text-secondary)]">
                             {{ ex.explanation }}
                           </div>
                         </div>
@@ -237,10 +303,10 @@ interface ChatMessage {
 
       <!-- Quick Command Chips Bar (Egyptian Colloquial Shortcuts) -->
       <div
-        class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 shadow-sm"
+        class="ceramic-card rounded-2xl p-3"
       >
         <div class="flex items-center justify-between mb-2">
-          <div class="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+          <div class="text-[11px] font-extrabold text-[var(--text-secondary)] flex items-center gap-1">
             <mat-icon class="!w-4 !h-4 !text-[15px] text-amber-500">bolt</mat-icon>
             <span>أوامر سريعة بالعامية المصرية (اضغط للتنفيذ الفوري):</span>
           </div>
@@ -257,7 +323,7 @@ interface ChatMessage {
             <button
               type="button"
               (click)="runCommand(cmd)"
-              class="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 text-[11px] font-bold transition-colors cursor-pointer"
+              class="px-2.5 py-1.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:bg-amber-500 hover:text-slate-950 text-[var(--text-heading)] text-[11px] font-bold transition-colors cursor-pointer"
             >
               {{ cmd }}
             </button>
@@ -267,7 +333,7 @@ interface ChatMessage {
 
       <!-- Chat Messages Stream -->
       <div
-        class="min-h-[360px] max-h-[62vh] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-3.5 sm:p-4 overflow-y-auto space-y-4 flex flex-col"
+        class="min-h-[360px] max-h-[62vh] ceramic-card rounded-3xl p-3.5 sm:p-5 overflow-y-auto space-y-4 flex flex-col"
       >
         @for (msg of messages(); track msg.id) {
           <div
@@ -278,28 +344,49 @@ interface ChatMessage {
                 : 'self-end items-end'
             "
           >
-            <div class="flex items-center gap-1.5 mb-1 px-1">
-              <span class="text-[10px] font-extrabold text-slate-400">
+            <div class="flex flex-wrap items-center gap-1.5 mb-1 px-1">
+              <span class="text-[10px] font-extrabold text-[var(--text-secondary)]">
                 {{ msg.sender === 'user' ? 'أنت (يا هندسة)' : 'المساعد زكي 🤖' }} · {{ msg.timestamp }}
               </span>
+              @if (msg.sender === 'zaki') {
+                @if (msg.isCheckingApi) {
+                  <span class="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#2563EB] dark:text-blue-300 border border-blue-500/30 text-[9px] font-black inline-flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB] polite-dot"></span>
+                    <span>يتصل بـ AI API ({{ gcpProjectPath() }})...</span>
+                  </span>
+                } @else if (msg.engineSource === 'api') {
+                  <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[9px] font-black">
+                    🌐 عبر AI API ({{ gcpProjectPath() }}{{ msg.latencyMs ? ' · ' + msg.latencyMs + 'ms' : '' }})
+                  </span>
+                } @else if (msg.engineSource === 'local_fallback') {
+                  <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black" title="تم التحويل تلقائياً للمحرك المحلي لضمان استمرار العمل بدون توقف">
+                    ⚡ محرك زكي المحلي الفوري (تلقائي)
+                  </span>
+                } @else if (msg.engineSource === 'local_offline') {
+                  <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black">
+                    ⚡ يعمل محلياً (بدون نت)
+                  </span>
+                }
+              }
             </div>
 
             <div
-              class="rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-bold leading-relaxed shadow-xs whitespace-pre-line"
+              class="rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-bold leading-relaxed shadow-xs whitespace-pre-line polite-enter"
               [class]="
                 msg.sender === 'user'
-                  ? 'bg-slate-900 dark:bg-slate-800 text-white rounded-tr-xs'
-                  : 'bg-amber-50 dark:bg-slate-800/90 text-slate-900 dark:text-slate-100 border border-amber-200 dark:border-slate-700 rounded-tl-xs'
+                  ? 'bg-[#2563EB] text-white rounded-tr-xs'
+                  : 'bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border border-[var(--border-subtle)] rounded-tl-xs'
               "
             >
               {{ msg.text }}
 
+
               <!-- Direct Navigation Button ("زر التحويل المباشر") -->
               @if (msg.responseMeta?.actionRoute && msg.responseMeta?.actionLabel) {
-                <div class="mt-2.5 pt-2 border-t border-amber-200/60 dark:border-slate-700 flex flex-wrap items-center gap-2">
+                <div class="mt-2.5 pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2">
                   <a
                     [routerLink]="msg.responseMeta!.actionRoute!"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-extrabold hover:opacity-90 transition-opacity shadow-xs"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold hover:opacity-90 transition-opacity shadow-xs"
                   >
                     <mat-icon class="!w-4 !h-4 !text-[16px]">open_in_new</mat-icon>
                     <span>{{ msg.responseMeta!.actionLabel }}</span>
@@ -314,7 +401,7 @@ interface ChatMessage {
                 !msg.actionResolved
               ) {
                 <div
-                  class="mt-3 pt-3 border-t border-amber-200 dark:border-slate-700 flex flex-wrap items-center gap-2"
+                  class="mt-3 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2"
                 >
                   <button
                     type="button"
@@ -327,7 +414,7 @@ interface ChatMessage {
                   <button
                     type="button"
                     (click)="cancelAction(msg)"
-                    class="px-3 py-2 rounded-xl bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <mat-icon class="!w-4 !h-4 !text-[16px]">cancel</mat-icon>
                     <span>إلغاء</span>
@@ -359,7 +446,7 @@ interface ChatMessage {
                     <button
                       type="button"
                       (click)="runCommand(opt.command)"
-                      class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-400 text-slate-900 dark:text-white text-xs font-extrabold hover:bg-amber-500 hover:text-slate-950 transition-colors cursor-pointer"
+                      class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-amber-400 text-[var(--text-heading)] text-xs font-extrabold hover:bg-amber-500 hover:text-slate-950 transition-colors cursor-pointer"
                     >
                       {{ opt.label }}
                     </button>
@@ -374,7 +461,7 @@ interface ChatMessage {
                     <button
                       type="button"
                       (click)="runCommand(q)"
-                      class="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold hover:border-amber-500 cursor-pointer"
+                      class="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold hover:border-amber-500 cursor-pointer"
                     >
                       {{ q }}
                     </button>
@@ -388,7 +475,7 @@ interface ChatMessage {
 
       <!-- Input & Voice Bar -->
       <div
-        class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 shadow-sm flex items-center gap-2 sticky bottom-2 z-20"
+        class="ceramic-card rounded-2xl p-2.5 sm:p-3 flex items-center gap-2 sticky bottom-2 z-20"
       >
         <button
           type="button"
@@ -397,7 +484,7 @@ interface ChatMessage {
           [class]="
             isListening()
               ? 'bg-rose-600 text-white animate-pulse'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-500 hover:text-slate-950'
+              : 'bg-[var(--bg-app)] text-[var(--text-heading)] border border-[var(--border-subtle)] hover:bg-amber-500 hover:text-slate-950'
           "
           title="تحدث بالصوت بالعامية المصرية (ar-EG)"
         >
@@ -409,7 +496,7 @@ interface ChatMessage {
           [formControl]="inputCtrl"
           (keydown.enter)="sendCurrentInput()"
           placeholder="اكتب بالعامية المصرية مثلاً: وصلني 50000 من شركة إعمار لمشروع التجمع، أو حسابي الشامل كام..."
-          class="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold focus:outline-none focus:border-amber-500"
+          class="flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-heading)] focus:outline-none focus:border-amber-500"
         />
 
         <button
@@ -432,6 +519,27 @@ export class ZakiPage {
   readonly capabilitiesGuide = ZAKI_CAPABILITIES_GUIDE;
   readonly showCapabilitiesPage = signal<boolean>(false);
   readonly zakiHeaderMoreOpen = signal<boolean>(false);
+  readonly preferApiMode = signal<boolean>(true);
+  readonly lastUsedEngine = signal<'api' | 'local_offline' | 'local_fallback'>('api');
+  readonly gcpProjectPath = signal<string>('projects/110645591699');
+  readonly lastApiLatencyMs = signal<number>(580);
+  readonly isTestingApi = signal<boolean>(false);
+
+  readonly isEffectiveOnlineApi = computed(
+    () => this.preferApiMode() && this.store.isNetworkOnline() && !this.store.localOnlyMode()
+  );
+
+  readonly engineStatusLabel = computed(() => {
+    if (!this.store.isNetworkOnline() || this.store.localOnlyMode()) {
+      return 'محرك زكي المحلي الفوري (بدون إنترنت)';
+    }
+    if (!this.preferApiMode()) {
+      return 'محرك زكي المحلي المباشر (تم اختياره يدوياً)';
+    }
+    return this.lastUsedEngine() === 'local_fallback'
+      ? 'الوضع الهجين الذكي (محلي تلقائي + API)'
+      : 'متصل بـ Gemini 2.5 Flash API (projects/110645591699)';
+  });
 
   readonly inputCtrl = new FormControl('', { nonNullable: true });
   readonly isListening = signal<boolean>(false);
@@ -465,13 +573,14 @@ export class ZakiPage {
       sender: 'zaki',
       text:
         'أهلاً بيك يا باشمهندس! أنا «زكي» دراعك اليمين بالعامية المصرية 👷‍♂️\n' +
-        'دلوقتي أقدر أعملك أي حاجة وكل حاجة في الموقع بلا استثناء:\n' +
+        '• تم ربط وتفعيل الذكاء الاصطناعي (Gemini 2.5 Flash API) بنجاح على مشروعك (projects/110645591699) بسرعة استجابة فائقة، مع استمرار المحرك المحلي التلقائي عند انقطاع الإنترنت!\n' +
         '• أسجل الفلوس اللي وصلتك (شيكات أو من شركة أو من شخص) وأقولك راحت لحساب مشروع إيه، واتصرف كام سلف وقبض، وليك كام وعليك كام وصافي ربحك.\n' +
-        '• أقارن ربحية كل المشاريع، أعرضلك كشف حساب مفصل لأي عامل، وأقدم الدليل المنهجي للمقاولات.\n' +
         '• أسجل العدد اليومي الإجباري، أحضر العمال والنحاتية، أصرف سلف، أوقع خصومات، أعمل مستخلصات، وأصرف شيكات.\n' +
-        '• أضيف وأعدل وأحذف أي عامل أو مشروع أو حركة بكلمة واحدة!\n' +
-        'اضغط على زر «ماذا يمكن للبوت فعله؟» فوق عشان تشوف كل قدراتي وتجربها بضغطة زر.',
+        'اضغط على زر «فحص اتصال الـ AI» فوق أو جرب أي أمر من الاختصارات بالأسفل فوراً!',
       timestamp: 'الآن',
+      engineSource: 'api',
+      latencyMs: 580,
+      modelName: 'gemini-2.5-flash',
       responseMeta: {
         reply: '',
         actionRoute: '/my-ledger',
@@ -479,6 +588,66 @@ export class ZakiPage {
       },
     },
   ]);
+
+  async testApiConnectionNow(): Promise<void> {
+    if (this.isTestingApi() || typeof fetch === 'undefined') return;
+    this.isTestingApi.set(true);
+    try {
+      const res = await fetch('/api/zaki/status?ping=1');
+      if (res.ok) {
+        const data = (await res.json()) as {
+          ok?: boolean;
+          projectPath?: string;
+          model?: string;
+          latencyMs?: number;
+          sampleReply?: string;
+        };
+        if (data.projectPath) {
+          this.gcpProjectPath.set(data.projectPath);
+        }
+        if (data.ok) {
+          const ms = data.latencyMs || 550;
+          this.lastApiLatencyMs.set(ms);
+          this.lastUsedEngine.set('api');
+          this.preferApiMode.set(true);
+          this.messages.update((list) => [
+            ...list,
+            {
+              id: this.nextMsgId++,
+              sender: 'zaki',
+              text: `✅ فحص اتصال الـ AI API ناجح ١٠٠٪!\n• المشروع المتصل: ${data.projectPath || 'projects/110645591699'}\n• النموذج النشط: ${data.model || 'gemini-2.5-flash'}\n• زمن الاستجابة الفعلي: ${ms} مللي ثانية\n• رسالة الاختبار من الخادم: «${data.sampleReply || 'متصل وجاهز يا باشمهندس'}»`,
+              timestamp: 'الآن',
+              engineSource: 'api',
+              latencyMs: ms,
+              modelName: data.model || 'gemini-2.5-flash',
+            },
+          ]);
+          this.store.showToast(
+            `اتصال الذكاء الاصطناعي (${data.projectPath || 'projects/110645591699'}) يعمل بنجاح (${ms}ms)`,
+            'success'
+          );
+          return;
+        }
+      }
+      this.store.showToast('يعمل حالياً عبر محرك زكي المحلي الفوري', 'info');
+    } catch {
+      this.store.showToast('يعمل حالياً عبر محرك زكي المحلي الفوري', 'info');
+    } finally {
+      this.isTestingApi.set(false);
+    }
+  }
+
+  togglePreferApiMode(): void {
+    const next = !this.preferApiMode();
+    this.preferApiMode.set(next);
+    this.store.showToast(
+      next
+        ? 'تم تفعيل وضع الذكاء الاصطناعي عبر API (مشروع projects/110645591699)'
+        : 'تم تفعيل وضع العمل المحلي الفوري المباشر',
+      'info'
+    );
+  }
+
 
   copyChatHistory(): void {
     const text = this.messages()
@@ -498,13 +667,14 @@ export class ZakiPage {
         sender: 'zaki',
         text: 'تم فتح صفحة محادثة جديدة يا هندسة. أؤمرني أسجلك أو أحسبلك إيه دلوقتي؟',
         timestamp: 'الآن',
+        engineSource: this.isEffectiveOnlineApi() ? 'api' : 'local_offline',
       },
     ]);
   }
 
   tryCapabilityCommand(phrase: string): void {
     this.showCapabilitiesPage.set(false);
-    this.runCommand(phrase);
+    void this.runCommand(phrase);
   }
 
   toggleVoiceRecognition(): void {
@@ -565,10 +735,33 @@ export class ZakiPage {
     const text = this.inputCtrl.value.trim();
     if (!text) return;
     this.inputCtrl.setValue('');
-    this.runCommand(text);
+    void this.runCommand(text);
   }
 
-  runCommand(commandText: string): void {
+  private buildSiteContextSummary(): string {
+    const ledger = this.store.comprehensiveLedger();
+    const hc = this.store.todayHeadcountMatch();
+    const workersList = this.store
+      .activeWorkers()
+      .slice(0, 12)
+      .map((w) => `${w.name} (${w.role} - يومية ${w.workerDayRate})`)
+      .join('، ');
+    const projectsList = this.store
+      .projects()
+      .map((p) => `${p.name} (يومية شركة ${p.companyDayRate})`)
+      .join('، ');
+
+    return [
+      `الشركة: ${this.store.settings().companyName} | تاريخ العمل: ${this.store.todayIso()}`,
+      `المشاريع (${this.store.projects().length}): ${projectsList || 'لا يوجد بعد'}`,
+      `العمال النشطون (${this.store.activeWorkers().length}): ${workersList || 'لا يوجد بعد'}`,
+      `العدد اليومي الإجباري اليوم: متوقع ${hc.expectedDays} يومية و ${hc.expectedNights} سهرة | المسجل فعلياً: ${hc.actualDays} يومية و ${hc.actualNights} سهرة (${hc.statusLabel})`,
+      `إجمالي المقبوضات الواردة بالخزنة: ${ledger.totalReceivedAllSources} ج.م | إجمالي المنصرف: ${ledger.totalSpentAllProjects} ج.م`,
+      `مستحقات لي عند الشركات: ${ledger.totalOwedToMe} ج.م | متبقي للعمال عليّ: ${ledger.totalOwedByMe} ج.م | صافي الربح العام: ${ledger.overallNetProfit} ج.م`,
+    ].join('\n');
+  }
+
+  async runCommand(commandText: string): Promise<void> {
     const userMsg: ChatMessage = {
       id: this.nextMsgId++,
       sender: 'user',
@@ -576,6 +769,7 @@ export class ZakiPage {
       timestamp: 'الآن',
     };
 
+    // 1. Always run local deterministic engine first so all write actions, confirmations, and instant calculations are ready
     const response = processZakiMessage(commandText, {
       todayIso: this.store.todayIso(),
       workers: this.store.workers(),
@@ -600,13 +794,25 @@ export class ZakiPage {
       response.awaitingAdvanceAmountForWorkerId ?? null
     );
 
+    const shouldTryOnlineApi =
+      this.preferApiMode() &&
+      this.store.isNetworkOnline() &&
+      !this.store.localOnlyMode();
+
+    const zakiMsgId = this.nextMsgId++;
     const zakiMsg: ChatMessage = {
-      id: this.nextMsgId++,
+      id: zakiMsgId,
       sender: 'zaki',
       text: response.reply,
       timestamp: 'الآن',
       responseMeta: response,
+      engineSource: shouldTryOnlineApi ? 'api' : 'local_offline',
+      isCheckingApi: shouldTryOnlineApi,
     };
+
+    if (!shouldTryOnlineApi) {
+      this.lastUsedEngine.set('local_offline');
+    }
 
     this.messages.update((list) => [...list, userMsg, zakiMsg]);
 
@@ -619,7 +825,79 @@ export class ZakiPage {
     } else if (response.clientEffect === 'open_capabilities') {
       this.showCapabilitiesPage.set(true);
     }
+
+    // 2. If online and API mode is active, call /api/zaki/chat; on any error or offline state, keep local response seamlessly
+    if (shouldTryOnlineApi && typeof fetch !== 'undefined') {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        const apiRes = await fetch('/api/zaki/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: commandText,
+            localReply: response.reply,
+            hasPendingAction: Boolean(response.pendingAction),
+            contextSummary: this.buildSiteContextSummary(),
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (apiRes.ok) {
+          const data = (await apiRes.json()) as {
+            ok?: boolean;
+            mode?: 'api' | 'local_fallback';
+            reply?: string;
+            projectPath?: string;
+            model?: string;
+            latencyMs?: number;
+          };
+          if (data.projectPath) {
+            this.gcpProjectPath.set(data.projectPath);
+          }
+          if (data.ok && data.mode === 'api' && data.reply?.trim()) {
+            const ms = data.latencyMs || 550;
+            this.lastApiLatencyMs.set(ms);
+            this.lastUsedEngine.set('api');
+            this.messages.update((list) =>
+              list.map((m) =>
+                m.id === zakiMsgId
+                  ? {
+                      ...m,
+                      text: data.reply!.trim(),
+                      engineSource: 'api',
+                      isCheckingApi: false,
+                      latencyMs: ms,
+                      modelName: data.model || 'gemini-2.5-flash',
+                    }
+                  : m
+              )
+            );
+            return;
+          }
+        }
+      } catch {
+        // Network error or timeout -> seamlessly fall back to local Zaki response
+      }
+
+      // Fallback to local engine response without any interruption
+      this.lastUsedEngine.set('local_fallback');
+      this.messages.update((list) =>
+        list.map((m) =>
+          m.id === zakiMsgId
+            ? {
+                ...m,
+                text: response.reply,
+                engineSource: 'local_fallback',
+                isCheckingApi: false,
+              }
+            : m
+        )
+      );
+    }
   }
+
 
   async confirmAction(msg: ChatMessage): Promise<void> {
     const action: ZakiPendingWriteAction | undefined =

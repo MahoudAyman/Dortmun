@@ -4,6 +4,7 @@ import {
   isMainModule,
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
+import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import express from 'express';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -18,6 +19,13 @@ const SUPABASE_URL =
 const SUPABASE_KEY =
   process.env['SUPABASE_PUBLISHABLE_KEY'] ||
   'sb_publishable_7A5T6fhkfAp0IApJMArKuA_Zk8hkPdj';
+
+const DORTMUN_GCP_PROJECT_ID =
+  process.env['GOOGLE_CLOUD_PROJECT'] || '110645591699';
+const DORTMUN_GCP_PROJECT_PATH =
+  process.env['GOOGLE_CLOUD_PROJECT_PATH'] || `projects/${DORTMUN_GCP_PROJECT_ID}`;
+const FALLBACK_DORTMUN_GEMINI_KEY =
+  'AQ.Ab8RN6Ku36Fvo5EfMPPGPFBZ2KL-lvxOHW3MHlqWWi5e3C7arA';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
@@ -593,6 +601,256 @@ app.post('/api/cloud/backups/:id/restore', async (req, res) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
+/**
+ * Helper to resolve candidate Gemini API keys configured for project 110645591699.
+ */
+function getCandidateGeminiKeys(): string[] {
+  return Array.from(
+    new Set(
+      [
+        FALLBACK_DORTMUN_GEMINI_KEY,
+        process.env['GEMINI_API_KEY'],
+        process.env['GOOGLE_API_KEY'],
+      ]
+        .map((k) => (k || '').trim())
+        .filter((k) => k.length > 5 && k !== 'MY_GEMINI_API_KEY')
+    )
+  );
+}
+
+/**
+ * Helper to call Gemini AI using @google/genai and fast v1beta endpoint with thinkingBudget: 0
+ * for sub-second response times on project projects/110645591699.
+ */
+async function callDortmunGeminiAi(
+  promptContent: string,
+  systemInstruction: string
+): Promise<{ text: string; model: string; latencyMs: number } | null> {
+  const candidateKeys = getCandidateGeminiKeys();
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest'];
+
+  for (const apiKey of candidateKeys) {
+    for (const modelName of modelsToTry) {
+      const t0 = Date.now();
+      // Strategy 1: Fast direct REST call with thinkingBudget: 0 (~550ms latency, avoids ADC metadata delay on AQ. keys)
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5500);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'aistudio-build',
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemInstruction }],
+            },
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: promptContent }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.35,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (resp.ok) {
+          const data = (await resp.json()) as {
+            candidates?: Array<{
+              content?: { parts?: Array<{ text?: string }> };
+            }>;
+          };
+          const text = (
+            data?.candidates?.[0]?.content?.parts
+              ?.map((p) => p.text || '')
+              .join('') || ''
+          ).trim();
+          if (text) {
+            return {
+              text,
+              model: modelName,
+              latencyMs: Date.now() - t0,
+            };
+          }
+        }
+      } catch {
+        // Proceed to SDK strategy
+      }
+
+      // Strategy 2: @google/genai SDK call
+      try {
+        const ai = new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
+          },
+        });
+        const sdkCall = ai.models.generateContent({
+          model: modelName,
+          contents: promptContent,
+          config: {
+            systemInstruction,
+            temperature: 0.35,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('GEMINI_SDK_TIMEOUT')), 5500)
+        );
+        const response = await Promise.race([sdkCall, timeoutPromise]);
+        const aiText = (response?.text || '').trim();
+        if (aiText) {
+          return {
+            text: aiText,
+            model: modelName,
+            latencyMs: Date.now() - t0,
+          };
+        }
+      } catch {
+        // Try next model or key
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * GET /api/zaki/status
+ * Verifies live AI API connectivity for project 110645591699 (projects/110645591699).
+ */
+app.get('/api/zaki/status', async (req, res) => {
+  const testPing = req.query['ping'] === '1';
+  const keys = getCandidateGeminiKeys();
+  if (keys.length === 0) {
+    res.json({
+      ok: false,
+      status: 'no_key',
+      projectId: DORTMUN_GCP_PROJECT_ID,
+      projectPath: DORTMUN_GCP_PROJECT_PATH,
+    });
+    return;
+  }
+
+  if (!testPing) {
+    res.json({
+      ok: true,
+      status: 'ready',
+      projectId: DORTMUN_GCP_PROJECT_ID,
+      projectPath: DORTMUN_GCP_PROJECT_PATH,
+      model: 'gemini-2.5-flash',
+    });
+    return;
+  }
+
+  const result = await callDortmunGeminiAi(
+    'قل: متصل وجاهز يا باشمهندس في 4 كلمات فقط',
+    'أنت المساعد الذكي زكي لشركة دورتمون للمقاولات.'
+  );
+
+  if (result) {
+    res.json({
+      ok: true,
+      status: 'connected',
+      projectId: DORTMUN_GCP_PROJECT_ID,
+      projectPath: DORTMUN_GCP_PROJECT_PATH,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      sampleReply: result.text,
+    });
+    return;
+  }
+
+  res.json({
+    ok: false,
+    status: 'local_fallback',
+    projectId: DORTMUN_GCP_PROJECT_ID,
+    projectPath: DORTMUN_GCP_PROJECT_PATH,
+  });
+});
+
+/**
+ * POST /api/zaki/chat
+ * Hybrid Online Gemini AI Assistant endpoint for Zaki ("المساعد الذكي زكي").
+ * Uses Gemini API (Project 110645591699 / projects/110645591699) when online and valid;
+ * if the API fails or is unreachable, returns { ok: false, mode: 'local_fallback' }
+ * so the client seamlessly uses the local Zaki engine.
+ */
+app.post('/api/zaki/chat', async (req, res) => {
+  const { message, localReply, contextSummary, hasPendingAction } = (req.body || {}) as {
+    message?: string;
+    localReply?: string;
+    contextSummary?: string;
+    hasPendingAction?: boolean;
+  };
+
+  const userPrompt = String(message || '').trim();
+  if (!userPrompt) {
+    res.json({ ok: false, mode: 'local_fallback', reply: localReply || '' });
+    return;
+  }
+
+  const candidateKeys = getCandidateGeminiKeys();
+  if (candidateKeys.length === 0) {
+    res.json({
+      ok: false,
+      mode: 'local_fallback',
+      reply: localReply || '',
+      reason: 'No API key configured',
+    });
+    return;
+  }
+
+  const systemInstruction = [
+    'أنت «زكي» المساعد الذكي الهندسي والمالي لشركة دورتمون للمقاولات (إدارة المهندس، وتطوير م/ محمود أيمن 01029046651).',
+    'تحدث باللهجة العامية المصرية المهنية المحترمة والودودة (مثل: يا هندسة، يا باشمهندس، عيوني).',
+    'اعتمد بدقة ١٠٠٪ على بيانات الموقع الحية المرفقة ولا تخترع أرقاماً من عندك.',
+    hasPendingAction
+      ? 'ملاحظة هامة: النظام المحلي جهّز بالفعل زر تأكيد تنفيذ العملية للمستخدم. حافظ على تفاصيل العملية الدقيقة كما في الرد المحلي وأضف نصيحة سريعة أو توضيح مالي ذكي في سطرين فقط.'
+      : 'قدم إجابة مرتبة ومنظمة بالنقاط واضحة الأرقام وقابلة للقراءة السريعة.',
+  ].join('\n');
+
+  const promptContent = [
+    `رسالة المهندس: "${userPrompt}"`,
+    contextSummary ? `\nبيانات الموقع والخزنة الحية الآن:\n${contextSummary}` : '',
+    localReply ? `\nنتيجة المحرك المحلي الدقيقة للاستئناس بها وعدم مخالفة أرقامها:\n${localReply}` : '',
+  ].join('\n');
+
+  const aiResult = await callDortmunGeminiAi(promptContent, systemInstruction);
+  if (aiResult && aiResult.text) {
+    res.json({
+      ok: true,
+      mode: 'api',
+      reply: aiResult.text,
+      model: aiResult.model,
+      latencyMs: aiResult.latencyMs,
+      projectId: DORTMUN_GCP_PROJECT_ID,
+      projectPath: DORTMUN_GCP_PROJECT_PATH,
+    });
+    return;
+  }
+
+  res.json({
+    ok: false,
+    mode: 'local_fallback',
+    reply: localReply || '',
+    projectId: DORTMUN_GCP_PROJECT_ID,
+    projectPath: DORTMUN_GCP_PROJECT_PATH,
+    reason: 'API unavailable or key error — local engine active',
+  });
+});
+
 
 /**
  * Serve static files from /browser
