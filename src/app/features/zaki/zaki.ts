@@ -593,7 +593,7 @@ export class ZakiPage {
     if (this.isTestingApi() || typeof fetch === 'undefined') return;
     this.isTestingApi.set(true);
     try {
-      const res = await fetch('/api/zaki/status?ping=1');
+      const res = await this.store.authFetch('/api/zaki/status?ping=1');
       if (res.ok) {
         const data = (await res.json()) as {
           ok?: boolean;
@@ -831,7 +831,7 @@ export class ZakiPage {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 6000);
-        const apiRes = await fetch('/api/zaki/chat', {
+        const apiRes = await this.store.authFetch('/api/zaki/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

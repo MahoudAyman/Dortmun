@@ -59,6 +59,8 @@ export class App implements AfterViewInit, OnDestroy {
   readonly routeHistory = signal<string[]>(['/dashboard']);
   readonly pinAttempt = signal<string>('');
   readonly pinError = signal<boolean>(false);
+  readonly loginEmail = signal<string>('');
+  readonly loginPassword = signal<string>('');
   readonly isOnline = signal<boolean>(true);
   readonly deferredPrompt = signal<BeforeInstallPromptEvent | null>(null);
   readonly showPwaGuideModal = signal<boolean>(false);
@@ -675,12 +677,18 @@ export class App implements AfterViewInit, OnDestroy {
   }
 
   unlockWithPin(): void {
-    if (this.pinAttempt() === this.store.settings().pinHash) {
-      this.store.isLockedByPin.set(false);
-      this.pinError.set(false);
-    } else {
-      this.pinError.set(true);
-    }
+    // Kept for template compatibility only. The local PIN is no longer a
+    // security boundary; real access is gated by the Supabase owner login.
+    this.pinError.set(true);
+  }
+
+  async loginWithOwner(): Promise<void> {
+    const ok = await this.store.signInOwner(this.loginEmail(), this.loginPassword());
+    if (ok) this.loginPassword.set('');
+  }
+
+  async logoutOwner(): Promise<void> {
+    await this.store.signOutOwner();
   }
 
   async triggerPwaInstall(): Promise<void> {

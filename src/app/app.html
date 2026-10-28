@@ -1,30 +1,43 @@
-<!-- Optional PIN Lock Screen -->
-@if (store.isLockedByPin()) {
+<!-- Supabase owner login gate: no app content is usable before a valid owner session -->
+@if (!store.isAuthenticated()) {
   <div class="fixed inset-0 z-50 bg-[#0E1621] text-[#E6EDF5] flex items-center justify-center p-4">
     <div class="max-w-sm w-full ceramic-card bg-[#17212B] border border-[#24303F] p-6 text-center space-y-4">
       <div class="w-14 h-14 rounded-2xl bg-[#3390EC] text-white font-bold text-2xl flex items-center justify-center mx-auto">
         د
       </div>
       <h1 class="text-xl font-bold">{{ store.settings().companyName }}</h1>
-      <p class="text-sm text-[#8A99A8]">أدخل رمز الحماية (PIN) لفتح التطبيق</p>
+      <p class="text-sm text-[#8A99A8]">تسجيل دخول المالك فقط — لا يمكن قراءة أو تعديل أي بيانات من غير حساب المالك</p>
+      <input
+        type="email"
+        [value]="loginEmail()"
+        (input)="loginEmail.set($any($event.target).value)"
+        placeholder="البريد الإلكتروني"
+        aria-label="البريد الإلكتروني"
+        class="w-full text-center px-4 py-3 rounded-2xl bg-[#0E1621] border border-[#24303F]"
+      />
       <input
         type="password"
-        [value]="pinAttempt()"
-        (input)="pinAttempt.set($any($event.target).value)"
-        placeholder="••••"
-        aria-label="رمز الدخول PIN"
+        [value]="loginPassword()"
+        (input)="loginPassword.set($any($event.target).value)"
+        placeholder="كلمة السر"
+        aria-label="كلمة السر"
         class="w-full text-center text-xl tracking-widest px-4 py-3 rounded-2xl bg-[#0E1621] border border-[#24303F]"
       />
-      @if (pinError()) {
-        <p class="text-xs text-rose-400 font-bold">رمز PIN غير صحيح!</p>
+      @if (store.authError()) {
+        <p class="text-xs text-rose-400 font-bold">{{ store.authError() }}</p>
+      }
+      @if (store.authLockedUntil()) {
+        <p class="text-xs text-amber-400 font-bold">النظام مقفل حتى {{ store.authLockedUntil() }}</p>
       }
       <button
         type="button"
-        (click)="unlockWithPin()"
-        class="w-full py-3 rounded-full bg-[#3390EC] text-white font-bold text-sm"
+        (click)="loginWithOwner()"
+        [disabled]="store.authBusy()"
+        class="w-full py-3 rounded-full bg-[#3390EC] text-white font-bold text-sm disabled:opacity-50"
       >
-        فتح التطبيق
+        {{ store.authBusy() ? 'جارٍ التحقق...' : 'تسجيل الدخول' }}
       </button>
+      <p class="text-[11px] text-[#8A99A8]">بعد 3 محاولات فاشلة يُقفل النظام بالكامل لمدة 5 ساعات</p>
     </div>
   </div>
 }
@@ -175,6 +188,15 @@
 
     <!-- Sidebar Footer: Install PWA + Developer Credit -->
     <div class="p-3.5 border-t border-[var(--border-subtle)] bg-[var(--bg-surface-muted)] space-y-2.5">
+      <button
+        type="button"
+        (click)="logoutOwner()"
+        class="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer"
+      >
+        <mat-icon class="!w-4 !h-4 !text-[16px]">logout</mat-icon>
+        <span>تسجيل الخروج</span>
+      </button>
+
       <button
         type="button"
         (click)="triggerPwaInstall()"

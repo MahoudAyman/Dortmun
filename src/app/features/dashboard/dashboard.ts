@@ -1461,7 +1461,7 @@ export class DashboardPage {
         `العمال النشطون: ${this.store.activeWorkers().length} | المشاريع: ${this.store.projects().length}`,
       ].join('\n');
 
-      const res = await fetch('/api/zaki/chat', {
+      const res = await this.store.authFetch('/api/zaki/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

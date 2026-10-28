@@ -102,6 +102,7 @@ export interface PageAdvisorTip {
 
 const SUPABASE_PROJECT_URL = 'https://lmcxonnuzbamfqxbqshu.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7A5T6fhkfAp0IApJMArKuA_Zk8hkPdj';
+const OWNER_EMAIL = 'gqikdubrjntorldfieo36@gmail.com';
 const REALTIME_CHANNEL_NAME = 'dortmun-live-sync-v1';
 
 export function getSystemTodayIso(): string {
@@ -226,6 +227,14 @@ export class StoreService {
     null
   );
   readonly isLockedByPin = signal<boolean>(false);
+  // Supabase Auth lockdown: single owner account only. No data is loaded
+  // from the cloud before a valid owner session exists.
+  readonly authUserEmail = signal<string | null>(null);
+  readonly authReady = signal<boolean>(false);
+  readonly authBusy = signal<boolean>(false);
+  readonly authError = signal<string | null>(null);
+  readonly authLockedUntil = signal<string | null>(null);
+  readonly isAuthenticated = computed(() => this.authUserEmail() !== null);
   readonly globalSearchQuery = signal<string>('');
   readonly showQuickHeadcountModal = signal<boolean>(false);
   readonly showZakiCapabilitiesModal = signal<boolean>(false);
@@ -821,15 +830,11 @@ export class StoreService {
       }
 
       this.applyDarkMode(this.settings().darkMode);
-      if (this.settings().pinHash) {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('autostart') !== '1') {
-          this.isLockedByPin.set(true);
-        }
-      }
 
-      // Initialize Cloud Server & Supabase Realtime if not in Local-Only mode
-      if (!this.localOnlyMode()) {
+      // Auth gate: the old local PIN is no longer a security boundary.
+      // Cloud data is only loaded after a valid owner Supabase session.
+      await this.initAuth();
+      if (!this.localOnlyMode() && this.authUserEmail()) {
         await this.initCloudConnection();
       }
     } catch (err) {
@@ -837,8 +842,122 @@ export class StoreService {
     }
   }
 
+
+  getSupabaseClient(): SupabaseClient {
+    if (!this.supabase) {
+      this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true },
+        realtime: { params: { eventsPerSecond: 25 } },
+      });
+    }
+    return this.supabase;
+  }
+
+  async getAuthHeaders(): Promise<Record<string, string>> {
+    if (!this.isBrowser) return {};
+    try {
+      const client = this.getSupabaseClient();
+      const { data } = await client.auth.getSession();
+      const token = data.session?.access_token;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+    const headers = {
+      ...((init.headers as Record<string, string> | undefined) ?? {}),
+      ...(await this.getAuthHeaders()),
+    };
+    return fetch(input, { ...init, headers });
+  }
+
+  async initAuth(): Promise<void> {
+    if (!this.isBrowser) {
+      this.authReady.set(true);
+      return;
+    }
+    const client = this.getSupabaseClient();
+    const { data } = await client.auth.getSession();
+    const email = data.session?.user?.email ?? null;
+    if (email && email !== OWNER_EMAIL) {
+      await client.auth.signOut();
+      this.authUserEmail.set(null);
+    } else {
+      this.authUserEmail.set(email);
+    }
+    this.authReady.set(true);
+    client.auth.onAuthStateChange((_event, session) => {
+      const e = session?.user?.email ?? null;
+      this.authUserEmail.set(e && e === OWNER_EMAIL ? e : null);
+      if (!e) this.cloudSyncStatus.set('local_only');
+    });
+  }
+
+  async signInOwner(email: string, password: string): Promise<boolean> {
+    if (!this.isBrowser) return false;
+    this.authBusy.set(true);
+    this.authError.set(null);
+    try {
+      const client = this.getSupabaseClient();
+      const { data: lockedUntil } = await client.rpc('dortmun_login_lock_status');
+      const locked = lockedUntil as string | null;
+      if (locked && new Date(locked).getTime() > Date.now()) {
+        this.authLockedUntil.set(locked);
+        this.authError.set(`النظام مقفل حاليا بعد 3 محاولات فاشلة، حتى ${locked}`);
+        return false;
+      }
+      const { data, error } = await client.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error || !data.session || !data.user) {
+        const { data: newLock } = await client.rpc('dortmun_login_record_failure');
+        const newLocked = newLock as string | null;
+        if (newLocked) {
+          this.authLockedUntil.set(newLocked);
+          this.authError.set('تم قفل النظام بالكامل لمدة 5 ساعات بعد 3 محاولات فاشلة');
+        } else {
+          this.authError.set('بيانات الدخول غير صحيحة');
+        }
+        return false;
+      }
+      if (data.user.email !== OWNER_EMAIL) {
+        await client.auth.signOut();
+        this.authUserEmail.set(null);
+        this.authError.set('هذا الحساب غير مصرح له بالدخول إلى هذا النظام');
+        return false;
+      }
+      await client.rpc('dortmun_login_record_success');
+      this.authUserEmail.set(data.user.email ?? null);
+      this.authLockedUntil.set(null);
+      if (!this.localOnlyMode()) {
+        await this.initCloudConnection();
+      }
+      return true;
+    } catch {
+      this.authError.set('تعذر تسجيل الدخول حاليا، حاول مرة أخرى');
+      return false;
+    } finally {
+      this.authBusy.set(false);
+    }
+  }
+
+  async signOutOwner(): Promise<void> {
+    if (!this.isBrowser) return;
+    try {
+      const client = this.getSupabaseClient();
+      await client.auth.signOut();
+    } catch {
+      // Ignore sign-out errors; clear local session state anyway.
+    }
+    this.authUserEmail.set(null);
+    this.cloudSyncStatus.set('local_only');
+  }
+
   async initCloudConnection(): Promise<void> {
-    if (!this.isBrowser || this.localOnlyMode()) {
+    if (!this.isBrowser || this.localOnlyMode() || !this.authUserEmail()) {
       this.cloudSyncStatus.set('local_only');
       return;
     }
@@ -847,7 +966,7 @@ export class StoreService {
       this.cloudSyncStatus.set('syncing');
       if (!this.supabase) {
         this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
-          auth: { persistSession: false },
+          auth: { persistSession: true, autoRefreshToken: true },
           realtime: { params: { eventsPerSecond: 25 } },
         });
       }
@@ -969,39 +1088,14 @@ export class StoreService {
       this.realtimeChannel = null;
     }
 
-    const dev = this.currentDevice();
-    const channel = this.supabase.channel(REALTIME_CHANNEL_NAME, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: dev.deviceId },
-      },
-    });
+    // Security: no broadcast or presence payloads on this channel.
+    // Supabase Realtime broadcast/presence are NOT gated by RLS, so a
+    // snapshot sent here would reach anyone holding the anon key, bypassing
+    // the owner-only policies. Only postgres_changes below is used, and it
+    // is gated by the owner-only RLS policy on dortmun_cloud_state.
+    const channel = this.supabase.channel(REALTIME_CHANNEL_NAME);
 
     channel
-      .on('presence', { event: 'sync' }, () => {
-        if (!this.realtimeChannel) return;
-        const state = this.realtimeChannel.presenceState<RegisteredDevice>();
-        const onlineIds = new Set<string>(Object.keys(state));
-        const presenceDevices: RegisteredDevice[] = [];
-        for (const key of Object.keys(state)) {
-          const items = state[key];
-          if (items && items[0]) {
-            presenceDevices.push({ ...items[0], isOnline: true });
-          }
-        }
-        this.mergeDeviceList(presenceDevices, onlineIds);
-      })
-      .on('broadcast', { event: 'state_sync' }, (payload) => {
-        const data = payload['payload'] as
-          | (CloudSyncSnapshot & { updatedAtIso?: string })
-          | undefined;
-        if (data && data.updatedByDeviceId !== this.currentDevice().deviceId) {
-          if (data.updatedAtIso) {
-            this.lastSyncedUpdatedAtIso = data.updatedAtIso;
-          }
-          void this.applyCloudSnapshot(data, true);
-        }
-      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dortmun_cloud_state' },
@@ -1022,36 +1116,9 @@ export class StoreService {
           }
         }
       )
-      .on('broadcast', { event: 'device_updated' }, (payload) => {
-        const remoteDev = payload['payload'] as RegisteredDevice | undefined;
-        if (remoteDev && remoteDev.deviceId) {
-          this.mergeDeviceList([remoteDev]);
-        }
-      })
-      .on('broadcast', { event: 'request_latest_state' }, (payload) => {
-        const reqDevId = payload['payload']?.['deviceId'];
-        if (reqDevId && reqDevId !== this.currentDevice().deviceId && this.hasAnyLocalData()) {
-          const snap = this.buildCloudSnapshot('مزامنة تلقائية لجهاز متصل حديثاً');
-          void channel.send({
-            type: 'broadcast',
-            event: 'state_sync',
-            payload: snap,
-          });
-        }
-      })
-      .subscribe(async (status) => {
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           this.cloudSyncStatus.set('connected');
-          await channel.track({
-            ...this.currentDevice(),
-            isOnline: true,
-            lastActiveAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          });
-          await channel.send({
-            type: 'broadcast',
-            event: 'request_latest_state',
-            payload: { deviceId: this.currentDevice().deviceId },
-          });
         }
       });
 
@@ -1231,7 +1298,7 @@ export class StoreService {
 
     if (!this.supabase) {
       this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
-        auth: { persistSession: false },
+        auth: { persistSession: true, autoRefreshToken: true },
         realtime: { params: { eventsPerSecond: 25 } },
       });
     }
@@ -1260,18 +1327,9 @@ export class StoreService {
       this.lastSyncedByDeviceName.set(this.currentDevice().deviceName);
       this.lastSyncedUpdatedAtIso = nowIso;
 
-      // 1. Broadcast over Supabase Realtime immediately (< 50ms across all connected devices)
-      if (this.realtimeChannel) {
-        void this.realtimeChannel.track({
-          ...this.currentDevice(),
-          isOnline: true,
-        });
-        void this.realtimeChannel.send({
-          type: 'broadcast',
-          event: 'state_sync',
-          payload: snapshotWithIso,
-        });
-      }
+      // No Realtime broadcast: the snapshot travels only via the
+      // RLS-gated dortmun_cloud_state row, which postgres_changes delivers
+      // to the owner session only.
 
       // 2. Always Upsert directly to Supabase PostgreSQL dortmun_cloud_state (using exact column last_action)
       const { data: upRow, error: sbErr } = await this.supabase
@@ -1324,7 +1382,7 @@ export class StoreService {
       void this.syncRelationalTablesDirectly(snapshot, nowIso);
 
       // 5. Optional sync with local Express SSR endpoint if present
-      void fetch('/api/cloud/sync', {
+      void this.authFetch('/api/cloud/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1666,7 +1724,7 @@ export class StoreService {
       this.cloudSyncStatus.set('syncing');
       if (!this.supabase) {
         this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
-          auth: { persistSession: false },
+          auth: { persistSession: true, autoRefreshToken: true },
           realtime: { params: { eventsPerSecond: 25 } },
         });
       }
@@ -1891,7 +1949,7 @@ export class StoreService {
     try {
       if (!this.supabase) {
         this.supabase = createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, {
-          auth: { persistSession: false },
+          auth: { persistSession: true, autoRefreshToken: true },
           realtime: { params: { eventsPerSecond: 25 } },
         });
       }
@@ -2132,7 +2190,7 @@ export class StoreService {
           { onConflict: 'device_id' }
         );
       }
-      void fetch('/api/cloud/device', {
+      void this.authFetch('/api/cloud/device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -2164,14 +2222,7 @@ export class StoreService {
 
     if (!this.localOnlyMode()) {
       await this.registerDeviceOnCloud(`تغيير اسم الجهاز إلى "${clean}"`);
-      if (this.realtimeChannel) {
-        await this.realtimeChannel.track(updated);
-        await this.realtimeChannel.send({
-          type: 'broadcast',
-          event: 'device_updated',
-          payload: updated,
-        });
-      }
+
     }
 
     await this.logAudit('تحديث اسم الجهاز', 'الأجهزة المتصلة', `تم تسجيل اسم الجهاز: ${clean}`);
@@ -2192,7 +2243,7 @@ export class StoreService {
         if (this.supabase) {
           await this.supabase.from('dortmun_devices').delete().eq('device_id', deviceId);
         }
-        void fetch(`/api/cloud/device/${encodeURIComponent(deviceId)}`, {
+        void this.authFetch(`/api/cloud/device/${encodeURIComponent(deviceId)}`, {
           method: 'DELETE',
         }).catch(() => null);
       } catch {
@@ -2265,7 +2316,7 @@ export class StoreService {
     this.diagnosticsLoading.set(true);
     const startMs = Date.now();
     try {
-      const res = await fetch('/api/cloud/diagnostics');
+      const res = await this.authFetch('/api/cloud/diagnostics');
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
@@ -2310,7 +2361,7 @@ export class StoreService {
     const snapshot = this.buildCloudSnapshot(`إنشاء نسخة سحابية: ${title}`);
 
     try {
-      const res = await fetch('/api/cloud/backups', {
+      const res = await this.authFetch('/api/cloud/backups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2346,20 +2397,14 @@ export class StoreService {
 
   async restoreCloudBackup(backupId: number): Promise<void> {
     try {
-      const res = await fetch(`/api/cloud/backups/${backupId}/restore`, {
+      const res = await this.authFetch(`/api/cloud/backups/${backupId}/restore`, {
         method: 'POST',
       });
       if (res.ok) {
         const data = await res.json();
         if (data.snapshot) {
           await this.applyCloudSnapshot(data.snapshot as CloudSyncSnapshot, false);
-          if (this.realtimeChannel) {
-            await this.realtimeChannel.send({
-              type: 'broadcast',
-              event: 'state_sync',
-              payload: data.snapshot,
-            });
-          }
+
           this.showToast('تمت استعادة النسخة السحابية ومزامنتها على جميع الأجهزة!', 'success');
           return;
         }

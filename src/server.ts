@@ -108,15 +108,71 @@ const angularApp = new AngularNodeAppEngine();
 
 app.use(express.json({ limit: '25mb' }));
 
+// --- Dortmun lockdown: every /api route requires a verified owner JWT ---
+// Origin is checked only as defense-in-depth: it can be forged, so the real
+// gates are the JWT check here and RLS in Supabase. Requests without a valid
+// owner token are rejected before any database or AI work runs.
+const OWNER_EMAIL = 'gqikdubrjntorldfieo36@gmail.com';
+const ALLOWED_API_ORIGINS = new Set([
+  'https://dortmon.netlify.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+]);
+
+type OwnerSupabaseClient = typeof supabase;
+
+function reqSupabase(req: unknown): OwnerSupabaseClient {
+  const r = req as { supabase?: OwnerSupabaseClient };
+  if (!r.supabase) throw new Error('Unauthenticated API request');
+  return r.supabase;
+}
+
+app.use('/api', async (req, res, next) => {
+  try {
+    const origin = req.headers.origin;
+    if (origin && !ALLOWED_API_ORIGINS.has(origin)) {
+      res.status(403).json({ ok: false, error: 'Origin not allowed' });
+      return;
+    }
+    const { data: locked } = await supabase.rpc('dortmun_login_is_locked');
+    if (locked) {
+      res.status(403).json({ ok: false, error: 'System locked' });
+      return;
+    }
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'Missing owner session' });
+      return;
+    }
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data.user || data.user.email !== OWNER_EMAIL) {
+      res.status(403).json({ ok: false, error: 'Owner session required' });
+      return;
+    }
+    (req as unknown as { supabase: OwnerSupabaseClient }).supabase = createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY,
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      },
+    );
+    next();
+  } catch {
+    res.status(403).json({ ok: false, error: 'Owner session required' });
+  }
+});
+
+
 /**
  * GET /api/cloud/state
  * Returns the latest synchronized state, registered devices, cloud backups, and Supabase connection status.
  */
-app.get('/api/cloud/state', async (_req, res) => {
+app.get('/api/cloud/state', async (req, res) => {
   try {
     let supabaseTablesReady = false;
-    const { data: sbState, error: sbErr } = await supabase
-      .from('dortmun_cloud_state')
+    const { data: sbState, error: sbErr } = await reqSupabase(req).from('dortmun_cloud_state')
       .select('*')
       .eq('id', 'main')
       .maybeSingle();
@@ -133,8 +189,7 @@ app.get('/api/cloud/state', async (_req, res) => {
       }
     }
 
-    const { data: sbDevices, error: devErr } = await supabase
-      .from('dortmun_devices')
+    const { data: sbDevices, error: devErr } = await reqSupabase(req).from('dortmun_devices')
       .select('*');
 
     if (!devErr && Array.isArray(sbDevices)) {
@@ -157,8 +212,7 @@ app.get('/api/cloud/state', async (_req, res) => {
       saveServerStore();
     }
 
-    const { data: sbBackups, error: bkpErr } = await supabase
-      .from('dortmun_cloud_backups')
+    const { data: sbBackups, error: bkpErr } = await reqSupabase(req).from('dortmun_cloud_backups')
       .select('id, backup_title, created_at, created_by_device_id, created_by_device_name, version, workers_count, attendances_count, snapshot')
       .order('id', { ascending: false })
       .limit(15);
@@ -223,13 +277,12 @@ app.get('/api/cloud/state', async (_req, res) => {
  * GET /api/cloud/diagnostics
  * Checks all 18 Supabase PostgreSQL tables, latency, and RPC readiness.
  */
-app.get('/api/cloud/diagnostics', async (_req, res) => {
+app.get('/api/cloud/diagnostics', async (req, res) => {
   const startMs = Date.now();
   try {
     const checks = await Promise.all(
       SUPABASE_TABLES_LIST.map(async (tbl) => {
-        const { count, error } = await supabase
-          .from(tbl.name)
+        const { count, error } = await reqSupabase(req).from(tbl.name)
           .select('*', { count: 'exact', head: true });
         return {
           name: tbl.name,
@@ -306,7 +359,7 @@ app.post('/api/cloud/device', async (req, res) => {
     serverStore.devices[deviceId] = updatedDevice;
     saveServerStore();
 
-    await supabase.from('dortmun_devices').upsert(
+    await reqSupabase(req).from('dortmun_devices').upsert(
       {
         device_id: updatedDevice.deviceId,
         device_name: updatedDevice.deviceName,
@@ -345,7 +398,7 @@ app.delete('/api/cloud/device/:deviceId', async (req, res) => {
       delete serverStore.devices[deviceId];
       saveServerStore();
     }
-    await supabase.from('dortmun_devices').delete().eq('device_id', deviceId);
+    await reqSupabase(req).from('dortmun_devices').delete().eq('device_id', deviceId);
     res.json({
       ok: true,
       devices: Object.values(serverStore.devices).sort((a, b) =>
@@ -410,7 +463,7 @@ app.post('/api/cloud/sync', async (req, res) => {
     saveServerStore();
 
     let supabaseTablesReady = false;
-    const { error: stateErr } = await supabase.from('dortmun_cloud_state').upsert(
+    const { error: stateErr } = await reqSupabase(req).from('dortmun_cloud_state').upsert(
       {
         id: 'main',
         version: serverStore.version,
@@ -428,7 +481,7 @@ app.post('/api/cloud/sync', async (req, res) => {
 
     if (device?.deviceId && serverStore.devices[device.deviceId]) {
       const d = serverStore.devices[device.deviceId];
-      await supabase.from('dortmun_devices').upsert(
+      await reqSupabase(req).from('dortmun_devices').upsert(
         {
           device_id: d.deviceId,
           device_name: d.deviceName,
@@ -496,7 +549,7 @@ app.post('/api/cloud/backups', async (req, res) => {
     serverStore.backups = [newBackup, ...serverStore.backups.slice(0, 19)];
     saveServerStore();
 
-    await supabase.from('dortmun_cloud_backups').insert({
+    await reqSupabase(req).from('dortmun_cloud_backups').insert({
       backup_title: newBackup.backupTitle,
       created_by_device_id: newBackup.createdByDeviceId,
       created_by_device_name: newBackup.createdByDeviceName,
@@ -544,8 +597,7 @@ app.post('/api/cloud/backups/:id/restore', async (req, res) => {
     let found = serverStore.backups.find((b) => b.id === id);
 
     if (!found) {
-      const { data: sbRow } = await supabase
-        .from('dortmun_cloud_backups')
+      const { data: sbRow } = await reqSupabase(req).from('dortmun_cloud_backups')
         .select('*')
         .eq('id', id)
         .maybeSingle();
@@ -580,7 +632,7 @@ app.post('/api/cloud/backups/:id/restore', async (req, res) => {
     };
     saveServerStore();
 
-    await supabase.from('dortmun_cloud_state').upsert(
+    await reqSupabase(req).from('dortmun_cloud_state').upsert(
       {
         id: 'main',
         version: serverStore.version,
