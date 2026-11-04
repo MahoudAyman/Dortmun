@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
-import type { Advance } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { Advance, CustodianId } from '../../core/db/models';
 
 @Component({
   selector: 'app-advances',
@@ -80,6 +81,34 @@ import type { Advance } from '../../core/db/models';
           </div>
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end">
+          <div>
+            <label for="adv-fundedby" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">السلفة اتصرفت من حساب مين؟ (فودافون كاش)</label>
+            <select id="adv-fundedby" formControlName="fundedBy" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
+              @for (c of custodians; track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+
+          @if (advanceForm.get('fundedBy')?.value === 'other') {
+            <div>
+              <label for="adv-fundedby-name" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">اسم الأمين (أخرى)</label>
+              <input id="adv-fundedby-name" type="text" formControlName="fundedByName" placeholder="اكتب الاسم" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+            </div>
+          }
+
+          <div>
+            <label for="adv-withdrawnby" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">مين اللي سحب السلفة؟</label>
+            <input id="adv-withdrawnby" type="text" formControlName="withdrawnBy" placeholder="اسم اللي سحب الفلوس" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+          </div>
+
+          <div>
+            <label for="adv-fee" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">مصاريف السحب (ج.م)</label>
+            <input id="adv-fee" type="number" min="0" formControlName="withdrawalFee" placeholder="0" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums" />
+          </div>
+        </div>
+
         <div class="flex justify-end">
           <button
             type="submit"
@@ -150,6 +179,9 @@ import type { Advance } from '../../core/db/models';
                     <td class="py-3 px-3 font-bold tabular-nums text-rose-600">{{ store.money(adv.amount) }}</td>
                     <td class="py-3 px-3 text-xs text-slate-600 dark:text-slate-300">
                       <div>{{ adv.reason }}</div>
+                      @if (adv.fundedBy) {
+                        <div class="text-[10px] text-slate-500">من حساب: {{ custodianLabel(adv.fundedBy, adv.fundedByName) }}</div>
+                      }
                       @if (adv.checkId) {
                         <span class="inline-block mt-0.5 px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 font-bold text-[10px]">
                           مصروفة من شيك #{{ store.num(adv.checkId) }}
@@ -203,6 +235,9 @@ export class AdvancesPage {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly advanceToDelete = signal<Advance | null>(null);
 
   readonly advanceForm = this.fb.group({
@@ -212,6 +247,10 @@ export class AdvancesPage {
     projectId: [1 as number | null],
     date: [this.store.todayIso(), Validators.required],
     reason: ['مصاريف شخصية'],
+    fundedBy: ['mahmoud_ayman' as CustodianId],
+    fundedByName: [''],
+    withdrawnBy: [''],
+    withdrawalFee: [0],
     notes: [''],
   });
 
@@ -250,6 +289,10 @@ export class AdvancesPage {
       date: val.date || this.store.todayIso(),
       reason: val.reason || 'سلفة نقدية',
       settlementId: null,
+      fundedBy: (val.fundedBy || 'mahmoud_ayman') as CustodianId,
+      fundedByName: val.fundedBy === 'other' ? (val.fundedByName || '').trim() : '',
+      withdrawnBy: (val.withdrawnBy || '').trim(),
+      withdrawalFee: Math.max(0, Number(val.withdrawalFee) || 0),
       notes: val.notes || '',
     });
     this.store.showToast('تم تسجيل السلفة وربطها بالشيك والمشروع بنجاح', 'success');

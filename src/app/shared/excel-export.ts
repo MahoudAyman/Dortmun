@@ -5,6 +5,7 @@ import {
   calculateExtractLineMetrics,
   calculateExtractTotals,
 } from '../core/calc/calculations';
+import { custodianLabel } from '../core/db/models';
 
 @Injectable({
   providedIn: 'root',
@@ -31,6 +32,34 @@ export class ExcelService {
       { البند: 'صافي الربح التقريبي', القيمة: summary.ApproximateNetProfit, ملاحظات: 'المطلوب − الأجور − المصاريف' },
     ];
     this.appendRtlSheet(wb, 'ملخص عام', summaryRows);
+
+    // 1ب. أرصدة أمناء العهدة (فلوس فودافون كاش): مين معاه كام
+    const cust = this.store.custodianBalances();
+    const custRows: Record<string, string | number>[] = cust.balances.map((b) => ({
+      'أمين العهدة': b.name,
+      'الواصل (ج.م)': b.received,
+      'المنصرف (ج.م)': b.paid,
+      'منها سلف (ج.م)': b.advancesPaid,
+      'مصاريف السحب (ج.م)': b.withdrawalFees,
+      'الرصيد الحالي (ج.م)': b.balance,
+    }));
+    custRows.push({
+      'أمين العهدة': 'فلوس بلا أمين (غير مُسندة)',
+      'الواصل (ج.م)': cust.unassignedReceived,
+      'المنصرف (ج.م)': cust.unassignedPaid,
+      'منها سلف (ج.م)': '',
+      'مصاريف السحب (ج.م)': '',
+      'الرصيد الحالي (ج.م)': cust.unassignedReceived - cust.unassignedPaid,
+    });
+    custRows.push({
+      'أمين العهدة': 'إجمالي الأمناء',
+      'الواصل (ج.م)': cust.balances.reduce((s, b) => s + b.received, 0),
+      'المنصرف (ج.م)': cust.balances.reduce((s, b) => s + b.paid, 0),
+      'منها سلف (ج.م)': cust.balances.reduce((s, b) => s + b.advancesPaid, 0),
+      'مصاريف السحب (ج.م)': cust.balances.reduce((s, b) => s + b.withdrawalFees, 0),
+      'الرصيد الحالي (ج.م)': cust.balances.reduce((s, b) => s + b.balance, 0),
+    });
+    this.appendRtlSheet(wb, 'أرصدة أمناء العهدة', custRows);
 
     // 2. الحضور (Attendance)
     const attList = this.store.attendances();
@@ -84,6 +113,9 @@ export class ExcelService {
       التاريخ: a.date,
       العامل: this.store.workerName(a.workerId),
       المبلغ: a.amount,
+      'اتصرفت من حساب مين': custodianLabel(a.fundedBy, a.fundedByName),
+      'مين سحبها': a.withdrawnBy || '—',
+      'مصاريف السحب (ج.م)': a.withdrawalFee || 0,
       السبب: a.reason,
       الحالة: a.settlementId ? `مخصومة في تسوية #${a.settlementId}` : 'متبقية (مفتوحة)',
       ملاحظات: a.notes || '',
@@ -92,6 +124,9 @@ export class ExcelService {
       التاريخ: 'الإجمالي',
       العامل: `${advList.length} سلفة`,
       المبلغ: advList.reduce((s, a) => s + a.amount, 0),
+      'اتصرفت من حساب مين': '',
+      'مين سحبها': '',
+      'مصاريف السحب (ج.م)': advList.reduce((s, a) => s + (a.withdrawalFee || 0), 0),
       السبب: '',
       الحالة: '',
       ملاحظات: '',
@@ -110,6 +145,8 @@ export class ExcelService {
       'إجمالي الأجر': st.grossWages,
       'السلف المخصومة': st.advancesDeducted,
       'الصافي المدفوع': st.netPaid,
+      'اتصرف من حساب مين': custodianLabel(st.paidBy, st.paidByName),
+      'مصاريف السحب (ج.م)': st.withdrawalFee || 0,
       ملاحظات: st.notes || '',
     }));
     setRows.push({
@@ -122,9 +159,35 @@ export class ExcelService {
       'إجمالي الأجر': setList.reduce((s, x) => s + x.grossWages, 0),
       'السلف المخصومة': setList.reduce((s, x) => s + x.advancesDeducted, 0),
       'الصافي المدفوع': setList.reduce((s, x) => s + x.netPaid, 0),
+      'اتصرف من حساب مين': '',
+      'مصاريف السحب (ج.م)': setList.reduce((s, x) => s + (x.withdrawalFee || 0), 0),
       ملاحظات: '',
     });
     this.appendRtlSheet(wb, 'التسويات', setRows);
+
+    // 4ب. المقبوضات الواردة (المبالغ الواصلة: من مين ووصلت لمين)
+    const incList = this.store.incomingPayments();
+    const incRows: Record<string, string | number>[] = incList.map((ip) => ({
+      التاريخ: ip.date,
+      'نوع المصدر': ip.sourceType,
+      'اسم المصدر': ip.sourceName || ip.senderName || '',
+      'طريقة الدفع': ip.method,
+      'المبلغ (ج.م)': ip.amount,
+      'وصلت لمين': custodianLabel(ip.receivedBy, ip.receivedByName),
+      المشروع: this.store.projectName(ip.projectId),
+      ملاحظات: ip.notes || '',
+    }));
+    incRows.push({
+      التاريخ: 'الإجمالي',
+      'نوع المصدر': `${incList.length} دفعة`,
+      'اسم المصدر': '',
+      'طريقة الدفع': '',
+      'المبلغ (ج.م)': incList.reduce((s, ip) => s + (ip.amount || 0), 0),
+      'وصلت لمين': '',
+      المشروع: '',
+      ملاحظات: '',
+    });
+    this.appendRtlSheet(wb, 'المقبوضات الواردة', incRows);
 
     // 5. المستخلصات (Extracts per worker line)
     const extMap = new Map(this.store.extracts().map((e) => [e.id!, e]));
@@ -148,6 +211,7 @@ export class ExcelService {
         'قيمة الضريبة': m.taxAmount,
         'الصافي المستحق': m.netDue,
         المحصّل: m.collected,
+        'وصل لمين': custodianLabel(l.collectedBy, l.collectedByName),
         'تاريخ التحصيل': m.collectedDate || '',
         'طريقة التحصيل': m.method,
         'رقم الشيك': chk,
@@ -168,6 +232,7 @@ export class ExcelService {
       'قيمة الضريبة': extTotals.taxAmount,
       'الصافي المستحق': extTotals.netDue,
       المحصّل: extTotals.collected,
+      'وصل لمين': '',
       'تاريخ التحصيل': '',
       'طريقة التحصيل': '',
       'رقم الشيك': '',
@@ -195,6 +260,7 @@ export class ExcelService {
             : 'ملاحظة فقط',
       المبلغ: ex.amount,
       اليوميات: ex.days,
+      'اتصرف من حساب مين': custodianLabel(ex.paidBy, ex.paidByName),
       ملاحظات: ex.notes || '',
     }));
     extraRows.push({
@@ -208,6 +274,7 @@ export class ExcelService {
       'طريقة القيمة': '',
       المبلغ: extrasList.reduce((s, e) => s + (e.amount || 0), 0),
       اليوميات: extrasList.reduce((s, e) => s + (e.days || 0), 0),
+      'اتصرف من حساب مين': '',
       ملاحظات: '',
     });
     this.appendRtlSheet(wb, 'الإضافي', extraRows);
@@ -227,6 +294,8 @@ export class ExcelService {
         المبلغ: n.amount,
         اليوميات: n.days,
         'المدفوع نقداً (ناش)': n.paidCash,
+        'اتصرف من حساب مين': custodianLabel(n.paidBy, n.paidByName),
+        'مصاريف السحب (ج.م)': n.withdrawalFee || 0,
         المتبقي: remaining,
         ملاحظات: n.notes || '',
       };
@@ -240,6 +309,8 @@ export class ExcelService {
       المبلغ: nashList.reduce((s, n) => s + (n.amount || 0), 0),
       اليوميات: nashList.reduce((s, n) => s + (n.days || 0), 0),
       'المدفوع نقداً (ناش)': nashList.reduce((s, n) => s + (n.paidCash || 0), 0),
+      'اتصرف من حساب مين': '',
+      'مصاريف السحب (ج.م)': nashList.reduce((s, n) => s + (n.withdrawalFee || 0), 0),
       المتبقي: nashList.reduce(
         (s, n) => s + Math.max(0, (n.amount || 0) - (n.paidCash || 0)),
         0
@@ -259,6 +330,8 @@ export class ExcelService {
       الحالة: c.status,
       المشروع: this.store.projectName(c.projectId),
       'رقم المستخلص المرتبط': c.extractId || 'غير مرتبط',
+      'وصل لمين / اتصرف من': custodianLabel(c.custodian, c.custodianName),
+      'مصاريف السحب (ج.م)': c.withdrawalFee || 0,
       ملاحظات: c.notes || '',
     }));
     chkRows.push({
@@ -270,6 +343,8 @@ export class ExcelService {
       الحالة: '',
       المشروع: '',
       'رقم المستخلص المرتبط': '',
+      'وصل لمين / اتصرف من': '',
+      'مصاريف السحب (ج.م)': chkList.reduce((s, c) => s + (c.withdrawalFee || 0), 0),
       ملاحظات: '',
     });
     this.appendRtlSheet(wb, 'الشيكات', chkRows);
@@ -281,6 +356,8 @@ export class ExcelService {
       الفئة: e.category,
       المبلغ: e.amount,
       المشروع: this.store.projectName(e.projectId),
+      'اتدفعت من حساب مين': custodianLabel(e.paidBy, e.paidByName),
+      'مصاريف السحب (ج.م)': e.withdrawalFee || 0,
       ملاحظات: e.note || '',
     }));
     expRows.push({
@@ -288,6 +365,8 @@ export class ExcelService {
       الفئة: `${expList.length} بند`,
       المبلغ: expList.reduce((s, e) => s + e.amount, 0),
       المشروع: '',
+      'اتدفعت من حساب مين': '',
+      'مصاريف السحب (ج.م)': expList.reduce((s, e) => s + (e.withdrawalFee || 0), 0),
       ملاحظات: '',
     });
     this.appendRtlSheet(wb, 'المصاريف', expRows);
@@ -426,6 +505,8 @@ export class ExcelService {
     expensesRows?: Record<string, unknown>[];
     checksRows?: Record<string, unknown>[];
     extractsRows?: Record<string, unknown>[];
+    settlementsRows?: Record<string, unknown>[];
+    incomingPaymentsRows?: Record<string, unknown>[];
     workerStatementRows?: Record<string, unknown>[];
   }): void {
     const wb = XLSX.utils.book_new();
@@ -448,6 +529,12 @@ export class ExcelService {
     }
     if (params.extractsRows && params.extractsRows.length > 0) {
       this.appendRtlSheet(wb, 'المستخلصات', params.extractsRows);
+    }
+    if (params.settlementsRows && params.settlementsRows.length > 0) {
+      this.appendRtlSheet(wb, 'التسويات', params.settlementsRows);
+    }
+    if (params.incomingPaymentsRows && params.incomingPaymentsRows.length > 0) {
+      this.appendRtlSheet(wb, 'المقبوضات الواردة', params.incomingPaymentsRows);
     }
     if (params.workerStatementRows && params.workerStatementRows.length > 0) {
       this.appendRtlSheet(wb, 'كشف حساب العامل', params.workerStatementRows);

@@ -3,7 +3,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
-import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { CustodianBalance, CustodianId, IncomingPayment, PaymentMethodType, PaymentSourceType } from '../../core/db/models';
 
 @Component({
   selector: 'app-my-ledger',
@@ -953,6 +954,26 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
 
       <!-- TAB 3: سجل الدفعات اللي وصلتني (Incoming Payments CRUD Linked to Any Project) -->
       @if (activeTab() === 'incoming') {
+        <!-- أرصدة أمناء العهدة (فودافون كاش) -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-3 mb-4">
+          <h3 class="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <mat-icon class="text-emerald-600">account_balance_wallet</mat-icon>
+            <span>أرصدة أمناء العهدة (فودافون كاش) — مين معاه كام دلوقتي؟</span>
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            @for (cb of custodianBalances(); track cb.custodian) {
+              <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-1.5">
+                <div class="text-xs font-extrabold text-slate-900 dark:text-white">{{ cb.name }}</div>
+                <div class="flex justify-between text-[11px]"><span class="text-slate-500">وصل له:</span><span class="font-bold tabular-nums text-emerald-600">{{ store.money(cb.received) }}</span></div>
+                <div class="flex justify-between text-[11px]"><span class="text-slate-500">صرف (منها سلف):</span><span class="font-bold tabular-nums text-rose-600">{{ store.money(cb.paid) }} ({{ store.money(cb.advancesPaid) }})</span></div>
+                <div class="flex justify-between text-[11px]"><span class="text-slate-500">مصاريف سحب:</span><span class="font-bold tabular-nums text-rose-600">{{ store.money(cb.withdrawalFees) }}</span></div>
+                <div class="flex justify-between text-xs border-t border-slate-200 dark:border-slate-700 pt-1.5"><span class="font-bold">الباقي معاه:</span><span class="font-extrabold tabular-nums" [class.text-emerald-600]="cb.balance >= 0" [class.text-rose-600]="cb.balance < 0">{{ store.money(cb.balance) }}</span></div>
+              </div>
+            }
+          </div>
+          <p class="text-[11px] text-slate-400">الباقي = الواصل − المنصرف − مصاريف السحب. السجلات القديمة اللي مفيهاش أمين عهدة مش محسوبة هنا.</p>
+        </div>
+
         <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -1031,6 +1052,11 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                         <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500/15 text-amber-700 dark:text-amber-300">
                           لحساب: {{ store.projectName(item.projectId) }}
                         </span>
+                        @if (item.receivedBy) {
+                          <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                            وصلت لـ: {{ custodianLabel(item.receivedBy, item.receivedByName) }}
+                          </span>
+                        }
                       </div>
                       <div class="text-xs text-slate-500 dark:text-slate-400">
                         التاريخ: {{ store.digits(item.date) }}
@@ -1515,6 +1541,36 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
                 />
               </div>
 
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1">
+                    الفلوس دي وصلت لمين؟ (مين معاه الفلوس دلوقتي)
+                  </label>
+                  <select
+                    formControlName="receivedBy"
+                    class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs font-bold"
+                  >
+                    @for (c of custodians; track c.id) {
+                      <option [value]="c.id">{{ c.name }}</option>
+                    }
+                  </select>
+                </div>
+
+                @if (paymentForm.get('receivedBy')?.value === 'other') {
+                  <div>
+                    <label class="block text-xs font-extrabold text-slate-700 dark:text-slate-300 mb-1">
+                      اسم الأمين (أخرى)
+                    </label>
+                    <input
+                      type="text"
+                      formControlName="receivedByName"
+                      placeholder="اكتب الاسم"
+                      class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs font-bold"
+                    />
+                  </div>
+                }
+              </div>
+
               <div class="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -1542,6 +1598,9 @@ import type { IncomingPayment, PaymentMethodType, PaymentSourceType } from '../.
 export class MyLedger {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
+
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
 
   readonly activeTab = signal<'projects' | 'check-withdrawals' | 'incoming' | 'movements' | 'methodology'>('projects');
   readonly movementFilter = signal<'all' | 'in' | 'out'>('all');
@@ -1630,7 +1689,73 @@ export class MyLedger {
     method: ['نقدي' as PaymentMethodType, Validators.required],
     date: [this.store.todayIso(), Validators.required],
     checkNumber: [''],
+    receivedBy: ['mahmoud_ayman' as CustodianId],
+    receivedByName: [''],
     notes: [''],
+  });
+
+  // أرصدة أمناء العهدة (فودافون كاش) — محسوبة من السجلات الفعلية فقط؛
+  // السجلات القديمة اللي مفيهاش أمين عهدة مش بتتضاف لأي أمين.
+  // الواصل: مقبوضات + تحصيل مستخلصات + شيكات واردة اتصرفت.
+  // المنصرف: سلف + تسويات + مصاريف + ناش + شيكات صادرة. (مبلغ المستخلص نفسه مش محسوب
+  // هنا عشان مايتضاعفش مع تحصيل أسطره.)
+  readonly custodianBalances = computed((): CustodianBalance[] => {
+    const rows: CustodianBalance[] = CUSTODIANS.map((c) => ({
+      custodian: c.id,
+      name: c.name,
+      received: 0,
+      paid: 0,
+      advancesPaid: 0,
+      withdrawalFees: 0,
+      balance: 0,
+    }));
+    const rowFor = (id: CustodianId | string | undefined) =>
+      rows.find((r) => r.custodian === id);
+    for (const p of this.store.incomingPayments()) {
+      const r = rowFor(p.receivedBy);
+      if (r) r.received += p.amount || 0;
+    }
+    for (const l of this.store.extractLines()) {
+      const r = rowFor(l.collectedBy);
+      if (r) r.received += l.collected || 0;
+    }
+    for (const c of this.store.checks()) {
+      const r = rowFor(c.custodian);
+      if (!r) continue;
+      if (c.direction === 'وارد' && c.status === 'اتصرف') r.received += c.amount || 0;
+      if (c.direction === 'صادر') r.paid += c.amount || 0;
+    }
+    for (const a of this.store.advances()) {
+      const r = rowFor(a.fundedBy);
+      if (r) {
+        r.paid += a.amount || 0;
+        r.advancesPaid += a.amount || 0;
+        r.withdrawalFees += a.withdrawalFee || 0;
+      }
+    }
+    for (const s of this.store.settlements()) {
+      const r = rowFor(s.paidBy);
+      if (r) {
+        r.paid += s.netPaid || 0;
+        r.withdrawalFees += s.withdrawalFee || 0;
+      }
+    }
+    for (const e of this.store.expenses()) {
+      const r = rowFor(e.paidBy);
+      if (r) {
+        r.paid += e.amount || 0;
+        r.withdrawalFees += e.withdrawalFee || 0;
+      }
+    }
+    for (const n of this.store.extraCashes()) {
+      const r = rowFor(n.paidBy);
+      if (r) {
+        r.paid += n.paidCash || 0;
+        r.withdrawalFees += n.withdrawalFee || 0;
+      }
+    }
+    for (const r of rows) r.balance = r.received - r.paid - r.withdrawalFees;
+    return rows;
   });
 
   readonly filteredMovements = computed(() => {
@@ -1722,6 +1847,8 @@ export class MyLedger {
       method: 'نقدي',
       date: this.store.todayIso(),
       checkNumber: '',
+      receivedBy: 'mahmoud_ayman',
+      receivedByName: '',
       notes: '',
     });
     this.showPaymentModal.set(true);
@@ -1737,6 +1864,8 @@ export class MyLedger {
       method: item.method,
       date: item.date,
       checkNumber: item.checkNumber || '',
+      receivedBy: item.receivedBy || 'mahmoud_ayman',
+      receivedByName: item.receivedByName || '',
       notes: item.notes || '',
     });
     this.showPaymentModal.set(true);
@@ -1759,6 +1888,8 @@ export class MyLedger {
       method: (v.method as PaymentMethodType) || 'نقدي',
       projectId: v.projectId ?? null,
       checkNumber: (v.checkNumber || '').trim(),
+      receivedBy: (v.receivedBy || 'mahmoud_ayman') as CustodianId,
+      receivedByName: v.receivedBy === 'other' ? (v.receivedByName || '').trim() : '',
       notes: (v.notes || '').trim(),
     };
 

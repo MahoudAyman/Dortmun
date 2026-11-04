@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
-import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { CheckDirection, CheckItem, CheckStatus, CustodianId } from '../../core/db/models';
 
 @Component({
   selector: 'app-checks',
@@ -354,6 +355,24 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
               }
             </select>
           </div>
+
+          <div>
+            <label for="chk-custodian" class="block text-xs font-medium mb-1">
+              {{ checkForm.get('direction')?.value === 'صادر' ? 'الشيك الصادر اتصرف من حساب مين؟' : 'الشيك الوارد وصل لمين؟' }}
+            </label>
+            <select id="chk-custodian" formControlName="custodian" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
+              @for (c of custodians; track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+
+          @if (checkForm.get('custodian')?.value === 'other') {
+            <div>
+              <label for="chk-custodian-name" class="block text-xs font-medium mb-1">اسم الأمين (أخرى)</label>
+              <input id="chk-custodian-name" type="text" formControlName="custodianName" placeholder="اكتب الاسم" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+            </div>
+          }
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
@@ -412,6 +431,9 @@ import type { CheckDirection, CheckItem, CheckStatus } from '../../core/db/model
                       <span class="font-extrabold tabular-nums">#{{ cb.check.number }}</span>
                     </div>
                     <div class="text-xs text-slate-500 mt-0.5">{{ cb.check.bank }} · {{ store.digits(cb.check.dueDate) }}</div>
+                    @if (cb.check.custodian) {
+                      <div class="text-[10px] text-slate-500">{{ cb.check.direction === 'صادر' ? 'من حساب: ' : 'وصل لمين: ' }}{{ custodianLabel(cb.check.custodian, cb.check.custodianName) }}</div>
+                    }
                   </td>
 
                   <td class="py-3 px-3 text-xs" (click)="$event.stopPropagation(); store.openProjectSheet(cb.check.projectId)">
@@ -519,6 +541,9 @@ export class ChecksPage {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly directionFilter = signal<'all' | CheckDirection>('all');
   readonly openCheckRowMenuId = signal<number | null>(null);
 
@@ -533,6 +558,8 @@ export class ChecksPage {
     status: ['معلق' as CheckStatus, Validators.required],
     projectId: [1 as number | null],
     extractId: [1 as number | null],
+    custodian: ['mahmoud_ayman' as CustodianId],
+    custodianName: [''],
     notes: [''],
   });
 
@@ -580,6 +607,8 @@ export class ChecksPage {
       status: (v.status || 'معلق') as CheckStatus,
       projectId: v.projectId ? Number(v.projectId) : 1,
       extractId: v.extractId ? Number(v.extractId) : null,
+      custodian: (v.custodian || 'mahmoud_ayman') as CustodianId,
+      custodianName: v.custodian === 'other' ? (v.custodianName || '').trim() : '',
       notes: v.notes || '',
     });
     this.store.showToast('تم حفظ الشيك وربطه بالمشروع والمستخلص بنجاح', 'success');

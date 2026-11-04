@@ -8,7 +8,8 @@ import {
   compareDailyHeadcount,
   findDuplicateAttendance,
 } from '../../core/calc/calculations';
-import type { DeductionMode } from '../../core/db/models';
+import { CUSTODIANS } from '../../core/db/models';
+import type { CustodianId, DeductionMode } from '../../core/db/models';
 
 interface BulkRowState {
   selected: boolean;
@@ -156,6 +157,69 @@ interface BulkRowState {
           >
             إلغاء التحديد
           </button>
+        </div>
+      </div>
+
+      <!-- Batch Custodian: السلف الجماعية دي من حساب مين؟ (تتطبق على كل سلفة في الدفعة) -->
+      <div class="ceramic-card p-4 space-y-3">
+        <div class="flex items-center gap-2">
+          <mat-icon class="text-emerald-600">account_balance_wallet</mat-icon>
+          <h2 class="text-sm font-extrabold text-slate-900 dark:text-white">سلف الدفعة دي من حساب مين؟</h2>
+          <span class="text-xs text-slate-500">بتتطبق على كل سلفة هتتسجل في الدفعة دي</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          <div>
+            <label for="bulk-fundedby" class="block text-xs font-bold text-slate-500 mb-1">السلف اتصرفت من حساب مين؟ (فودافون كاش)</label>
+            <select
+              id="bulk-fundedby"
+              [value]="batchFundedBy()"
+              (change)="batchFundedBy.set($any($event.target).value)"
+              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm font-bold"
+            >
+              @for (c of custodians; track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+
+          @if (batchFundedBy() === 'other') {
+            <div>
+              <label for="bulk-fundedby-name" class="block text-xs font-bold text-slate-500 mb-1">اسم الأمين (أخرى)</label>
+              <input
+                id="bulk-fundedby-name"
+                type="text"
+                [value]="batchFundedByName()"
+                (input)="batchFundedByName.set($any($event.target).value)"
+                placeholder="اكتب الاسم"
+                class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm font-bold"
+              />
+            </div>
+          }
+
+          <div>
+            <label for="bulk-withdrawnby" class="block text-xs font-bold text-slate-500 mb-1">مين اللي سحب السلف؟</label>
+            <input
+              id="bulk-withdrawnby"
+              type="text"
+              [value]="batchWithdrawnBy()"
+              (input)="batchWithdrawnBy.set($any($event.target).value)"
+              placeholder="اسم اللي سحب الفلوس"
+              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm font-bold"
+            />
+          </div>
+
+          <div>
+            <label for="bulk-fee" class="block text-xs font-bold text-slate-500 mb-1">مصاريف السحب للدفعة (ج.م)</label>
+            <input
+              id="bulk-fee"
+              type="number"
+              min="0"
+              [value]="batchWithdrawalFee() || ''"
+              (input)="batchWithdrawalFee.set(+$any($event.target).value)"
+              placeholder="0"
+              class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-sm font-bold tabular-nums"
+            />
+          </div>
         </div>
       </div>
 
@@ -364,6 +428,14 @@ export class BulkEntryPage {
   readonly targetProjectId = signal<number>(1);
   readonly roleFilter = signal<string>('all');
 
+  readonly custodians = CUSTODIANS;
+
+  // أمين عهدة الدفعة الجماعية (سلفة واحدة لكل الدفعة)
+  readonly batchFundedBy = signal<CustodianId>('mahmoud_ayman');
+  readonly batchFundedByName = signal<string>('');
+  readonly batchWithdrawnBy = signal<string>('');
+  readonly batchWithdrawalFee = signal<number>(0);
+
   readonly rowStates = signal<Record<number, BulkRowState>>({});
   readonly duplicateModalOpen = signal<boolean>(false);
   readonly duplicateWorkersNames = signal<string[]>([]);
@@ -556,6 +628,12 @@ export class BulkEntryPage {
           amount: st.advanceAmount,
           reason: st.note || 'سلفة من الإضافة الجماعية',
           settlementId: null,
+          projectId,
+          fundedBy: this.batchFundedBy(),
+          fundedByName:
+            this.batchFundedBy() === 'other' ? this.batchFundedByName().trim() : '',
+          withdrawnBy: this.batchWithdrawnBy().trim(),
+          withdrawalFee: Math.max(0, this.batchWithdrawalFee() || 0),
           notes: st.note,
         });
         savedAdvCount++;

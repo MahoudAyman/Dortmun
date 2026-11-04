@@ -3,6 +3,8 @@ import type {
   AppSettings,
   Attendance,
   CheckItem,
+  CustodianBalance,
+  CustodianId,
   DailyHeadcount,
   Deduction,
   DeductionMode,
@@ -18,6 +20,7 @@ import type {
   Settlement,
   Worker,
 } from '../db/models';
+import { CUSTODIANS, custodianLabel } from '../db/models';
 
 const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 
@@ -908,6 +911,11 @@ export interface LedgerMovementItem {
   method: string;
   amount: number;
   notes: string;
+  // ── أمين العهدة (فلوس فودافون كاش): مين معاه الفلوس / من حساب مين اتصرفت ──
+  custodian?: CustodianId | string; // الأمين صاحب حساب الفلوس في الحركة
+  custodianName?: string; // اسم الأمين الظاهر (لـ 'other' أو الاسم المكتوب)
+  withdrawnBy?: string; // مين اللي سحب الفلوس (السلف)
+  withdrawalFee?: number; // مصاريف السحب المرتبطة بالحركة
 }
 
 export interface ComprehensiveLedgerSummary {
@@ -1139,6 +1147,8 @@ export function calculateComprehensiveLedger(params: {
       method: ip.method || 'نقدي',
       amount: Number(ip.amount) || 0,
       notes: ip.notes || '',
+      custodian: ip.receivedBy,
+      custodianName: custodianLabel(ip.receivedBy, ip.receivedByName),
     });
   }
 
@@ -1174,6 +1184,9 @@ export function calculateComprehensiveLedger(params: {
       method: 'شيك بنكي',
       amount: effectiveAmt,
       notes: chk.notes || '',
+      custodian: chk.custodian,
+      custodianName: custodianLabel(chk.custodian, chk.custodianName),
+      withdrawalFee: Number(chk.withdrawalFee) || 0,
     });
   }
 
@@ -1207,6 +1220,8 @@ export function calculateComprehensiveLedger(params: {
       method: line.method || 'نقدي',
       amount: collected,
       notes: line.notes || '',
+      custodian: line.collectedBy,
+      custodianName: custodianLabel(line.collectedBy, line.collectedByName),
     });
   }
 
@@ -1234,6 +1249,10 @@ export function calculateComprehensiveLedger(params: {
       method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(adv.amount) || 0,
       notes: adv.reason || adv.notes || '',
+      custodian: adv.fundedBy,
+      custodianName: custodianLabel(adv.fundedBy, adv.fundedByName),
+      withdrawnBy: adv.withdrawnBy || '',
+      withdrawalFee: Number(adv.withdrawalFee) || 0,
     });
   }
 
@@ -1262,6 +1281,9 @@ export function calculateComprehensiveLedger(params: {
       method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(st.netPaid) || 0,
       notes: `تقفيل من ${st.from} إلى ${st.to}`,
+      custodian: st.paidBy,
+      custodianName: custodianLabel(st.paidBy, st.paidByName),
+      withdrawalFee: Number(st.withdrawalFee) || 0,
     });
   }
 
@@ -1295,6 +1317,9 @@ export function calculateComprehensiveLedger(params: {
       method: 'نقدي',
       amount: paid,
       notes: ec.notes || '',
+      custodian: ec.paidBy,
+      custodianName: custodianLabel(ec.paidBy, ec.paidByName),
+      withdrawalFee: Number(ec.withdrawalFee) || 0,
     });
   }
 
@@ -1321,6 +1346,9 @@ export function calculateComprehensiveLedger(params: {
       method: chk ? `من شيك #${chk.number}` : 'نقدي',
       amount: Number(exp.amount) || 0,
       notes: exp.note || '',
+      custodian: exp.paidBy,
+      custodianName: custodianLabel(exp.paidBy, exp.paidByName),
+      withdrawalFee: Number(exp.withdrawalFee) || 0,
     });
   }
 
@@ -1655,6 +1683,200 @@ export function calculateComprehensiveLedger(params: {
     projectBreakdowns,
     movements,
   };
+}
+
+
+// ── أرصدة أمناء العهدة (فلوس فودافون كاش) ──────────────────────────
+// كل حركة فلوس لازم تقول: وصلت لمين (received) واتصرفت من حساب مين (paid).
+// الصيغة لكل أمين:
+//   received = مقبوضات واردة + تحصيل بنود مستخلصات + شيكات واردة اتصرفت
+//              + مستخلصات مدفوعة (paidAmount) — بشرط عدم تكرار نفس الفلوس
+//   paid     = سلف + تسويات (صافي) + مصاريف + ناش مدفوع + شيكات صادرة اتصرفت
+//   advancesPaid = السلف وحدها (جزء من paid)
+//   withdrawalFees = مصاريف السحب وحدها (لا تدخل في paid حتى لا تُخصم مرتين)
+//   balance  = received - paid - withdrawalFees
+// مثال: محمود أيمن وصله 100000 وصرف سلف 4000 => الرصيد 96000.
+// منع التكرار (نفس الفلوس لا تُحسب مرتين):
+//   - الشيك أداة واحدة: لو مقبوض وارد أو بند مستخلص بيشاور على شيك وارد اتصرف،
+//     الفلوس تُحسب مرة واحدة من الشيك نفسه (بأمين الشيك)، مش من المقبوض/البند.
+//   - المستخلص: لو ليه بنود محصلة، البنود هي التفصيل وpaidAmount هو الإجمالي،
+//     فـ paidAmount تُحسب بس لو مفيش بنود محصلة للمستخلص ده.
+//   - الشيك الصادر يُحسب كمصروف بس لما يكون اتصرف فعلًا (زي الكشف العام).
+//   - رسوم سحب شيك تُحسب بس لو مفيش مصروف مسجل بنفس الشيك وفئة 'رسوم سحب شيك'.
+// فلوس بلا أمين لا تُنسب لحد: بتروح لـ unassignedReceived / unassignedPaid.
+export interface CustodianBalancesResult {
+  balances: CustodianBalance[]; // محمود أيمن، محمود حماده، ايمن حسان، أخرى (سلة واحدة)
+  unassignedReceived: number; // فلوس وصلت ومحدش اتحدد له أمين
+  unassignedPaid: number; // فلوس اتصرفت ومحدش اتحدد له أمين (شامل مصاريف سحبها)
+}
+
+export function calculateCustodianBalances(input: {
+  incomingPayments: IncomingPayment[];
+  advances: Advance[];
+  expenses: Expense[];
+  settlements: Settlement[];
+  extraCashes: ExtraCash[];
+  checks: CheckItem[];
+  extractLines: ExtractLine[];
+  extracts: Extract[];
+}): CustodianBalancesResult {
+  const num = (v: number | undefined | null): number => Number(v) || 0;
+
+  const ids: CustodianId[] = ['mahmoud_ayman', 'mahmoud_hamada', 'ayman_hassan', 'other'];
+  const acc = new Map<
+    CustodianId,
+    { received: number; paid: number; advancesPaid: number; withdrawalFees: number }
+  >();
+  for (const id of ids) {
+    acc.set(id, { received: 0, paid: 0, advancesPaid: 0, withdrawalFees: 0 });
+  }
+  let unassignedReceived = 0;
+  let unassignedPaid = 0;
+
+  // أمين معروف => سلته؛ 'other' أو أي اسم غير معروف => سلة "أخرى"؛ مفيش أمين => غير مُسند
+  const bucketOf = (id: CustodianId | string | undefined): CustodianId | null => {
+    if (!id) return null;
+    if (id === 'mahmoud_ayman' || id === 'mahmoud_hamada' || id === 'ayman_hassan') return id;
+    return 'other';
+  };
+
+  const addReceived = (id: CustodianId | string | undefined, amount: number): void => {
+    if (amount <= 0) return;
+    const b = bucketOf(id);
+    if (b) acc.get(b)!.received += amount;
+    else unassignedReceived += amount;
+  };
+
+  // paid هنا نقد صافي بلا مصاريف سحب؛ المصاريف بتتتبع لوحدها في withdrawalFees
+  const addPaid = (
+    id: CustodianId | string | undefined,
+    amount: number,
+    fee = 0
+  ): void => {
+    const b = bucketOf(id);
+    if (b) {
+      const r = acc.get(b)!;
+      r.paid += Math.max(0, amount);
+      r.withdrawalFees += Math.max(0, fee);
+    } else {
+      unassignedPaid += Math.max(0, amount) + Math.max(0, fee);
+    }
+  };
+
+  const addAdvance = (
+    id: CustodianId | string | undefined,
+    amount: number,
+    fee = 0
+  ): void => {
+    const b = bucketOf(id);
+    if (b) {
+      const r = acc.get(b)!;
+      r.paid += Math.max(0, amount);
+      r.advancesPaid += Math.max(0, amount);
+      r.withdrawalFees += Math.max(0, fee);
+    } else {
+      unassignedPaid += Math.max(0, amount) + Math.max(0, fee);
+    }
+  };
+
+  const addFee = (id: CustodianId | string | undefined, fee: number): void => {
+    if (fee <= 0) return;
+    const b = bucketOf(id);
+    if (b) acc.get(b)!.withdrawalFees += fee;
+    else unassignedPaid += fee;
+  };
+
+  // ── الوارد (received) ──
+  const cashedIncomingCheckIds = new Set<number>();
+  for (const chk of input.checks) {
+    if (chk.direction === 'وارد' && chk.status === 'اتصرف' && chk.id !== undefined) {
+      cashedIncomingCheckIds.add(chk.id);
+    }
+  }
+
+  // 1. مقبوضات واردة — إلا لو بتشاور على شيك وارد اتصرف (نفس الفلوس، تُحسب من الشيك)
+  for (const ip of input.incomingPayments) {
+    if (ip.checkId !== undefined && ip.checkId !== null && cashedIncomingCheckIds.has(ip.checkId)) {
+      continue;
+    }
+    addReceived(ip.receivedBy, num(ip.amount));
+  }
+
+  // 2. مستخلصات مدفوعة (paidAmount) — بس لو مفيش بنود محصلة لنفس المستخلص
+  const collectedByExtract = new Map<number, number>();
+  for (const line of input.extractLines) {
+    collectedByExtract.set(
+      line.extractId,
+      (collectedByExtract.get(line.extractId) || 0) + num(line.collected)
+    );
+  }
+  for (const ex of input.extracts) {
+    if (num(ex.paidAmount) <= 0) continue;
+    if (ex.id !== undefined && (collectedByExtract.get(ex.id) || 0) > 0) continue;
+    addReceived(ex.receivedBy, num(ex.paidAmount));
+  }
+
+  // 3. بنود مستخلصات محصلة — إلا لو بتشاور على شيك وارد اتصرف (تُحسب من الشيك)
+  for (const line of input.extractLines) {
+    if (num(line.collected) <= 0) continue;
+    if (
+      line.checkId !== undefined &&
+      line.checkId !== null &&
+      cashedIncomingCheckIds.has(line.checkId)
+    ) {
+      continue;
+    }
+    addReceived(line.collectedBy, num(line.collected));
+  }
+
+  // 4. شيكات واردة اتصرفت (الفلوس وصلت فعلًا لأمين الشيك)
+  for (const chk of input.checks) {
+    if (chk.direction !== 'وارد' || chk.status !== 'اتصرف') continue;
+    addReceived(chk.custodian, num(chk.amount));
+  }
+
+  // ── المنصرف (paid) ──
+  for (const adv of input.advances) {
+    addAdvance(adv.fundedBy, num(adv.amount), num(adv.withdrawalFee));
+  }
+  for (const st of input.settlements) {
+    addPaid(st.paidBy, num(st.netPaid), num(st.withdrawalFee));
+  }
+  for (const exp of input.expenses) {
+    addPaid(exp.paidBy, num(exp.amount), num(exp.withdrawalFee));
+  }
+  for (const ec of input.extraCashes) {
+    addPaid(ec.paidBy, num(ec.paidCash), num(ec.withdrawalFee));
+  }
+  // شيكات صادرة اتصرفت (الفلوس خرجت فعلًا من حساب الأمين)
+  for (const chk of input.checks) {
+    if (chk.direction !== 'صادر' || chk.status !== 'اتصرف') continue;
+    addPaid(chk.custodian, num(chk.amount), 0);
+  }
+  // رسوم سحب الشيكات — بس لو مش مسجلة كمصروف بنفس الشيك (عشان متتعدش مرتين)
+  for (const chk of input.checks) {
+    const fee = num(chk.withdrawalFee);
+    if (fee <= 0) continue;
+    const alreadyExpensed = input.expenses.some(
+      (ex) => ex.checkId === chk.id && ex.category === 'رسوم سحب شيك'
+    );
+    if (!alreadyExpensed) addFee(chk.custodian, fee);
+  }
+
+  const balances: CustodianBalance[] = ids.map((id) => {
+    const r = acc.get(id)!;
+    return {
+      custodian: id,
+      name: id === 'other' ? 'أخرى' : CUSTODIANS.find((c) => c.id === id)?.name || custodianLabel(id),
+      received: r.received,
+      paid: r.paid,
+      advancesPaid: r.advancesPaid,
+      withdrawalFees: r.withdrawalFees,
+      balance: r.received - r.paid - r.withdrawalFees,
+    };
+  });
+
+  return { balances, unassignedReceived, unassignedPaid };
 }
 
 export interface CheckFundBreakdown {

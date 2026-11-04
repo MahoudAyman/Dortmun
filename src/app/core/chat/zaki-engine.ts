@@ -1,8 +1,11 @@
+import { custodianLabel } from '../db/models';
 import type {
   Advance,
   AppSettings,
   Attendance,
   CheckItem,
+  CustodianBalance,
+  CustodianId,
   DailyHeadcount,
   Deduction,
   DeductionMode,
@@ -207,6 +210,179 @@ function calculateComprehensiveLedger(params: {
     netCashInHand,
     projectBreakdowns,
   };
+}
+
+// ── أرصدة أمناء العهدة (فودافون كاش) ─────────────────────────────
+// الوارد لأمين = مقبوضات واردة وصلت له + تحصيل بنود مستخلصات + شيكات واردة اتصرفت له.
+// المنصرف منه = سلف ممولة من حسابه + تسويات قبض من حسابه + مصاريف من حسابه
+//   + ناش مدفوع كاش من حسابه. مصاريف السحب تُحسب منفصلة وتُخصم من الرصيد
+//   (لا تُحسب مرتين داخل المنصرف). الرصيد = الوارد - المنصرف - مصاريف السحب.
+// ملاحظة: الشيكات الصادرة غير داخلة في المنصرف هنا؛ هي التزام منفصل في كشف
+// الشيكات، ومبلغ المستخلص الإجمالي غير داخل لأنه ملخص لتحصيل البنود نفسها.
+export interface CustodianBalanceDetail extends CustodianBalance {
+  advances: Advance[];
+}
+
+export function calculateCustodianBalances(params: {
+  advances: Advance[];
+  settlements: Settlement[];
+  expenses: Expense[];
+  extraCashes: ExtraCash[];
+  incomingPayments: IncomingPayment[];
+  extractLines: ExtractLine[];
+  checks: CheckItem[];
+  workers: Worker[];
+}): CustodianBalanceDetail[] {
+  const {
+    advances,
+    settlements,
+    expenses,
+    extraCashes,
+    incomingPayments,
+    extractLines,
+    checks,
+    workers,
+  } = params;
+  const workerMap = new Map(
+    workers.filter((w) => w.id !== undefined).map((w) => [w.id!, w])
+  );
+  const named: CustodianId[] = ['mahmoud_ayman', 'mahmoud_hamada', 'ayman_hassan'];
+  return named.map((id) => {
+    const received =
+      incomingPayments
+        .filter((ip) => ip.receivedBy === id)
+        .reduce((s, ip) => s + (Number(ip.amount) || 0), 0) +
+      extractLines
+        .filter((l) => l.collectedBy === id)
+        .reduce((s, l) => s + (Number(l.collected) || 0), 0) +
+      checks
+        .filter((c) => c.direction === 'وارد' && c.status === 'اتصرف' && c.custodian === id)
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const custAdvances = advances.filter((a) => a.fundedBy === id);
+    const advancesPaid = custAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const settlementsPaid = settlements
+      .filter((st) => st.paidBy === id)
+      .reduce((s, st) => s + Math.max(0, Number(st.netPaid) || 0), 0);
+    const expensesPaid = expenses
+      .filter((ex) => ex.paidBy === id)
+      .reduce((s, ex) => s + (Number(ex.amount) || 0), 0);
+    const nashPaid = extraCashes
+      .filter((ec) => ec.paidBy === id)
+      .reduce((s, ec) => s + (Number(ec.paidCash) || 0), 0);
+    const paid = advancesPaid + settlementsPaid + expensesPaid + nashPaid;
+    const withdrawalFees =
+      custAdvances.reduce((s, a) => s + (Number(a.withdrawalFee) || 0), 0) +
+      settlements
+        .filter((st) => st.paidBy === id)
+        .reduce((s, st) => s + (Number(st.withdrawalFee) || 0), 0) +
+      expenses
+        .filter((ex) => ex.paidBy === id)
+        .reduce((s, ex) => s + (Number(ex.withdrawalFee) || 0), 0) +
+      extraCashes
+        .filter((ec) => ec.paidBy === id)
+        .reduce((s, ec) => s + (Number(ec.withdrawalFee) || 0), 0);
+    return {
+      custodian: id,
+      name: custodianLabel(id),
+      received,
+      paid,
+      advancesPaid,
+      withdrawalFees,
+      balance: received - paid - withdrawalFees,
+      advances: custAdvances,
+    };
+  });
+}
+
+function custodianBalanceLine(
+  b: CustodianBalanceDetail,
+  numMode: 'ar' | 'en'
+): string {
+  return (
+    `• ${b.name}: وصله ${formatCurrency(b.received, numMode)} · صرف ${formatCurrency(b.paid, numMode)} ` +
+    `(سلف: ${formatCurrency(b.advancesPaid, numMode)}) · مصاريف سحب: ${formatCurrency(b.withdrawalFees, numMode)} · ` +
+    `الباقي معاه: ${formatCurrency(b.balance, numMode)}`
+  );
+}
+
+function buildCustodianBalanceReply(
+  norm: string,
+  ctx: ZakiContext,
+  numMode: 'ar' | 'en'
+): string | null {
+  // أوامر التسجيل (دفعة واردة / مصروف) لها الأولوية؛ ليست سؤال رصيد.
+  if (
+    norm.startsWith('وصلني') ||
+    norm.startsWith('قبضت') ||
+    norm.startsWith('استلمت') ||
+    norm.startsWith('دخل الخزنه') ||
+    norm.startsWith('صرفت') ||
+    norm.startsWith('دفعت') ||
+    norm.startsWith('مصروف') ||
+    norm.startsWith('سجل مصروف')
+  ) {
+    return null;
+  }
+  const balances = calculateCustodianBalances({
+    advances: ctx.advances,
+    settlements: ctx.settlements || [],
+    expenses: ctx.expenses || [],
+    extraCashes: ctx.extraCashes,
+    incomingPayments: ctx.incomingPayments || [],
+    extractLines: ctx.extractLines,
+    checks: ctx.checks,
+    workers: ctx.workers,
+  });
+  const workerMap = new Map(
+    ctx.workers.filter((w) => w.id !== undefined).map((w) => [w.id!, w])
+  );
+  const isGeneral =
+    norm.includes('ارصده الامناء') ||
+    norm.includes('مين معاه كام') ||
+    (norm.includes('الامناء') && (norm.includes('رصيد') || norm.includes('معاه') || norm.includes('كام') || norm.includes('ارصده'))) ||
+    (norm.includes('العهد') && norm.includes('كام'));
+  if (isGeneral) {
+    const lines = balances.map((b) => custodianBalanceLine(b, numMode)).join('\n');
+    const total = balances.reduce((s, b) => s + b.balance, 0);
+    return (
+      `💰 أرصدة أمناء العهدة (فودافون كاش):\n${lines}\n` +
+      `• إجمالي الباقي مع الأمناء التلاتة: ${formatCurrency(total, numMode)}.`
+    );
+  }
+  const nameMatches: { id: CustodianId; names: string[] }[] = [
+    { id: 'mahmoud_ayman', names: ['محمود ايمن'] },
+    { id: 'mahmoud_hamada', names: ['محمود حماده'] },
+    { id: 'ayman_hassan', names: ['ايمن حسان', 'ايمن'] },
+  ];
+  const balanceWords = ['معاه كام', 'رصيد', 'باقي', 'صرف', 'وصل', 'معاه', 'كام', 'العهد', 'امين', 'امناء'];
+  const wantsBalance = balanceWords.some((w) => norm.includes(w));
+  if (!wantsBalance) return null;
+  for (const m of nameMatches) {
+    if (m.names.some((n) => norm.includes(n))) {
+      const b = balances.find((x) => x.custodian === m.id)!;
+      let reply =
+        `💰 رصيد ${b.name} (أمين عهدة فودافون كاش):\n` +
+        `• وصله: ${formatCurrency(b.received, numMode)} (مقبوضات واردة + تحصيل مستخلصات + شيكات واردة اتصرفت له)\n` +
+        `• صرف: ${formatCurrency(b.paid, numMode)} (سلف: ${formatCurrency(b.advancesPaid, numMode)} · تسويات قبض وتسويات ومصاريف وناش من حسابه)\n` +
+        `• مصاريف سحب: ${formatCurrency(b.withdrawalFees, numMode)}\n` +
+        `• الباقي معاه دلوقتي: ${formatCurrency(b.balance, numMode)}.`;
+      if (norm.includes('سلف') || norm.includes('سلفه')) {
+        if (b.advances.length === 0) {
+          reply += '\n• مفيش سلف مسجلة من حسابه.';
+        } else {
+          const lines = b.advances
+            .map((a) => {
+              const wName = workerMap.get(a.workerId)?.name || `عامل رقم ${a.workerId}`;
+              return `  - ${wName}: ${formatCurrency(a.amount, numMode)}${a.withdrawalFee ? ` (مصاريف سحب ${formatCurrency(a.withdrawalFee, numMode)})` : ''} · ${a.date || ''}`;
+            })
+            .join('\n');
+          reply += `\n• السلف اللي اتصرفت من حسابه (${b.advances.length}):\n${lines}`;
+        }
+      }
+      return reply;
+    }
+  }
+  return null;
 }
 
 const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -1197,6 +1373,24 @@ export function processZakiMessage(
       actionRoute: '/my-ledger',
       actionLabel: 'فتح صفحة حسابي الشامل بالتفصيل',
     };
+  }
+
+  // 1A-0B. Custodian balances ("محمود ايمن معاه كام؟" / "أرصدة الأمناء" / "مين معاه كام")
+  {
+    const custodianReply = buildCustodianBalanceReply(norm, ctx, numMode);
+    if (custodianReply) {
+      return {
+        reply: custodianReply,
+        actionRoute: '/my-ledger',
+        actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
+        quickCommands: [
+          'أرصدة الأمناء',
+          'محمود ايمن معاه كام؟',
+          'محمود حماده معاه كام؟',
+          'ايمن حسان معاه كام؟',
+        ],
+      };
+    }
   }
 
   // 1A-1. Comprehensive Ledger & Project P&L Inquiry ("حسابي الشامل" / "وصلني كام" / "ليا كام وعليا كام" / "ربح مشروع" / "المكسب كام")

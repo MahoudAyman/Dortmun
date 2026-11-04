@@ -19,7 +19,9 @@ import {
 import { MatIconModule } from '@angular/material/icon';
 import { filter, Subscription } from 'rxjs';
 import { StoreService, type PageAdvisorTip } from './core/db/store';
+import { CUSTODIANS } from './core/db/models';
 import type {
+  CustodianId,
   DeductionMode,
   ExpenseCategory,
   PaymentMethodType,
@@ -86,6 +88,8 @@ export class App implements AfterViewInit, OnDestroy {
     'smart' | 'incoming' | 'deduction' | 'advance' | 'expense' | 'worker'
   >('incoming');
 
+  readonly custodians = CUSTODIANS;
+
   // Quick Incoming Payment state
   readonly qaIncomingSourceType = signal<PaymentSourceType>('شركة');
   readonly qaIncomingSourceName = signal<string>('');
@@ -93,6 +97,8 @@ export class App implements AfterViewInit, OnDestroy {
   readonly qaIncomingMethod = signal<PaymentMethodType>('نقدي');
   readonly qaIncomingProjectId = signal<number | null>(null);
   readonly qaIncomingNotes = signal<string>('');
+  readonly qaIncomingReceivedBy = signal<CustodianId>('mahmoud_ayman');
+  readonly qaIncomingReceivedByName = signal<string>('');
 
   // Quick Deduction state
   readonly qaWorkerId = signal<number>(0);
@@ -498,6 +504,9 @@ export class App implements AfterViewInit, OnDestroy {
       amount,
       method: this.qaIncomingMethod(),
       projectId: this.qaIncomingProjectId(),
+      receivedBy: this.qaIncomingReceivedBy(),
+      receivedByName:
+        this.qaIncomingReceivedBy() === 'other' ? this.qaIncomingReceivedByName().trim() : '',
       notes: this.qaIncomingNotes().trim() || 'مسجل من الإضافة السريعة',
     });
     this.store.showToast(
@@ -507,6 +516,8 @@ export class App implements AfterViewInit, OnDestroy {
     this.qaIncomingAmount.set(0);
     this.qaIncomingSourceName.set('');
     this.qaIncomingNotes.set('');
+    this.qaIncomingReceivedBy.set('mahmoud_ayman');
+    this.qaIncomingReceivedByName.set('');
     this.quickActionModalOpen.set(false);
   }
 

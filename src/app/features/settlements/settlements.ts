@@ -3,7 +3,8 @@ import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
 import { calculateSettlement } from '../../core/calc/calculations';
-import type { Settlement, Worker } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { CustodianId, Settlement, Worker } from '../../core/db/models';
 
 @Component({
   selector: 'app-settlements',
@@ -209,6 +210,49 @@ import type { Settlement, Worker } from '../../core/db/models';
           </div>
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label for="set-paidby" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">القبض اتصرف من حساب مين؟ (فودافون كاش)</label>
+            <select
+              id="set-paidby"
+              [value]="settlePaidBy()"
+              (change)="settlePaidBy.set($any($event.target).value)"
+              class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold"
+            >
+              @for (c of custodians; track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+
+          @if (settlePaidBy() === 'other') {
+            <div>
+              <label for="set-paidby-name" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">اسم الأمين (أخرى)</label>
+              <input
+                id="set-paidby-name"
+                type="text"
+                [value]="settlePaidByName()"
+                (input)="settlePaidByName.set($any($event.target).value)"
+                placeholder="اكتب الاسم"
+                class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+              />
+            </div>
+          }
+
+          <div>
+            <label for="set-fee" class="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">مصاريف سحب القبض (ج.م)</label>
+            <input
+              id="set-fee"
+              type="number"
+              min="0"
+              [value]="settleWithdrawalFee() || ''"
+              (input)="settleWithdrawalFee.set(+$any($event.target).value)"
+              placeholder="0"
+              class="w-full px-3 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums"
+            />
+          </div>
+        </div>
+
         <!-- Auto-Calculated Breakdown -->
         @if (preview(); as calc) {
           <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-6 gap-4 items-center">
@@ -275,6 +319,9 @@ import type { Settlement, Worker } from '../../core/db/models';
                   <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                     <td class="py-3 px-4 font-bold">
                       <div>{{ store.workerName(st.workerId) }}</div>
+                      @if (st.paidBy) {
+                        <div class="text-xs font-normal text-slate-500">من حساب: {{ custodianLabel(st.paidBy, st.paidByName) }}</div>
+                      }
                       @if (st.notes) {
                         <div class="text-xs font-normal text-slate-500">{{ st.notes }}</div>
                       }
@@ -360,6 +407,18 @@ import type { Settlement, Worker } from '../../core/db/models';
                 <span class="font-bold">الصافي المستلم:</span>
                 <span class="font-extrabold tabular-nums text-emerald-600">{{ store.money(receipt.netPaid) }}</span>
               </div>
+              @if (receipt.paidBy) {
+                <div class="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span class="text-slate-500">اتصرف من حساب:</span>
+                  <span class="font-bold">{{ custodianLabel(receipt.paidBy, receipt.paidByName) }}</span>
+                </div>
+              }
+              @if (receipt.withdrawalFee) {
+                <div class="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span class="text-slate-500">مصاريف السحب:</span>
+                  <span class="font-bold tabular-nums text-rose-600">{{ store.money(receipt.withdrawalFee) }}</span>
+                </div>
+              }
               @if (receipt.notes) {
                 <p class="text-xs text-slate-500 pt-1">ملاحظات: {{ receipt.notes }}</p>
               }
@@ -382,10 +441,17 @@ import type { Settlement, Worker } from '../../core/db/models';
 export class SettlementsPage {
   readonly store = inject(StoreService);
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly selectedWorkerId = signal<number>(1);
   readonly fromDate = signal<string>(this.store.payday15Info().from);
   readonly toDate = signal<string>(this.store.payday15Info().to);
   readonly settlementNotes = signal<string>('قبض دورة يوم 15');
+  // القبض اتصرف من حساب مين؟ (فودافون كاش) — يتطبق على التسوية المفردة وعلى القبض الجماعي
+  readonly settlePaidBy = signal<CustodianId>('mahmoud_ayman');
+  readonly settlePaidByName = signal<string>('');
+  readonly settleWithdrawalFee = signal<number>(0);
   readonly selectedReceipt = signal<Settlement | null>(null);
 
   readonly collectivePayrollRows = computed(() => {
@@ -467,6 +533,9 @@ export class SettlementsPage {
           deductionsDeducted: row.calc.deductionsDeducted,
           netPaid: row.calc.netPaid,
           date: this.store.todayIso(),
+          paidBy: this.settlePaidBy(),
+          paidByName: this.settlePaidBy() === 'other' ? this.settlePaidByName().trim() : '',
+          withdrawalFee: Math.max(0, this.settleWithdrawalFee() || 0),
           notes: this.settlementNotes() || 'قبض جماعي يوم 15',
         },
         row.calc.unsettledAdvanceIds,
@@ -495,6 +564,9 @@ export class SettlementsPage {
         deductionsDeducted: calc.deductionsDeducted,
         netPaid: calc.netPaid,
         date: this.store.todayIso(),
+        paidBy: this.settlePaidBy(),
+        paidByName: this.settlePaidBy() === 'other' ? this.settlePaidByName().trim() : '',
+        withdrawalFee: Math.max(0, this.settleWithdrawalFee() || 0),
         notes: this.settlementNotes(),
       },
       calc.unsettledAdvanceIds,

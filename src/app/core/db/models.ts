@@ -11,6 +11,35 @@ export type WorkerRole =
   | 'مبلط'
   | 'أخرى';
 
+// ── أمناء العهدة (فلوس فودافون كاش) ──────────────────────────────
+// كل حركة فلوس في الموقع لازم تقول: جت منين، وراحت لمين (مين معاه الفلوس)،
+// ومين سحبها، ومصاريف السحب. الأمين هو صاحب حساب فودافون كاش اللي الفلوس
+// موجودة معاه فعلًا. 'other' معها اسم مكتوب في الحقل المصاحب *Name.
+export type CustodianId = 'mahmoud_ayman' | 'mahmoud_hamada' | 'ayman_hassan' | 'other';
+
+export const CUSTODIANS: { id: CustodianId; name: string }[] = [
+  { id: 'mahmoud_ayman', name: 'محمود أيمن' },
+  { id: 'mahmoud_hamada', name: 'محمود حماده' },
+  { id: 'ayman_hassan', name: 'ايمن حسان' },
+  { id: 'other', name: 'أخرى' },
+];
+
+export function custodianLabel(id: CustodianId | string | undefined, customName?: string): string {
+  if (!id) return '—';
+  if (id === 'other') return customName?.trim() ? customName.trim() : 'أخرى';
+  return CUSTODIANS.find((c) => c.id === id)?.name || String(id);
+}
+
+export interface CustodianBalance {
+  custodian: CustodianId;
+  name: string;
+  received: number; // كل اللي وصله: مقبوضات + تحصيل مستخلصات + شيكات واردة محصلة
+  paid: number; // كل اللي صرفه: سلف + تسويات + مصاريف + ناش + شيكات صادرة
+  advancesPaid: number; // السلف وحدها (من paid)
+  withdrawalFees: number; // مصاريف السحب وحدها
+  balance: number; // received - paid - withdrawalFees
+}
+
 export interface Worker {
   id?: number;
   name: string;
@@ -54,6 +83,10 @@ export interface Advance {
   settlementId: number | null;
   projectId?: number | null; // المشروع المرتبط بالسلفة
   checkId?: number | null; // الشيك الذي صُرفت منه السلفة
+  fundedBy?: CustodianId; // السلفة اتصرفت من حساب مين (فودافون كاش)
+  fundedByName?: string; // اسم الأمين لو fundedBy = 'other'
+  withdrawnBy?: string; // مين اللي سحب السلفة للناس (اسم حر: من التلاتة أو أخرى)
+  withdrawalFee?: number; // مصاريف سحب السلفة
   notes: string;
 }
 
@@ -98,6 +131,9 @@ export interface Settlement {
   date: string; // YYYY-MM-DD
   projectId?: number | null; // المشروع المرتبط بالتصفية
   checkId?: number | null; // الشيك الذي صُرف منه القبض
+  paidBy?: CustodianId; // القبض اتصرف من حساب مين
+  paidByName?: string;
+  withdrawalFee?: number; // مصاريف سحب القبض
   notes: string;
 }
 
@@ -110,6 +146,8 @@ export interface Extract {
   claimedAmount?: number;
   deductions?: number;
   paidAmount?: number;
+  receivedBy?: CustodianId; // فلوس المستخلص وصلت لمين
+  receivedByName?: string;
   notes: string;
 }
 
@@ -128,6 +166,8 @@ export interface ExtractLine {
   collectedDate: string;
   method: CollectionMethod;
   checkId: number | null;
+  collectedBy?: CustodianId; // التحصيل وصل لمين
+  collectedByName?: string;
   status?: ExtractLineStatus;
   isSaved?: boolean;
   notes: string;
@@ -148,6 +188,8 @@ export interface ExtraItem {
   valueMode: ExtraValueMode;
   amount: number;
   days: number;
+  paidBy?: CustodianId; // الإضافي اتصرف من حساب مين
+  paidByName?: string;
   notes: string;
 }
 
@@ -158,6 +200,9 @@ export interface ExtraCash {
   amount: number;
   days: number;
   paidCash: number;
+  paidBy?: CustodianId; // الناش اتصرف من حساب مين
+  paidByName?: string;
+  withdrawalFee?: number; // مصاريف سحب الناش
   notes: string;
 }
 
@@ -176,6 +221,8 @@ export interface CheckItem {
   extractId: number | null;
   withdrawnAmount?: number; // المبلغ المسحوب من الشيك في جيب المقاول
   withdrawalFee?: number; // مصاريف خارجية / حق سحب الشيك
+  custodian?: CustodianId; // الشيك الوارد وصل لمين / الصادر اتصرف من حساب مين
+  custodianName?: string;
   notes: string;
 }
 
@@ -194,6 +241,9 @@ export interface Expense {
   amount: number;
   projectId: number | null;
   checkId?: number | null; // الشيك المرتبط بالمصروف أو رسوم السحب
+  paidBy?: CustodianId; // المصروف اتدفع من حساب مين
+  paidByName?: string;
+  withdrawalFee?: number; // مصاريف السحب إن وجدت
   note: string;
 }
 
@@ -217,6 +267,8 @@ export interface IncomingPayment {
   projectId: number | null; // راح لحساب مشروع إيه
   checkId?: number | null;
   extractId?: number | null;
+  receivedBy?: CustodianId; // الفلوس دي وصلت لمين (مين معاه الفلوس دلوقتي)
+  receivedByName?: string;
   notes: string;
 }
 

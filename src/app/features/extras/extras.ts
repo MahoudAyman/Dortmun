@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
 import type {
+  CustodianId,
   ExtraCash,
   ExtraItem,
   ExtraPerformedBy,
@@ -164,6 +166,24 @@ import type {
             </div>
           </div>
 
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="ex-paidby" class="block text-xs font-medium mb-1">الإضافي اتصرف من حساب مين؟ (فودافون كاش)</label>
+              <select id="ex-paidby" formControlName="paidBy" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
+                @for (c of custodians; track c.id) {
+                  <option [value]="c.id">{{ c.name }}</option>
+                }
+              </select>
+            </div>
+
+            @if (extraForm.get('paidBy')?.value === 'other') {
+              <div>
+                <label for="ex-paidby-name" class="block text-xs font-medium mb-1">اسم الأمين (أخرى)</label>
+                <input id="ex-paidby-name" type="text" formControlName="paidByName" placeholder="اكتب الاسم" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+              </div>
+            }
+          </div>
+
           <div class="flex flex-wrap items-center justify-between gap-4">
             <input
               type="text"
@@ -205,6 +225,9 @@ import type {
               </div>
               <div class="text-xs text-slate-600 dark:text-slate-300">
                 بأمر: <strong>{{ item.authorizedBy }}</strong> · التنفيذ: {{ item.performedBy === 'self' ? 'المقاول نفسه' : 'عمال المقاول' }} ({{ store.num(item.workersCount) }} عمال)
+                @if (item.paidBy) {
+                  <span> · من حساب: {{ custodianLabel(item.paidBy, item.paidByName) }}</span>
+                }
               </div>
               @if (item.notes) {
                 <p class="text-xs text-slate-500">{{ item.notes }}</p>
@@ -277,6 +300,7 @@ import type {
                     <th class="py-2.5 px-2 font-bold">المبلغ (ج.م)</th>
                     <th class="py-2.5 px-2 font-bold">اليوميات</th>
                     <th class="py-2.5 px-2 font-bold">المدفوع نقداً (ناش)</th>
+                    <th class="py-2.5 px-2 font-bold">رسوم السحب</th>
                     <th class="py-2.5 px-2 font-bold">المتبقي</th>
                     <th class="py-2.5 px-3 font-bold">ملاحظة</th>
                     <th class="py-2.5 px-2"></th>
@@ -323,6 +347,17 @@ import type {
                           (change)="updateNashRow(idx, { paidCash: +$any($event.target).value })"
                           [attr.aria-label]="'المدفوع ناش للعامل ' + store.workerName(row.workerId)"
                           class="w-16 px-1.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50/40 dark:bg-slate-800 tabular-nums font-bold text-emerald-700 dark:text-emerald-400"
+                        />
+                      </td>
+                      <td class="py-2 px-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          [value]="row.withdrawalFee || ''"
+                          (change)="updateNashRow(idx, { withdrawalFee: +$any($event.target).value })"
+                          placeholder="0"
+                          [attr.aria-label]="'رسوم سحب الناش للعامل ' + store.workerName(row.workerId)"
+                          class="w-14 px-1.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 tabular-nums text-rose-600"
                         />
                       </td>
                       <td class="py-2 px-1.5 tabular-nums font-bold text-amber-600 whitespace-nowrap">
@@ -375,6 +410,9 @@ export class ExtrasPage {
   private readonly fb = inject(FormBuilder);
   protected readonly Math = Math;
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly filterProjectId = signal<string>('all');
   readonly filterAuth = signal<string>('all');
   readonly filterDate = signal<string>('');
@@ -393,6 +431,8 @@ export class ExtrasPage {
     valueMode: ['money' as ExtraValueMode],
     amount: [600],
     days: [1],
+    paidBy: ['mahmoud_ayman' as CustodianId],
+    paidByName: [''],
     notes: [''],
   });
 
@@ -478,12 +518,16 @@ export class ExtrasPage {
     const perWorkerDays = Number(val.days) || 0.5;
 
     const defaultWorkers = this.store.activeWorkers().slice(0, count);
+    const headerPaidBy = (val.paidBy || 'mahmoud_ayman') as CustodianId;
+    const headerPaidByName = val.paidBy === 'other' ? (val.paidByName || '').trim() : '';
     const initialNash: ExtraCash[] = defaultWorkers.map((w) => ({
       extraId: 0,
       workerId: w.id!,
       amount: perWorkerAmt || w.workerDayRate * perWorkerDays,
       days: perWorkerDays,
       paidCash: 0,
+      paidBy: headerPaidBy,
+      paidByName: headerPaidByName,
       notes: '',
     }));
 
@@ -498,6 +542,8 @@ export class ExtrasPage {
         valueMode: val.valueMode,
         amount: Number(val.amount),
         days: Number(val.days),
+        paidBy: headerPaidBy,
+        paidByName: headerPaidByName,
         notes: val.notes,
       },
       initialNash
@@ -524,6 +570,8 @@ export class ExtrasPage {
         amount: 250,
         days: 0.5,
         paidCash: 250,
+        paidBy: ext.paidBy,
+        paidByName: ext.paidByName,
         notes: '',
       },
     ]);
@@ -542,7 +590,13 @@ export class ExtrasPage {
   async saveNashChanges(): Promise<void> {
     const ext = this.selectedExtra();
     if (!ext) return;
-    const rows = this.editableNashRows();
+    // صفوف الناش ترث أمين عهدة البند لو الصف نفسه مش محدد له أمين
+    const rows = this.editableNashRows().map((r) => ({
+      ...r,
+      paidBy: r.paidBy ?? ext.paidBy,
+      paidByName: r.paidByName ?? ext.paidByName,
+      withdrawalFee: Math.max(0, Number(r.withdrawalFee) || 0),
+    }));
     const totalAmt = rows.reduce((s, r) => s + (r.amount || 0), 0);
 
     await this.store.saveExtraWithNash(

@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
-import type { ExpenseCategory } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { CustodianId, ExpenseCategory } from '../../core/db/models';
 
 @Component({
   selector: 'app-expenses',
@@ -79,6 +80,29 @@ import type { ExpenseCategory } from '../../core/db/models';
           </div>
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
+          <div>
+            <label for="exp-paidby" class="block text-xs font-medium mb-1">المصروف اتدفع من حساب مين؟ (فودافون كاش)</label>
+            <select id="exp-paidby" formControlName="paidBy" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
+              @for (c of custodians; track c.id) {
+                <option [value]="c.id">{{ c.name }}</option>
+              }
+            </select>
+          </div>
+
+          @if (expenseForm.get('paidBy')?.value === 'other') {
+            <div>
+              <label for="exp-paidby-name" class="block text-xs font-medium mb-1">اسم الأمين (أخرى)</label>
+              <input id="exp-paidby-name" type="text" formControlName="paidByName" placeholder="اكتب الاسم" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+            </div>
+          }
+
+          <div>
+            <label for="exp-fee" class="block text-xs font-medium mb-1">مصاريف السحب (ج.م)</label>
+            <input id="exp-fee" type="number" min="0" formControlName="withdrawalFee" placeholder="0" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-black tabular-nums" />
+          </div>
+        </div>
+
         <div class="flex justify-end">
           <button type="submit" [disabled]="expenseForm.invalid" class="min-h-[44px] inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm cursor-pointer">
             <mat-icon class="!text-lg !w-5 !h-5">add</mat-icon>
@@ -132,6 +156,9 @@ import type { ExpenseCategory } from '../../core/db/models';
                   <td class="py-3 px-3 font-bold">{{ exp.category }}</td>
                   <td class="py-3 px-3 text-xs">
                     <div class="font-bold text-[#3390EC]">{{ store.projectName(exp.projectId) }}</div>
+                    @if (exp.paidBy) {
+                      <div class="text-[10px] text-slate-500">من حساب: {{ custodianLabel(exp.paidBy, exp.paidByName) }}</div>
+                    }
                     @if (exp.checkId) {
                       <span class="inline-block mt-0.5 px-2 py-0.5 rounded bg-purple-500/15 text-purple-600 font-bold text-[10px]">
                         من شيك #{{ store.num(exp.checkId) }}
@@ -163,6 +190,9 @@ export class ExpensesPage {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly categories: ExpenseCategory[] = ['مواصلات', 'أكل', 'أدوات', 'صيانة', 'رسوم سحب شيك', 'أخرى'];
   readonly selectedCategory = signal<string>('all');
 
@@ -173,6 +203,9 @@ export class ExpensesPage {
     checkId: [null as number | null],
     date: [this.store.todayIso(), Validators.required],
     note: [''],
+    paidBy: ['mahmoud_ayman' as CustodianId],
+    paidByName: [''],
+    withdrawalFee: [0],
   });
 
   readonly filteredExpenses = computed(() => {
@@ -209,6 +242,9 @@ export class ExpensesPage {
       checkId: v.checkId ? Number(v.checkId) : null,
       date: v.date || this.store.todayIso(),
       note: v.note || '',
+      paidBy: (v.paidBy || 'mahmoud_ayman') as CustodianId,
+      paidByName: v.paidBy === 'other' ? (v.paidByName || '').trim() : '',
+      withdrawalFee: Math.max(0, Number(v.withdrawalFee) || 0),
     });
     this.store.showToast('تم تسجيل المصروف وربطه بالمشروع والشيك بنجاح', 'success');
     this.expenseForm.patchValue({ note: '' });

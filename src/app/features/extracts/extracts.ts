@@ -7,7 +7,8 @@ import {
   calculateExtractTotals,
   calculateWorkerExtractBase,
 } from '../../core/calc/calculations';
-import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/models';
+import { CUSTODIANS, custodianLabel } from '../../core/db/models';
+import type { CollectionMethod, CustodianId, Extract, ExtractLine } from '../../core/db/models';
 
 @Component({
   selector: 'app-extracts',
@@ -83,6 +84,24 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
             </div>
           </div>
 
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="ext-receivedby" class="block text-xs font-medium mb-1">فلوس المستخلص وصلت لمين؟ (فودافون كاش)</label>
+              <select id="ext-receivedby" formControlName="receivedBy" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold">
+                @for (c of custodians; track c.id) {
+                  <option [value]="c.id">{{ c.name }}</option>
+                }
+              </select>
+            </div>
+
+            @if (newExtractForm.get('receivedBy')?.value === 'other') {
+              <div>
+                <label for="ext-receivedby-name" class="block text-xs font-medium mb-1">اسم الأمين (أخرى)</label>
+                <input id="ext-receivedby-name" type="text" formControlName="receivedByName" placeholder="اكتب الاسم" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm" />
+              </div>
+            }
+          </div>
+
           <div class="flex items-center justify-between gap-4">
             <input
               type="text"
@@ -117,6 +136,9 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
                 </h2>
                 <p class="text-xs text-slate-500 mt-0.5">
                   الفترة من {{ store.digits(currentExt.from) }} إلى {{ store.digits(currentExt.to) }}
+                  @if (currentExt.receivedBy) {
+                    <span> · فلوس المستخلص وصلت لـ: {{ custodianLabel(currentExt.receivedBy, currentExt.receivedByName) }}</span>
+                  }
                   @if (currentExt.notes) {
                     <span> · {{ currentExt.notes }}</span>
                   }
@@ -195,6 +217,7 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
                   <th class="py-3 px-2 font-bold">الصافي المستحق</th>
                   <th class="py-3 px-2 font-bold">المحصّل</th>
                   <th class="py-3 px-2 font-bold">تاريخ ونوع التحصيل</th>
+                  <th class="py-3 px-2 font-bold">التحصيل وصل لمين</th>
                   <th class="py-3 px-2 font-bold">الحالة</th>
                   <th class="py-3 px-2 font-bold">المتبقي</th>
                   <th class="py-3 px-3 font-bold">ملاحظات</th>
@@ -308,6 +331,31 @@ import type { CollectionMethod, Extract, ExtractLine } from '../../core/db/model
                       }
                     </td>
 
+                    <!-- التحصيل وصل لمين (أمين العهدة) -->
+                    <td class="py-2 px-1.5 space-y-1">
+                      <select
+                        [value]="row.collectedBy || ''"
+                        (change)="updateLineField(row, { collectedBy: $any($event.target).value ? $any($event.target).value : undefined })"
+                        [attr.aria-label]="'التحصيل وصل لمين للعامل ' + store.workerName(row.workerId)"
+                        class="w-24 px-1 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold"
+                      >
+                        <option value="">—</option>
+                        @for (c of custodians; track c.id) {
+                          <option [value]="c.id" [selected]="c.id === row.collectedBy">{{ c.name }}</option>
+                        }
+                      </select>
+                      @if (row.collectedBy === 'other') {
+                        <input
+                          type="text"
+                          [value]="row.collectedByName || ''"
+                          (change)="updateLineField(row, { collectedByName: $any($event.target).value })"
+                          placeholder="اسم الأمين"
+                          [attr.aria-label]="'اسم أمين التحصيل للعامل ' + store.workerName(row.workerId)"
+                          class="w-24 px-1 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px]"
+                        />
+                      }
+                    </td>
+
                     <!-- الحالة -->
                     <td class="py-2 px-1.5 whitespace-nowrap font-bold">
                       <span
@@ -349,6 +397,9 @@ export class ExtractsPage {
   readonly store = inject(StoreService);
   private readonly fb = inject(FormBuilder);
 
+  readonly custodians = CUSTODIANS;
+  protected readonly custodianLabel = custodianLabel;
+
   readonly activeExtractId = signal<number>(1);
   readonly showNewModal = signal<boolean>(false);
 
@@ -357,6 +408,8 @@ export class ExtractsPage {
     number: [2, [Validators.required, Validators.min(1)]],
     from: ['2026-10-01', Validators.required],
     to: ['2026-10-31', Validators.required],
+    receivedBy: ['mahmoud_ayman' as CustodianId],
+    receivedByName: [''],
     notes: [''],
   });
 
@@ -396,6 +449,8 @@ export class ExtractsPage {
       collectedDate: string;
       method: CollectionMethod;
       checkId: number | null;
+      collectedBy: CustodianId | undefined;
+      collectedByName: string;
       notes: string;
     }>
   ): Promise<void> {
@@ -521,6 +576,8 @@ export class ExtractsPage {
         number: Number(val.number),
         from: val.from,
         to: val.to,
+        receivedBy: (val.receivedBy || 'mahmoud_ayman') as CustodianId,
+        receivedByName: val.receivedBy === 'other' ? (val.receivedByName || '').trim() : '',
         notes: val.notes,
       },
       initialLines

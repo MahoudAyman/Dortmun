@@ -51,6 +51,7 @@ import {
 import {
   calculateCheckFundBreakdowns,
   calculateComprehensiveLedger,
+  calculateCustodianBalances,
   calculateDailyDateReport,
   calculateDailyPocketSummary,
   calculateDashboardSummary,
@@ -390,6 +391,21 @@ export class StoreService {
       expenses: this.expenses(),
       incomingPayments: this.incomingPayments(),
       selectedProjectId: null,
+    })
+  );
+
+  // أرصدة أمناء العهدة (فلوس فودافون كاش): مين معاه كام — وصله إيه وصرف إيه
+  // الصيغة في calculateCustodianBalances: الرصيد = الواصل − المنصرف − مصاريف السحب
+  readonly custodianBalances = computed(() =>
+    calculateCustodianBalances({
+      incomingPayments: this.incomingPayments(),
+      advances: this.advances(),
+      expenses: this.expenses(),
+      settlements: this.settlements(),
+      extraCashes: this.extraCashes(),
+      checks: this.checks(),
+      extractLines: this.extractLines(),
+      extracts: this.extracts(),
     })
   );
 
@@ -1522,6 +1538,10 @@ export class StoreService {
             date: adv.date,
             amount: adv.amount || 0,
             reason: adv.reason || '',
+            funded_by: adv.fundedBy ?? null,
+            funded_by_name: adv.fundedByName || '',
+            withdrawn_by: adv.withdrawnBy || '',
+            withdrawal_fee: adv.withdrawalFee || 0,
             settled: adv.settlementId !== null && adv.settlementId !== undefined,
             settlement_id: adv.settlementId ?? null,
             updated_at: nowIso,
@@ -1567,6 +1587,9 @@ export class StoreService {
             total_deductions_deducted: st.deductionsDeducted || 0,
             net_paid: st.netPaid || 0,
             paid_amount: st.netPaid || 0,
+            paid_by: st.paidBy ?? null,
+            paid_by_name: st.paidByName || '',
+            withdrawal_fee: st.withdrawalFee || 0,
             remaining_balance: 0,
             paid_at: st.date || st.to,
             payment_method: 'نقدي',
@@ -1588,6 +1611,8 @@ export class StoreService {
             extract_name: `مستخلص ${ex.number || ''}`,
             period_from: ex.from || '2026-10-01',
             period_to: ex.to || '2026-10-18',
+            received_by: ex.receivedBy ?? null,
+            received_by_name: ex.receivedByName || '',
             notes: ex.notes || '',
             updated_at: nowIso,
           }))
@@ -1606,6 +1631,8 @@ export class StoreService {
             tax_amount: el.taxAmount || 0,
             net_amount: (el.claimed || 0) - (el.taxAmount || 0),
             received_amount: el.collected || 0,
+            collected_by: el.collectedBy ?? null,
+            collected_by_name: el.collectedByName || '',
             status: el.isSaved ? 'saved' : 'open',
             status_date: el.collectedDate || null,
             notes: el.notes || '',
@@ -1642,6 +1669,9 @@ export class StoreService {
             worker_id: ec.workerId,
             date: '2026-10-18',
             amount: ec.amount || 0,
+            paid_by: ec.paidBy ?? null,
+            paid_by_name: ec.paidByName || '',
+            withdrawal_fee: ec.withdrawalFee || 0,
             spent_on: ec.notes || '',
             handed_to: '',
             notes: ec.notes || '',
@@ -1668,6 +1698,8 @@ export class StoreService {
             cashed_date: ch.status === 'اتصرف' ? ch.dueDate : null,
             status:
               ch.status === 'اتصرف' ? 'cashed' : ch.status === 'مرتجع' ? 'bounced' : 'pending',
+            custodian: ch.custodian ?? null,
+            custodian_name: ch.custodianName || '',
             spent_on: ch.notes || '',
             notes: ch.notes || '',
             updated_at: nowIso,
@@ -1686,7 +1718,9 @@ export class StoreService {
             category: exp.category || 'مصاريف',
             description: exp.note || '',
             amount: exp.amount || 0,
-            paid_by: '',
+            paid_by: exp.paidBy ?? null,
+            paid_by_name: exp.paidByName || '',
+            withdrawal_fee: exp.withdrawalFee || 0,
             extract_id: null,
             notes: exp.note || '',
             updated_at: nowIso,
@@ -1707,6 +1741,8 @@ export class StoreService {
             method: inc.method || 'نقدي',
             project_id: inc.projectId ?? null,
             check_number: inc.checkNumber || '',
+            received_by: inc.receivedBy ?? null,
+            received_by_name: inc.receivedByName || '',
             notes: inc.notes || '',
             updated_at: nowIso,
           }))

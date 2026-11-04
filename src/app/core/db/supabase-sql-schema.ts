@@ -172,6 +172,10 @@ CREATE TABLE IF NOT EXISTS public.dortmun_advances (
   amount NUMERIC(12,2) NOT NULL DEFAULT 0,
   reason TEXT DEFAULT '',
   settlement_id BIGINT NULL,
+  funded_by TEXT DEFAULT '',
+  funded_by_name TEXT DEFAULT '',
+  withdrawn_by TEXT DEFAULT '',
+  withdrawal_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -204,6 +208,9 @@ CREATE TABLE IF NOT EXISTS public.dortmun_settlements (
   deductions_deducted NUMERIC(12,2) NOT NULL DEFAULT 0,
   net_paid NUMERIC(12,2) NOT NULL DEFAULT 0,
   date TEXT NOT NULL,
+  paid_by TEXT DEFAULT '',
+  paid_by_name TEXT DEFAULT '',
+  withdrawal_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -218,6 +225,8 @@ CREATE TABLE IF NOT EXISTS public.dortmun_extracts (
   claimed_amount NUMERIC(12,2) DEFAULT 0,
   deductions NUMERIC(12,2) DEFAULT 0,
   paid_amount NUMERIC(12,2) DEFAULT 0,
+  received_by TEXT DEFAULT '',
+  received_by_name TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -237,6 +246,8 @@ CREATE TABLE IF NOT EXISTS public.dortmun_extract_lines (
   check_id BIGINT NULL,
   status TEXT DEFAULT 'لم يُحصّل',
   is_saved BOOLEAN DEFAULT true,
+  collected_by TEXT DEFAULT '',
+  collected_by_name TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -265,6 +276,9 @@ CREATE TABLE IF NOT EXISTS public.dortmun_extra_cash (
   amount NUMERIC(12,2) NOT NULL DEFAULT 0,
   days NUMERIC(8,2) NOT NULL DEFAULT 0,
   paid_cash NUMERIC(12,2) NOT NULL DEFAULT 0,
+  paid_by TEXT DEFAULT '',
+  paid_by_name TEXT DEFAULT '',
+  withdrawal_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -280,6 +294,8 @@ CREATE TABLE IF NOT EXISTS public.dortmun_checks (
   status TEXT NOT NULL DEFAULT 'معلق',
   project_id BIGINT NULL,
   extract_id BIGINT NULL,
+  custodian TEXT DEFAULT '',
+  custodian_name TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -291,6 +307,9 @@ CREATE TABLE IF NOT EXISTS public.dortmun_expenses (
   category TEXT NOT NULL DEFAULT 'مواصلات',
   amount NUMERIC(12,2) NOT NULL DEFAULT 0,
   project_id BIGINT NULL,
+  paid_by TEXT DEFAULT '',
+  paid_by_name TEXT DEFAULT '',
+  withdrawal_fee NUMERIC(12,2) NOT NULL DEFAULT 0,
   note TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -305,6 +324,8 @@ CREATE TABLE IF NOT EXISTS public.dortmun_incoming_payments (
   method TEXT NOT NULL DEFAULT 'نقدي',
   project_id BIGINT NULL,
   check_number TEXT DEFAULT '',
+  received_by TEXT DEFAULT '',
+  received_by_name TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -497,7 +518,7 @@ BEGIN
   -- 6. مزامنة جدول السلف (dortmun_advances)
   DELETE FROM public.dortmun_advances;
   IF jsonb_typeof(p_payload->'advances') = 'array' AND jsonb_array_length(p_payload->'advances') > 0 THEN
-    INSERT INTO public.dortmun_advances (id, date, worker_id, amount, reason, settlement_id, notes)
+    INSERT INTO public.dortmun_advances (id, date, worker_id, amount, reason, settlement_id, funded_by, funded_by_name, withdrawn_by, withdrawal_fee, notes)
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
       COALESCE(item->>'date', ''),
@@ -505,6 +526,10 @@ BEGIN
       COALESCE((item->>'amount')::NUMERIC, 0),
       COALESCE(item->>'reason', ''),
       NULLIF(item->>'settlementId', '')::BIGINT,
+      COALESCE(item->>'fundedBy', ''),
+      COALESCE(item->>'fundedByName', ''),
+      COALESCE(item->>'withdrawnBy', ''),
+      COALESCE((item->>'withdrawalFee')::NUMERIC, 0),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'advances') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -537,7 +562,7 @@ BEGIN
   DELETE FROM public.dortmun_settlements;
   IF jsonb_typeof(p_payload->'settlements') = 'array' AND jsonb_array_length(p_payload->'settlements') > 0 THEN
     INSERT INTO public.dortmun_settlements (
-      id, worker_id, period_from, period_to, days, nights, gross_wages, advances_deducted, deductions_deducted, net_paid, date, notes
+      id, worker_id, period_from, period_to, days, nights, gross_wages, advances_deducted, deductions_deducted, net_paid, date, paid_by, paid_by_name, withdrawal_fee, notes
     )
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
@@ -551,6 +576,9 @@ BEGIN
       COALESCE((item->>'deductionsDeducted')::NUMERIC, 0),
       COALESCE((item->>'netPaid')::NUMERIC, 0),
       COALESCE(item->>'date', ''),
+      COALESCE(item->>'paidBy', ''),
+      COALESCE(item->>'paidByName', ''),
+      COALESCE((item->>'withdrawalFee')::NUMERIC, 0),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'settlements') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -560,13 +588,15 @@ BEGIN
   -- 9. مزامنة جدول المستخلصات (dortmun_extracts)
   DELETE FROM public.dortmun_extracts;
   IF jsonb_typeof(p_payload->'extracts') = 'array' AND jsonb_array_length(p_payload->'extracts') > 0 THEN
-    INSERT INTO public.dortmun_extracts (id, project_id, number, period_from, period_to, notes)
+    INSERT INTO public.dortmun_extracts (id, project_id, number, period_from, period_to, received_by, received_by_name, notes)
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
       COALESCE((item->>'projectId')::BIGINT, 0),
       COALESCE((item->>'number')::INT, 1),
       COALESCE(item->>'from', ''),
       COALESCE(item->>'to', ''),
+      COALESCE(item->>'receivedBy', ''),
+      COALESCE(item->>'receivedByName', ''),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'extracts') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -577,7 +607,7 @@ BEGIN
   DELETE FROM public.dortmun_extract_lines;
   IF jsonb_typeof(p_payload->'extractLines') = 'array' AND jsonb_array_length(p_payload->'extractLines') > 0 THEN
     INSERT INTO public.dortmun_extract_lines (
-      id, extract_id, worker_id, calculated, claimed, tax_rate, tax_amount, collected, collected_date, method, check_id, status, notes
+      id, extract_id, worker_id, calculated, claimed, tax_rate, tax_amount, collected, collected_date, method, check_id, status, collected_by, collected_by_name, notes
     )
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
@@ -592,6 +622,8 @@ BEGIN
       COALESCE(item->>'method', 'نقدي'),
       NULLIF(item->>'checkId', '')::BIGINT,
       COALESCE(item->>'status', 'لم يُحصّل'),
+      COALESCE(item->>'collectedBy', ''),
+      COALESCE(item->>'collectedByName', ''),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'extractLines') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -624,7 +656,7 @@ BEGIN
   -- 12. مزامنة جدول توزيع نقدية الإضافي (dortmun_extra_cash)
   DELETE FROM public.dortmun_extra_cash;
   IF jsonb_typeof(p_payload->'extraCashes') = 'array' AND jsonb_array_length(p_payload->'extraCashes') > 0 THEN
-    INSERT INTO public.dortmun_extra_cash (id, extra_id, worker_id, amount, days, paid_cash, notes)
+    INSERT INTO public.dortmun_extra_cash (id, extra_id, worker_id, amount, days, paid_cash, paid_by, paid_by_name, withdrawal_fee, notes)
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
       COALESCE((item->>'extraId')::BIGINT, 0),
@@ -632,6 +664,9 @@ BEGIN
       COALESCE((item->>'amount')::NUMERIC, 0),
       COALESCE((item->>'days')::NUMERIC, 0),
       COALESCE((item->>'paidCash')::NUMERIC, 0),
+      COALESCE(item->>'paidBy', ''),
+      COALESCE(item->>'paidByName', ''),
+      COALESCE((item->>'withdrawalFee')::NUMERIC, 0),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'extraCashes') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -642,7 +677,7 @@ BEGIN
   DELETE FROM public.dortmun_checks;
   IF jsonb_typeof(p_payload->'checks') = 'array' AND jsonb_array_length(p_payload->'checks') > 0 THEN
     INSERT INTO public.dortmun_checks (
-      id, direction, number, bank, amount, due_date, status, project_id, extract_id, notes
+      id, direction, number, bank, amount, due_date, status, project_id, extract_id, custodian, custodian_name, notes
     )
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
@@ -654,6 +689,8 @@ BEGIN
       COALESCE(item->>'status', 'معلق'),
       NULLIF(item->>'projectId', '')::BIGINT,
       NULLIF(item->>'extractId', '')::BIGINT,
+      COALESCE(item->>'custodian', ''),
+      COALESCE(item->>'custodianName', ''),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'checks') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -663,13 +700,16 @@ BEGIN
   -- 14. مزامنة جدول المصاريف الخارجية (dortmun_expenses)
   DELETE FROM public.dortmun_expenses;
   IF jsonb_typeof(p_payload->'expenses') = 'array' AND jsonb_array_length(p_payload->'expenses') > 0 THEN
-    INSERT INTO public.dortmun_expenses (id, date, category, amount, project_id, note)
+    INSERT INTO public.dortmun_expenses (id, date, category, amount, project_id, paid_by, paid_by_name, withdrawal_fee, note)
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
       COALESCE(item->>'date', ''),
       COALESCE(item->>'category', 'مواصلات'),
       COALESCE((item->>'amount')::NUMERIC, 0),
       NULLIF(item->>'projectId', '')::BIGINT,
+      COALESCE(item->>'paidBy', ''),
+      COALESCE(item->>'paidByName', ''),
+      COALESCE((item->>'withdrawalFee')::NUMERIC, 0),
       COALESCE(item->>'note', '')
     FROM jsonb_array_elements(p_payload->'expenses') AS item
     WHERE (item->>'id') IS NOT NULL
@@ -680,7 +720,7 @@ BEGIN
   DELETE FROM public.dortmun_incoming_payments;
   IF jsonb_typeof(p_payload->'incomingPayments') = 'array' AND jsonb_array_length(p_payload->'incomingPayments') > 0 THEN
     INSERT INTO public.dortmun_incoming_payments (
-      id, date, source_type, source_name, amount, method, project_id, check_number, notes
+      id, date, source_type, source_name, amount, method, project_id, check_number, received_by, received_by_name, notes
     )
     SELECT
       COALESCE((item->>'id')::BIGINT, 0),
@@ -691,6 +731,8 @@ BEGIN
       COALESCE(item->>'method', 'نقدي'),
       NULLIF(item->>'projectId', '')::BIGINT,
       COALESCE(item->>'checkNumber', ''),
+      COALESCE(item->>'receivedBy', ''),
+      COALESCE(item->>'receivedByName', ''),
       COALESCE(item->>'notes', '')
     FROM jsonb_array_elements(p_payload->'incomingPayments') AS item
     WHERE (item->>'id') IS NOT NULL

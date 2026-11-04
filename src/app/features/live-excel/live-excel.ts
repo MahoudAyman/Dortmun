@@ -15,6 +15,7 @@ import {
   Expense,
   CheckItem,
   Extract,
+  custodianLabel,
 } from '../../core/db/models';
 import {
   formatCurrency,
@@ -28,6 +29,8 @@ export type ExcelSheetTab =
   | 'expenses'
   | 'checks'
   | 'extracts'
+  | 'settlements'
+  | 'incoming'
   | 'master';
 
 export type RibbonTab = 'home' | 'insert' | 'formulas' | 'data' | 'view';
@@ -2671,6 +2674,10 @@ export class LiveExcelPage {
         return this.filteredChecks().length;
       case 'extracts':
         return this.filteredExtracts().length;
+      case 'settlements':
+        return this.store.settlements().length;
+      case 'incoming':
+        return this.store.incomingPayments().length;
       case 'master':
         return this.masterSummaryRows().length;
     }
@@ -2695,6 +2702,10 @@ export class LiveExcelPage {
         return this.filteredChecks().reduce((acc, c) => acc + c.amount, 0);
       case 'extracts':
         return this.filteredExtracts().reduce((acc, e) => acc + (e.paidAmount || e.claimedAmount || 0), 0);
+      case 'settlements':
+        return this.store.settlements().reduce((acc, s) => acc + (s.netPaid || 0), 0);
+      case 'incoming':
+        return this.store.incomingPayments().reduce((acc, p) => acc + (p.amount || 0), 0);
       case 'master':
         return this.masterSummaryRows().reduce((acc, m) => acc + m.netProfit, 0);
     }
@@ -3117,6 +3128,9 @@ export class LiveExcelPage {
           'اسم العامل': this.store.workerName(a.workerId),
           'المبلغ (ج.م)': a.amount,
           'المشروع': this.store.projectName(a.projectId ?? null),
+          'اتصرفت من حساب مين': custodianLabel(a.fundedBy, a.fundedByName),
+          'مين سحبها': a.withdrawnBy || '—',
+          'مصاريف السحب (ج.م)': a.withdrawalFee || 0,
           'السبب': a.reason,
           'ملاحظات': a.notes || '',
         }));
@@ -3133,6 +3147,8 @@ export class LiveExcelPage {
           'البند': e.category,
           'المبلغ (ج.م)': e.amount,
           'المشروع': this.store.projectName(e.projectId ?? null),
+          'اتدفعت من حساب مين': custodianLabel(e.paidBy, e.paidByName),
+          'مصاريف السحب (ج.م)': e.withdrawalFee || 0,
           'البيان': e.note,
         }));
         this.excel.exportFilteredReport({
@@ -3154,6 +3170,8 @@ export class LiveExcelPage {
           'المتبقي في حساب البنك': (c.amount || 0) - (c.withdrawnAmount || 0),
           'المتبقي كاش في الجيب': this.getCheckPocketRemaining(c),
           'المشروع': this.store.projectName(c.projectId ?? null),
+          'وصل لمين / اتصرف من': custodianLabel(c.custodian, c.custodianName),
+          'مصاريف السحب (ج.م)': c.withdrawalFee || 0,
           'ملاحظات': c.notes || '',
         }));
         this.excel.exportFilteredReport({
@@ -3172,11 +3190,65 @@ export class LiveExcelPage {
           'إجمالي المطالبة': e.claimedAmount || 0,
           'الاستقطاعات': e.deductions || 0,
           'الصافي المقبوض': e.paidAmount || 0,
+          'وصلت لمين': custodianLabel(e.receivedBy, e.receivedByName),
           'ملاحظات': e.notes || '',
         }));
         this.excel.exportFilteredReport({
           title: `شيت_مستخلصات_المشاريع_${projName}`,
           extractsRows: rows,
+        });
+        break;
+      }
+      case 'settlements': {
+        // لا يوجد تبويب "تسويات" في واجهة الإكسيل بعد — الحالة دي جاهزة لأي تبويب
+        // يضيفه فريق الواجهة لاحقًا، وبتستخدم بيانات المتجر مباشرة.
+        const pid = this.selectedProjectId();
+        const rows = this.store
+          .settlements()
+          .filter((st) => pid === null || (st.projectId ?? null) === pid)
+          .map((st, i) => ({
+            'م': i + 1,
+            'التاريخ': st.date,
+            'اسم العامل': this.store.workerName(st.workerId),
+            'من': st.from,
+            'إلى': st.to,
+            'الأيام': st.days,
+            'السهرات': st.nights,
+            'إجمالي الأجر (ج.م)': st.grossWages,
+            'السلف المخصومة (ج.م)': st.advancesDeducted,
+            'الصافي المدفوع (ج.م)': st.netPaid,
+            'اتصرف من حساب مين': custodianLabel(st.paidBy, st.paidByName),
+            'مصاريف السحب (ج.م)': st.withdrawalFee || 0,
+            'المشروع': this.store.projectName(st.projectId ?? null),
+            'ملاحظات': st.notes || '',
+          }));
+        this.excel.exportFilteredReport({
+          title: `شيت_تسويات_قبض_يوم_15_${projName}`,
+          settlementsRows: rows,
+        });
+        break;
+      }
+      case 'incoming': {
+        // لا يوجد تبويب "مقبوضات" في واجهة الإكسيل بعد — الحالة دي جاهزة لأي تبويب
+        // يضيفه فريق الواجهة لاحقًا، وبتستخدم بيانات المتجر مباشرة.
+        const pid = this.selectedProjectId();
+        const rows = this.store
+          .incomingPayments()
+          .filter((ip) => pid === null || (ip.projectId ?? null) === pid)
+          .map((ip, i) => ({
+            'م': i + 1,
+            'التاريخ': ip.date,
+            'نوع المصدر': ip.sourceType,
+            'اسم المصدر': ip.sourceName || ip.senderName || '',
+            'طريقة الدفع': ip.method,
+            'المبلغ (ج.م)': ip.amount,
+            'وصلت لمين': custodianLabel(ip.receivedBy, ip.receivedByName),
+            'المشروع': this.store.projectName(ip.projectId ?? null),
+            'ملاحظات': ip.notes || '',
+          }));
+        this.excel.exportFilteredReport({
+          title: `شيت_المقبوضات_الواردة_${projName}`,
+          incomingPaymentsRows: rows,
         });
         break;
       }

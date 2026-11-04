@@ -2,8 +2,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
   inject,
   signal,
+  ViewChild,
 } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -333,6 +336,7 @@ interface ChatMessage {
 
       <!-- Chat Messages Stream -->
       <div
+        #chatScroll
         class="min-h-[360px] max-h-[62vh] ceramic-card rounded-3xl p-3.5 sm:p-5 overflow-y-auto space-y-4 flex flex-col"
       >
         @for (msg of messages(); track msg.id) {
@@ -473,9 +477,9 @@ interface ChatMessage {
         }
       </div>
 
-      <!-- Input & Voice Bar -->
+      <!-- Input & Voice Bar (sticky: stays visible at the bottom while the chat scrolls) -->
       <div
-        class="ceramic-card rounded-2xl p-2.5 sm:p-3 flex items-center gap-2 sticky bottom-2 z-20"
+        class="ceramic-card rounded-2xl p-2.5 sm:p-3 flex items-center gap-2 sticky bottom-0 z-20 bg-[var(--bg-card)] shadow-lg"
       >
         <button
           type="button"
@@ -515,6 +519,62 @@ export class ZakiPage {
   readonly store = inject(StoreService);
   private readonly router = inject(Router);
   private readonly excel = inject(ExcelService);
+
+  // ── Zaki chat persistence (localStorage, cap 200 messages) ──
+  private static readonly CHAT_STORAGE_KEY = 'dortmun_zaki_chat_v1';
+  private static readonly CHAT_MAX_MESSAGES = 200;
+
+  @ViewChild('chatScroll') private chatScroll?: ElementRef<HTMLElement>;
+
+  constructor() {
+    // Persist whenever the in-memory messages signal changes (any append,
+    // API reply replacement, confirmation or clear). The signal stays the
+    // source of truth; localStorage is only a restore cache.
+    effect(() => {
+      this.saveChatMessages(this.messages());
+    });
+    // Scroll to the newest message once the restored history is rendered.
+    this.scrollChatToBottom();
+  }
+
+  private loadSavedMessages(): ChatMessage[] | null {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(ZakiPage.CHAT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) return null;
+      const saved = (parsed as ChatMessage[]).filter(
+        (m) => m && typeof m.text === 'string' && (m.sender === 'user' || m.sender === 'zaki')
+      );
+      if (saved.length === 0) return null;
+      const capped = saved.slice(-ZakiPage.CHAT_MAX_MESSAGES);
+      const maxId = capped.reduce((s, m) => Math.max(s, m.id || 0), 0);
+      if (maxId >= this.nextMsgId) this.nextMsgId = maxId + 1;
+      return capped;
+    } catch {
+      return null;
+    }
+  }
+
+  private saveChatMessages(list: ChatMessage[]): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(
+        ZakiPage.CHAT_STORAGE_KEY,
+        JSON.stringify(list.slice(-ZakiPage.CHAT_MAX_MESSAGES))
+      );
+    } catch {
+      // Storage full/blocked (private mode): chat keeps working in memory.
+    }
+  }
+
+  private scrollChatToBottom(): void {
+    setTimeout(() => {
+      const el = this.chatScroll?.nativeElement;
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 0);
+  }
 
   readonly capabilitiesGuide = ZAKI_CAPABILITIES_GUIDE;
   readonly showCapabilitiesPage = signal<boolean>(false);
@@ -567,7 +627,7 @@ export class ZakiPage {
     'احذف اخر سلفة',
   ];
 
-  readonly messages = signal<ChatMessage[]>([
+  readonly messages = signal<ChatMessage[]>(this.loadSavedMessages() ?? [
     {
       id: 1,
       sender: 'zaki',
@@ -622,6 +682,7 @@ export class ZakiPage {
               modelName: data.model || 'gemini-2.5-flash',
             },
           ]);
+          this.scrollChatToBottom();
           this.store.showToast(
             `اتصال الذكاء الاصطناعي (${data.projectPath || 'projects/110645591699'}) يعمل بنجاح (${ms}ms)`,
             'success'
@@ -815,6 +876,7 @@ export class ZakiPage {
     }
 
     this.messages.update((list) => [...list, userMsg, zakiMsg]);
+    this.scrollChatToBottom();
 
     if (response.clientEffect === 'navigate_bulk') {
       void this.router.navigateByUrl('/bulk');
@@ -875,6 +937,7 @@ export class ZakiPage {
               )
             );
             return;
+            this.scrollChatToBottom();
           }
         }
       } catch {
@@ -895,6 +958,7 @@ export class ZakiPage {
             : m
         )
       );
+      this.scrollChatToBottom();
     }
   }
 
