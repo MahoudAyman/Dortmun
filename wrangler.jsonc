@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dortmun",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./dist/app/browser",
+    "not_found_handling": "single-page-application"
+  }
+}
