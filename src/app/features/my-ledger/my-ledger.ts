@@ -967,11 +967,17 @@ import type { CustodianBalance, CustodianId, IncomingPayment, PaymentMethodType,
                 <div class="flex justify-between text-[11px]"><span class="text-slate-500">وصل له:</span><span class="font-bold tabular-nums text-emerald-600">{{ store.money(cb.received) }}</span></div>
                 <div class="flex justify-between text-[11px]"><span class="text-slate-500">صرف (منها سلف):</span><span class="font-bold tabular-nums text-rose-600">{{ store.money(cb.paid) }} ({{ store.money(cb.advancesPaid) }})</span></div>
                 <div class="flex justify-between text-[11px]"><span class="text-slate-500">مصاريف سحب:</span><span class="font-bold tabular-nums text-rose-600">{{ store.money(cb.withdrawalFees) }}</span></div>
+                <div class="flex justify-between text-[11px]"><span class="text-slate-500">على فودافون كاش:</span><span class="font-bold tabular-nums text-emerald-600">{{ store.money(cb.vodafoneBalance) }}</span></div>
+                <div class="flex justify-between text-[11px]"><span class="text-slate-500">في الجيب (كاش):</span><span class="font-bold tabular-nums" [class.text-amber-600]="cb.pocketBalance >= 0" [class.text-rose-600]="cb.pocketBalance < 0">{{ store.money(cb.pocketBalance) }}</span></div>
                 <div class="flex justify-between text-xs border-t border-slate-200 dark:border-slate-700 pt-1.5"><span class="font-bold">الباقي معاه:</span><span class="font-extrabold tabular-nums" [class.text-emerald-600]="cb.balance >= 0" [class.text-rose-600]="cb.balance < 0">{{ store.money(cb.balance) }}</span></div>
               </div>
             }
           </div>
-          <p class="text-[11px] text-slate-400">الباقي = الواصل − المنصرف − مصاريف السحب. السجلات القديمة اللي مفيهاش أمين عهدة مش محسوبة هنا.</p>
+          <p class="text-[11px] text-slate-400">الباقي = الواصل − المنصرف − مصاريف السحب = فودافون كاش + الجيب. السلف والمصاريف بتتخصم من الجيب افتراضياً (بعد سحبها من فودافون كاش).</p>
+          @let un = store.custodianBalances();
+          @if (un.unassignedReceived > 0 || un.unassignedPaid > 0) {
+            <p class="text-[11px] text-slate-400">سجلات قديمة بدون أمين («غير محدد» — مش محسوبة على حد): وصل {{ store.money(un.unassignedReceived) }} · اتصرف {{ store.money(un.unassignedPaid) }}.</p>
+          }
         </div>
 
         <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -1694,69 +1700,14 @@ export class MyLedger {
     notes: [''],
   });
 
-  // أرصدة أمناء العهدة (فودافون كاش) — محسوبة من السجلات الفعلية فقط؛
-  // السجلات القديمة اللي مفيهاش أمين عهدة مش بتتضاف لأي أمين.
-  // الواصل: مقبوضات + تحصيل مستخلصات + شيكات واردة اتصرفت.
-  // المنصرف: سلف + تسويات + مصاريف + ناش + شيكات صادرة. (مبلغ المستخلص نفسه مش محسوب
-  // هنا عشان مايتضاعفش مع تحصيل أسطره.)
-  readonly custodianBalances = computed((): CustodianBalance[] => {
-    const rows: CustodianBalance[] = CUSTODIANS.map((c) => ({
-      custodian: c.id,
-      name: c.name,
-      received: 0,
-      paid: 0,
-      advancesPaid: 0,
-      withdrawalFees: 0,
-      balance: 0,
-    }));
-    const rowFor = (id: CustodianId | string | undefined) =>
-      rows.find((r) => r.custodian === id);
-    for (const p of this.store.incomingPayments()) {
-      const r = rowFor(p.receivedBy);
-      if (r) r.received += p.amount || 0;
-    }
-    for (const l of this.store.extractLines()) {
-      const r = rowFor(l.collectedBy);
-      if (r) r.received += l.collected || 0;
-    }
-    for (const c of this.store.checks()) {
-      const r = rowFor(c.custodian);
-      if (!r) continue;
-      if (c.direction === 'وارد' && c.status === 'اتصرف') r.received += c.amount || 0;
-      if (c.direction === 'صادر') r.paid += c.amount || 0;
-    }
-    for (const a of this.store.advances()) {
-      const r = rowFor(a.fundedBy);
-      if (r) {
-        r.paid += a.amount || 0;
-        r.advancesPaid += a.amount || 0;
-        r.withdrawalFees += a.withdrawalFee || 0;
-      }
-    }
-    for (const s of this.store.settlements()) {
-      const r = rowFor(s.paidBy);
-      if (r) {
-        r.paid += s.netPaid || 0;
-        r.withdrawalFees += s.withdrawalFee || 0;
-      }
-    }
-    for (const e of this.store.expenses()) {
-      const r = rowFor(e.paidBy);
-      if (r) {
-        r.paid += e.amount || 0;
-        r.withdrawalFees += e.withdrawalFee || 0;
-      }
-    }
-    for (const n of this.store.extraCashes()) {
-      const r = rowFor(n.paidBy);
-      if (r) {
-        r.paid += n.paidCash || 0;
-        r.withdrawalFees += n.withdrawalFee || 0;
-      }
-    }
-    for (const r of rows) r.balance = r.received - r.paid - r.withdrawalFees;
-    return rows;
-  });
+  // أرصدة أمناء العهدة — من الستور مباشرة (شاملة التحويلات بين الأمناء
+  // وسحب الجيب وتقسيم فودافون كاش / الجيب، ومعالجة السجلات غير المسندة).
+  // النسخة المحلية القديمة اتحذفت: كانت بتبني CustodianBalance من غير
+  // vodafoneBalance/pocketBalance وبتتجاهل التحويلات وpaidFrom، فكانت
+  // هتكسر البناء وتختلف عن أرقام الستور.
+  readonly custodianBalances = computed((): CustodianBalance[] =>
+    this.store.custodianBalances().balances
+  );
 
   readonly filteredMovements = computed(() => {
     const all = this.store.comprehensiveLedger().movements;

@@ -98,6 +98,11 @@ export const routes: Routes = [
       import('./features/settings/settings').then((m) => m.SettingsPage),
   },
   {
+    path: 'custodians',
+    loadComponent: () =>
+      import('./features/custodians/custodians').then((m) => m.CustodiansPage),
+  },
+  {
     path: 'zaki',
     loadComponent: () =>
       import('./features/zaki/zaki').then((m) => m.ZakiPage),

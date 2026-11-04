@@ -6,6 +6,7 @@ import type {
   CheckItem,
   CustodianBalance,
   CustodianId,
+  CustodianTransfer,
   DailyHeadcount,
   Deduction,
   DeductionMode,
@@ -232,6 +233,7 @@ export function calculateCustodianBalances(params: {
   extractLines: ExtractLine[];
   checks: CheckItem[];
   workers: Worker[];
+  custodianTransfers?: CustodianTransfer[];
 }): CustodianBalanceDetail[] {
   const {
     advances,
@@ -243,6 +245,7 @@ export function calculateCustodianBalances(params: {
     checks,
     workers,
   } = params;
+  const transfers = params.custodianTransfers || [];
   const workerMap = new Map(
     workers.filter((w) => w.id !== undefined).map((w) => [w.id!, w])
   );
@@ -257,7 +260,18 @@ export function calculateCustodianBalances(params: {
         .reduce((s, l) => s + (Number(l.collected) || 0), 0) +
       checks
         .filter((c) => c.direction === 'وارد' && c.status === 'اتصرف' && c.custodian === id)
-        .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        .reduce((s, c) => s + (Number(c.amount) || 0), 0) +
+      transfers
+        .filter((t) => t.kind === 'transfer' && t.toCustodian === id)
+        .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const transfersOut = transfers
+      .filter((t) => t.kind === 'transfer' && t.fromCustodian === id)
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const pocketWd = transfers.filter(
+      (t) => t.kind === 'pocket_withdrawal' && t.fromCustodian === id
+    );
+    const pocketWdAmount = pocketWd.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const pocketWdFees = pocketWd.reduce((s, t) => s + (Number(t.withdrawalFee) || 0), 0);
     const custAdvances = advances.filter((a) => a.fundedBy === id);
     const advancesPaid = custAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const settlementsPaid = settlements
@@ -269,7 +283,7 @@ export function calculateCustodianBalances(params: {
     const nashPaid = extraCashes
       .filter((ec) => ec.paidBy === id)
       .reduce((s, ec) => s + (Number(ec.paidCash) || 0), 0);
-    const paid = advancesPaid + settlementsPaid + expensesPaid + nashPaid;
+    const paid = advancesPaid + settlementsPaid + expensesPaid + nashPaid + transfersOut;
     const withdrawalFees =
       custAdvances.reduce((s, a) => s + (Number(a.withdrawalFee) || 0), 0) +
       settlements
@@ -280,7 +294,22 @@ export function calculateCustodianBalances(params: {
         .reduce((s, ex) => s + (Number(ex.withdrawalFee) || 0), 0) +
       extraCashes
         .filter((ec) => ec.paidBy === id)
-        .reduce((s, ec) => s + (Number(ec.withdrawalFee) || 0), 0);
+        .reduce((s, ec) => s + (Number(ec.withdrawalFee) || 0), 0) +
+      pocketWdFees;
+    const vodafoneOutflows =
+      custAdvances
+        .filter((a) => a.paidFrom === 'vodafone')
+        .reduce((s, a) => s + (Number(a.amount) || 0), 0) +
+      settlements
+        .filter((st) => st.paidBy === id && st.paidFrom === 'vodafone')
+        .reduce((s, st) => s + Math.max(0, Number(st.netPaid) || 0), 0) +
+      expenses
+        .filter((ex) => ex.paidBy === id && ex.paidFrom === 'vodafone')
+        .reduce((s, ex) => s + (Number(ex.amount) || 0), 0) +
+      extraCashes
+        .filter((ec) => ec.paidBy === id && ec.paidFrom === 'vodafone')
+        .reduce((s, ec) => s + (Number(ec.paidCash) || 0), 0);
+    const pocketOutflows = advancesPaid + settlementsPaid + expensesPaid + nashPaid - vodafoneOutflows;
     return {
       custodian: id,
       name: custodianLabel(id),
@@ -289,6 +318,8 @@ export function calculateCustodianBalances(params: {
       advancesPaid,
       withdrawalFees,
       balance: received - paid - withdrawalFees,
+      vodafoneBalance: received - transfersOut - pocketWdAmount - vodafoneOutflows - withdrawalFees,
+      pocketBalance: pocketWdAmount - pocketOutflows,
       advances: custAdvances,
     };
   });
@@ -301,7 +332,7 @@ function custodianBalanceLine(
   return (
     `• ${b.name}: وصله ${formatCurrency(b.received, numMode)} · صرف ${formatCurrency(b.paid, numMode)} ` +
     `(سلف: ${formatCurrency(b.advancesPaid, numMode)}) · مصاريف سحب: ${formatCurrency(b.withdrawalFees, numMode)} · ` +
-    `الباقي معاه: ${formatCurrency(b.balance, numMode)}`
+    `الباقي معاه: ${formatCurrency(b.balance, numMode)} (كاش: ${formatCurrency(b.vodafoneBalance, numMode)} · جيب: ${formatCurrency(b.pocketBalance, numMode)})`
   );
 }
 
@@ -332,6 +363,7 @@ function buildCustodianBalanceReply(
     extractLines: ctx.extractLines,
     checks: ctx.checks,
     workers: ctx.workers,
+    custodianTransfers: ctx.custodianTransfers || [],
   });
   const workerMap = new Map(
     ctx.workers.filter((w) => w.id !== undefined).map((w) => [w.id!, w])
@@ -648,6 +680,7 @@ export interface ZakiContext {
   checks: CheckItem[];
   expenses?: Expense[];
   incomingPayments?: IncomingPayment[];
+  custodianTransfers?: CustodianTransfer[];
   settings: AppSettings;
   pendingAdvanceWorkerId?: number | null;
 }

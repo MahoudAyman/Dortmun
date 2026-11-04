@@ -847,6 +847,7 @@ export class ZakiPage {
       checks: this.store.checks(),
       expenses: this.store.expenses(),
       incomingPayments: this.store.incomingPayments(),
+      custodianTransfers: this.store.custodianTransfers(),
       settings: this.store.settings(),
       pendingAdvanceWorkerId: this.awaitingAdvanceWorkerId(),
     });
@@ -944,14 +945,16 @@ export class ZakiPage {
         // Network error or timeout -> seamlessly fall back to local Zaki response
       }
 
-      // Fallback to local engine response without any interruption
+      // Fallback to local engine response without any interruption.
+      // Say so honestly in the message itself (the local_fallback badge
+      // above the bubble already shows, this note explains why).
       this.lastUsedEngine.set('local_fallback');
       this.messages.update((list) =>
         list.map((m) =>
           m.id === zakiMsgId
             ? {
                 ...m,
-                text: response.reply,
+                text: `${response.reply}\n\n—\n⚠️ تعذّر الوصول إلى AI API الآن، فالرد ده من محرك زكي المحلي.`,
                 engineSource: 'local_fallback',
                 isCheckingApi: false,
               }

@@ -33,12 +33,40 @@ export function custodianLabel(id: CustodianId | string | undefined, customName?
 export interface CustodianBalance {
   custodian: CustodianId;
   name: string;
-  received: number; // كل اللي وصله: مقبوضات + تحصيل مستخلصات + شيكات واردة محصلة
-  paid: number; // كل اللي صرفه: سلف + تسويات + مصاريف + ناش + شيكات صادرة
+  received: number; // كل اللي وصله على فودافون كاش: مقبوضات + تحصيل مستخلصات + شيكات واردة محصلة + تحويلات واردة من أمين تاني
+  paid: number; // كل اللي خرج من عنده: سلف + تسويات + مصاريف + ناش + شيكات صادرة + تحويلات صادرة لأمين تاني (سحب الجيب مش من paid — حركة داخلية بين جيبيه)
   advancesPaid: number; // السلف وحدها (من paid)
-  withdrawalFees: number; // مصاريف السحب وحدها
-  balance: number; // received - paid - withdrawalFees
+  withdrawalFees: number; // مصاريف السحب وحدها (كلها بتخرج من فودافون كاش)
+  balance: number; // received - paid - withdrawalFees = vodafoneBalance + pocketBalance
+  vodafoneBalance: number; // اللي قاعد معاه على فودافون كاش
+  pocketBalance: number; // اللي قاعد معاه كاش في جيبه
 }
+
+// ── تحويلات بين أمناء العهدة وسحب الجيب ──────────────────────────
+// كل أمين معاه فلوسه في جيبين: فودافون كاش وجيبه (كاش).
+// الفلوس بتوصل على فودافون كاش. سحب الجيب بينقل فلوس من فودافون كاش
+// لجيب نفس الأمين (مع مصاريف سحب). التحويل بينقل فلوس فودافون كاش
+// من أمين لأمين تاني (بتوصل على فودافون كاش الأمين المستلم).
+// السلف والمصاريف والتسويات والناش بتتدفع من الجيب افتراضيًا (paidFrom).
+export type CustodianTransferKind = 'transfer' | 'pocket_withdrawal';
+
+export interface CustodianTransfer {
+  id?: number;
+  date: string; // YYYY-MM-DD
+  kind: CustodianTransferKind;
+  fromCustodian: CustodianId; // مين اللي بعت / سحب من فودافون كاش بتاعه
+  fromCustodianName?: string; // اسم الأمين لو fromCustodian = 'other'
+  toCustodian: CustodianId; // مين اللي استلم (في سحب الجيب = نفس الأمين)
+  toCustodianName?: string; // اسم الأمين لو toCustodian = 'other'
+  amount: number; // المبلغ المحوّل / المسحوب للجيب
+  withdrawalFee?: number; // مصاريف السحب (في سحب الجيب بتخرج من فودافون كاش)
+  method?: string; // طريقة التحويل (فودافون كاش / إنستا باي / كاش ...)
+  notes: string;
+}
+
+// منين اتدفع المبلغ: من فودافون كاش ولا من جيب الأمين؟ الافتراضي 'pocket'
+// (الفلوس بتتسحب للجيب الأول وبعدين تتدفع للناس منه).
+export type CustodianPaidFrom = 'vodafone' | 'pocket';
 
 export interface Worker {
   id?: number;
@@ -87,6 +115,7 @@ export interface Advance {
   fundedByName?: string; // اسم الأمين لو fundedBy = 'other'
   withdrawnBy?: string; // مين اللي سحب السلفة للناس (اسم حر: من التلاتة أو أخرى)
   withdrawalFee?: number; // مصاريف سحب السلفة
+  paidFrom?: CustodianPaidFrom; // اتدفعت من فودافون كاش ولا من جيب الأمين (الافتراضي 'pocket')
   notes: string;
 }
 
@@ -134,6 +163,7 @@ export interface Settlement {
   paidBy?: CustodianId; // القبض اتصرف من حساب مين
   paidByName?: string;
   withdrawalFee?: number; // مصاريف سحب القبض
+  paidFrom?: CustodianPaidFrom; // اتدفع من فودافون كاش ولا من جيب الأمين (الافتراضي 'pocket')
   notes: string;
 }
 
@@ -203,6 +233,7 @@ export interface ExtraCash {
   paidBy?: CustodianId; // الناش اتصرف من حساب مين
   paidByName?: string;
   withdrawalFee?: number; // مصاريف سحب الناش
+  paidFrom?: CustodianPaidFrom; // اتدفع من فودافون كاش ولا من جيب الأمين (الافتراضي 'pocket')
   notes: string;
 }
 
@@ -244,6 +275,7 @@ export interface Expense {
   paidBy?: CustodianId; // المصروف اتدفع من حساب مين
   paidByName?: string;
   withdrawalFee?: number; // مصاريف السحب إن وجدت
+  paidFrom?: CustodianPaidFrom; // اتدفع من فودافون كاش ولا من جيب الأمين (الافتراضي 'pocket')
   note: string;
 }
 
@@ -359,6 +391,7 @@ export interface CloudSyncSnapshot {
   checks: CheckItem[];
   expenses: Expense[];
   incomingPayments?: IncomingPayment[];
+  custodianTransfers?: CustodianTransfer[];
   settings: AppSettings;
   auditLogs: AuditLogEntry[];
   devices: RegisteredDevice[];

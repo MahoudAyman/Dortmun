@@ -2,6 +2,7 @@ import { Injectable, PLATFORM_ID, computed, inject, signal } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 import { DortmunDatabase } from './dortmun-db';
+import { custodianLabel } from './models';
 import type {
   Advance,
   AppSettings,
@@ -10,6 +11,7 @@ import type {
   CheckItem,
   CloudBackupSummary,
   CloudSyncSnapshot,
+  CustodianTransfer,
   DailyHeadcount,
   Deduction,
   Expense,
@@ -169,6 +171,12 @@ export class StoreService {
   readonly checks = signal<CheckItem[]>([...INITIAL_CHECKS]);
   readonly expenses = signal<Expense[]>([...INITIAL_EXPENSES]);
   readonly incomingPayments = signal<IncomingPayment[]>([...INITIAL_INCOMING_PAYMENTS]);
+  // تحويلات أمناء العهدة وسحب الجيب: مفيش جدول Dexie ليها (dortmun-db.ts
+  // مقفول على نسخة محددة) — بتتحفظ في الـ signal دي وبتتزامن عبر
+  // الـ cloud snapshot + المرآة العلائقية (dortmun_custodian_transfers).
+  // يعني: بتظهر بعد السحب من السحابة عند فتح التطبيق، لكن لو الجهاز
+  // أوفلاين قبل أول سحابة مش هتكون موجودة محليًا.
+  readonly custodianTransfers = signal<CustodianTransfer[]>([]);
   readonly auditLogs = signal<AuditLogEntry[]>([...INITIAL_AUDIT_LOGS]);
 
   // Cloud Sync & Device Registry State
@@ -394,8 +402,9 @@ export class StoreService {
     })
   );
 
-  // أرصدة أمناء العهدة (فلوس فودافون كاش): مين معاه كام — وصله إيه وصرف إيه
+  // أرصدة أمناء العهدة (فودافون كاش + جيب): مين معاه كام — وصله إيه وصرف إيه
   // الصيغة في calculateCustodianBalances: الرصيد = الواصل − المنصرف − مصاريف السحب
+  // = vodafoneBalance + pocketBalance
   readonly custodianBalances = computed(() =>
     calculateCustodianBalances({
       incomingPayments: this.incomingPayments(),
@@ -406,6 +415,7 @@ export class StoreService {
       checks: this.checks(),
       extractLines: this.extractLines(),
       extracts: this.extracts(),
+      custodianTransfers: this.custodianTransfers(),
     })
   );
 
@@ -1208,6 +1218,7 @@ export class StoreService {
       checks: this.checks(),
       expenses: this.expenses(),
       incomingPayments: this.incomingPayments(),
+      custodianTransfers: this.custodianTransfers(),
       settings: this.settings(),
       auditLogs: this.auditLogs().slice(0, 100),
       devices: this.registeredDevices(),
@@ -1748,6 +1759,31 @@ export class StoreService {
           }))
         );
       }
+
+      // Custodian Transfers (تحويلات بين الأمناء + سحب الجيب)
+      // ملحوظة: الجدول ده لازم يتعمل في Supabase الأول (migration + RLS
+      // owner-only زي باقي الجداول) — لو مش موجود الـ upsert هيفشل بصمت
+      // (المرآة العلائقية non-blocking) والتحويلات هتفضل في الـ cloud
+      // snapshot بس.
+      await sb.from('dortmun_custodian_transfers').delete().gte('id', 0);
+      if (snapshot.custodianTransfers && snapshot.custodianTransfers.length > 0) {
+        await sb.from('dortmun_custodian_transfers').upsert(
+          snapshot.custodianTransfers.map((tr, idx) => ({
+            id: tr.id ?? idx + 1,
+            date: tr.date,
+            kind: tr.kind,
+            from_custodian: tr.fromCustodian,
+            from_custodian_name: tr.fromCustodianName || '',
+            to_custodian: tr.toCustodian,
+            to_custodian_name: tr.toCustodianName || '',
+            amount: tr.amount || 0,
+            withdrawal_fee: tr.withdrawalFee || 0,
+            method: tr.method || '',
+            notes: tr.notes || '',
+            updated_at: nowIso,
+          }))
+        );
+      }
     } catch {
       // Relational table mirror is non-blocking
     }
@@ -1873,6 +1909,8 @@ export class StoreService {
       if (Array.isArray(snapshot.expenses)) this.expenses.set(snapshot.expenses);
       if (Array.isArray(snapshot.incomingPayments))
         this.incomingPayments.set(snapshot.incomingPayments);
+      if (Array.isArray(snapshot.custodianTransfers))
+        this.custodianTransfers.set(snapshot.custodianTransfers);
       if (Array.isArray(snapshot.auditLogs)) this.auditLogs.set(snapshot.auditLogs);
       if (Array.isArray(snapshot.devices)) this.mergeDeviceList(snapshot.devices);
 
@@ -3684,6 +3722,87 @@ export class StoreService {
       `حذف دفعة من ${prev.sourceName} بمبلغ ${prev.amount}`
     );
     this.showToast('تم حذف الدفعة الواردة', 'warning');
+  }
+
+  // Custodian Transfers (تحويل بين أمينين / سحب فلوس للجيب)
+  // مفيش جدول Dexie للتحويلات — بتتحفظ في الـ signal وبتتزامن عبر
+  // الـ cloud snapshot (pushUndo -> scheduleCloudSync -> syncToCloudNow)
+  // + المرآة العلائقية. الـ id بيتولد محليًا (max + 1) زي باقي السجلات.
+  async addCustodianTransfer(transfer: CustodianTransfer): Promise<number> {
+    const fromLabel = custodianLabel(transfer.fromCustodian, transfer.fromCustodianName);
+    const toLabel = custodianLabel(transfer.toCustodian, transfer.toCustodianName);
+    if (transfer.id) {
+      const prev = this.custodianTransfers().find((t) => t.id === transfer.id);
+      this.custodianTransfers.update((list) =>
+        list.map((t) => (t.id === transfer.id ? transfer : t))
+      );
+      this.pushUndo({
+        description:
+          transfer.kind === 'transfer'
+            ? `تعديل تحويل ${transfer.amount} من ${fromLabel} إلى ${toLabel}`
+            : `تعديل سحب جيب ${transfer.amount} لـ ${fromLabel}`,
+        table: 'custodianTransfers',
+        type: 'update',
+        recordId: transfer.id,
+        previousData: prev,
+        newData: transfer,
+      });
+      await this.logAudit(
+        'تعديل تحويل أمين عهدة',
+        'حسابي الشامل',
+        transfer.kind === 'transfer'
+          ? `تعديل تحويل ${transfer.amount} من ${fromLabel} إلى ${toLabel}`
+          : `تعديل سحب جيب ${transfer.amount} لـ ${fromLabel}`
+      );
+      return transfer.id;
+    } else {
+      const id = Math.max(0, ...this.custodianTransfers().map((t) => t.id || 0)) + 1;
+      const created = { ...transfer, id };
+      this.custodianTransfers.update((list) => [created, ...list]);
+      this.pushUndo({
+        description:
+          transfer.kind === 'transfer'
+            ? `تحويل ${transfer.amount} من ${fromLabel} إلى ${toLabel}`
+            : `سحب جيب ${transfer.amount} لـ ${fromLabel}`,
+        table: 'custodianTransfers',
+        type: 'add',
+        recordId: id,
+        newData: created,
+      });
+      await this.logAudit(
+        'إضافة تحويل أمين عهدة',
+        'حسابي الشامل',
+        transfer.kind === 'transfer'
+          ? `تحويل ${transfer.amount} من ${fromLabel} إلى ${toLabel}`
+          : `سحب ${fromLabel} مبلغ ${transfer.amount} من فودافون كاش لجيبه`
+      );
+      return id;
+    }
+  }
+
+  async deleteCustodianTransfer(id: number): Promise<void> {
+    const prev = this.custodianTransfers().find((t) => t.id === id);
+    if (!prev) return;
+    const fromLabel = custodianLabel(prev.fromCustodian, prev.fromCustodianName);
+    this.custodianTransfers.update((list) => list.filter((t) => t.id !== id));
+    this.pushUndo({
+      description:
+        prev.kind === 'transfer'
+          ? `حذف تحويل ${prev.amount} من ${fromLabel}`
+          : `حذف سحب جيب ${prev.amount} لـ ${fromLabel}`,
+      table: 'custodianTransfers',
+      type: 'delete',
+      recordId: id,
+      previousData: prev,
+    });
+    await this.logAudit(
+      'حذف تحويل أمين عهدة',
+      'حسابي الشامل',
+      prev.kind === 'transfer'
+        ? `حذف تحويل ${prev.amount} من ${fromLabel}`
+        : `حذف سحب جيب ${prev.amount} لـ ${fromLabel}`
+    );
+    this.showToast('تم حذف التحويل', 'warning');
   }
 
   // Undo last operation (زر التراجع)

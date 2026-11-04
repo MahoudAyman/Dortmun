@@ -5,6 +5,7 @@ import type {
   CheckItem,
   CustodianBalance,
   CustodianId,
+  CustodianTransfer,
   DailyHeadcount,
   Deduction,
   DeductionMode,
@@ -1686,23 +1687,50 @@ export function calculateComprehensiveLedger(params: {
 }
 
 
-// ── أرصدة أمناء العهدة (فلوس فودافون كاش) ──────────────────────────
-// كل حركة فلوس لازم تقول: وصلت لمين (received) واتصرفت من حساب مين (paid).
-// الصيغة لكل أمين:
+// ── أرصدة أمناء العهدة (فودافون كاش + جيب) ───────────────────────
+// كل أمين معاه فلوسه في جيبين: فودافون كاش وجيبه (كاش). الفلوس بتوصل
+// على فودافون كاش، وسحب الجيب بينقل منها لجيبه، والسلف والمصاريف
+// والتسويات والناش بتتدفع من الجيب افتراضيًا (paidFrom).
+// الصيغة لكل أمين (كل مصاريف السحب بتخرج من فودافون كاش):
 //   received = مقبوضات واردة + تحصيل بنود مستخلصات + شيكات واردة اتصرفت
 //              + مستخلصات مدفوعة (paidAmount) — بشرط عدم تكرار نفس الفلوس
+//              + تحويلات واردة من أمين تاني (kind = 'transfer')
 //   paid     = سلف + تسويات (صافي) + مصاريف + ناش مدفوع + شيكات صادرة اتصرفت
+//              + تحويلات صادرة لأمين تاني
+//              (سحب الجيب مش من paid: حركة داخلية بين جيبي نفس الأمين)
 //   advancesPaid = السلف وحدها (جزء من paid)
-//   withdrawalFees = مصاريف السحب وحدها (لا تدخل في paid حتى لا تُخصم مرتين)
+//   withdrawalFees = مصاريف السحب وحدها (سلف/تسويات/مصاريف/ناش/شيكات
+//                    + مصاريف سحب الجيب) — لا تدخل في paid حتى لا تُخصم مرتين
 //   balance  = received - paid - withdrawalFees
-// مثال: محمود أيمن وصله 100000 وصرف سلف 4000 => الرصيد 96000.
+//   vodafoneBalance = received - تحويلات صادرة - سحب الجيب (المبلغ بس)
+//                     - مصروفات من فودافون (paidFrom = 'vodafone' + شيكات صادرة)
+//                     - كل مصاريف السحب (withdrawalFees، ومنها رسوم سحب الجيب نفسه)
+//                     (رسوم سحب الجيب بتتخصم مرة واحدة بس، من ضمن withdrawalFees،
+//                     مش مرة مع المبلغ ومرة تانية مع الرسوم)
+//   pocketBalance   = سحب الجيب (المبلغ بس، من غير رسومه) - مصروفات من الجيب
+//                     (paidFrom = 'pocket' أو مش متحدد)
+//   الهوية اللي لازم تفضل صح على طول (ومتأكد منها بالتجربة تحت):
+//     balance = vodafoneBalance + pocketBalance
+//   الدليل: vodafone + pocket
+//     = received - تحويلات صادرة - سحب الجيب - مصروفات فودافون - withdrawalFees
+//       - مصروفات الجيب + سحب الجيب
+//     = received - (مصروفات فودافون + مصروفات الجيب + تحويلات صادرة) - withdrawalFees
+//     = received - paid - withdrawalFees = balance
+//     (مصروفات فودافون + مصروفات الجيب = كل المصروفات اللي في paid ما عدا
+//     التحويلات الصادرة؛ وسحب الجيب بيتلغي: بيخرج من فودافون ويدخل الجيب.)
+// مثال: محمود أيمن وصله 71000 على فودافون، سحب 4000 لجيبه،
+//       صرف سلف 10 × 150 = 1500 من جيبه
+//       => فودافون 67000، جيب 2500، إجمالي 69500.
 // منع التكرار (نفس الفلوس لا تُحسب مرتين):
 //   - الشيك أداة واحدة: لو مقبوض وارد أو بند مستخلص بيشاور على شيك وارد اتصرف،
 //     الفلوس تُحسب مرة واحدة من الشيك نفسه (بأمين الشيك)، مش من المقبوض/البند.
 //   - المستخلص: لو ليه بنود محصلة، البنود هي التفصيل وpaidAmount هو الإجمالي،
 //     فـ paidAmount تُحسب بس لو مفيش بنود محصلة للمستخلص ده.
 //   - الشيك الصادر يُحسب كمصروف بس لما يكون اتصرف فعلًا (زي الكشف العام).
+//     الشيك الصادر أداة بنكية: مبلغه بيخرج من فودافون كاش مش من الجيب.
 //   - رسوم سحب شيك تُحسب بس لو مفيش مصروف مسجل بنفس الشيك وفئة 'رسوم سحب شيك'.
+//   - 'other' سلة واحدة: أي أمين مش من التلاتة المعروفين بيتجمع في "أخرى"،
+//     فتحويل بين شخصين مختلفين من "أخرى" هيتلغي جوه نفس السلة.
 // فلوس بلا أمين لا تُنسب لحد: بتروح لـ unassignedReceived / unassignedPaid.
 export interface CustodianBalancesResult {
   balances: CustodianBalance[]; // محمود أيمن، محمود حماده، ايمن حسان، أخرى (سلة واحدة)
@@ -1719,16 +1747,38 @@ export function calculateCustodianBalances(input: {
   checks: CheckItem[];
   extractLines: ExtractLine[];
   extracts: Extract[];
+  custodianTransfers?: CustodianTransfer[];
 }): CustodianBalancesResult {
   const num = (v: number | undefined | null): number => Number(v) || 0;
 
   const ids: CustodianId[] = ['mahmoud_ayman', 'mahmoud_hamada', 'ayman_hassan', 'other'];
+  // vodafoneOut / pocketOut: تقسيم المصروفات حسب paidFrom (الافتراضي 'pocket').
+  // pocketWdAmount: إجمالي سحب الجيب (بيخرج من فودافون ويدخل الجيب).
+  // transfersOut: تحويلات صادرة لأمين تاني (بتخرج من فودافون وبتدخل في paid).
   const acc = new Map<
     CustodianId,
-    { received: number; paid: number; advancesPaid: number; withdrawalFees: number }
+    {
+      received: number;
+      paid: number;
+      advancesPaid: number;
+      withdrawalFees: number;
+      vodafoneOut: number;
+      pocketOut: number;
+      pocketWdAmount: number;
+      transfersOut: number;
+    }
   >();
   for (const id of ids) {
-    acc.set(id, { received: 0, paid: 0, advancesPaid: 0, withdrawalFees: 0 });
+    acc.set(id, {
+      received: 0,
+      paid: 0,
+      advancesPaid: 0,
+      withdrawalFees: 0,
+      vodafoneOut: 0,
+      pocketOut: 0,
+      pocketWdAmount: 0,
+      transfersOut: 0,
+    });
   }
   let unassignedReceived = 0;
   let unassignedPaid = 0;
@@ -1748,16 +1798,21 @@ export function calculateCustodianBalances(input: {
   };
 
   // paid هنا نقد صافي بلا مصاريف سحب؛ المصاريف بتتتبع لوحدها في withdrawalFees
+  // (وكلها بتخرج من فودافون كاش، فبتتخصم من vodafoneBalance عبر withdrawalFees).
+  // paidFrom بيحدد الجيب اللي خرج منه المبلغ: 'vodafone' أو 'pocket' (الافتراضي).
   const addPaid = (
     id: CustodianId | string | undefined,
     amount: number,
-    fee = 0
+    fee = 0,
+    paidFrom: 'vodafone' | 'pocket' = 'pocket'
   ): void => {
     const b = bucketOf(id);
     if (b) {
       const r = acc.get(b)!;
       r.paid += Math.max(0, amount);
       r.withdrawalFees += Math.max(0, fee);
+      if (paidFrom === 'vodafone') r.vodafoneOut += Math.max(0, amount);
+      else r.pocketOut += Math.max(0, amount);
     } else {
       unassignedPaid += Math.max(0, amount) + Math.max(0, fee);
     }
@@ -1766,7 +1821,8 @@ export function calculateCustodianBalances(input: {
   const addAdvance = (
     id: CustodianId | string | undefined,
     amount: number,
-    fee = 0
+    fee = 0,
+    paidFrom: 'vodafone' | 'pocket' = 'pocket'
   ): void => {
     const b = bucketOf(id);
     if (b) {
@@ -1774,6 +1830,8 @@ export function calculateCustodianBalances(input: {
       r.paid += Math.max(0, amount);
       r.advancesPaid += Math.max(0, amount);
       r.withdrawalFees += Math.max(0, fee);
+      if (paidFrom === 'vodafone') r.vodafoneOut += Math.max(0, amount);
+      else r.pocketOut += Math.max(0, amount);
     } else {
       unassignedPaid += Math.max(0, amount) + Math.max(0, fee);
     }
@@ -1836,22 +1894,62 @@ export function calculateCustodianBalances(input: {
   }
 
   // ── المنصرف (paid) ──
+  // paidFrom مش متحدد في السجلات القديمة => 'pocket' (الفلوس بتتسحب للجيب
+  // الأول وبعدين تتدفع للناس منه).
   for (const adv of input.advances) {
-    addAdvance(adv.fundedBy, num(adv.amount), num(adv.withdrawalFee));
+    addAdvance(adv.fundedBy, num(adv.amount), num(adv.withdrawalFee), adv.paidFrom ?? 'pocket');
   }
   for (const st of input.settlements) {
-    addPaid(st.paidBy, num(st.netPaid), num(st.withdrawalFee));
+    addPaid(st.paidBy, num(st.netPaid), num(st.withdrawalFee), st.paidFrom ?? 'pocket');
   }
   for (const exp of input.expenses) {
-    addPaid(exp.paidBy, num(exp.amount), num(exp.withdrawalFee));
+    addPaid(exp.paidBy, num(exp.amount), num(exp.withdrawalFee), exp.paidFrom ?? 'pocket');
   }
   for (const ec of input.extraCashes) {
-    addPaid(ec.paidBy, num(ec.paidCash), num(ec.withdrawalFee));
+    addPaid(ec.paidBy, num(ec.paidCash), num(ec.withdrawalFee), ec.paidFrom ?? 'pocket');
   }
-  // شيكات صادرة اتصرفت (الفلوس خرجت فعلًا من حساب الأمين)
+  // شيكات صادرة اتصرفت (الفلوس خرجت فعلًا من حساب الأمين).
+  // الشيك أداة بنكية: مبلغه بيخرج من فودافون كاش مش من الجيب.
   for (const chk of input.checks) {
     if (chk.direction !== 'صادر' || chk.status !== 'اتصرف') continue;
-    addPaid(chk.custodian, num(chk.amount), 0);
+    addPaid(chk.custodian, num(chk.amount), 0, 'vodafone');
+  }
+
+  // ── تحويلات بين الأمناء وسحب الجيب ──
+  for (const tr of input.custodianTransfers ?? []) {
+    const amount = num(tr.amount);
+    const fee = num(tr.withdrawalFee);
+    if (tr.kind === 'transfer') {
+      // تحويل فودافون من أمين لأمين: بيوصل فودافون المستلم، وبيخرج من
+      // فودافون المُرسل وبيتحسب في paid بتاعه (فلوس خرجت من عنده فعلًا).
+      addReceived(tr.toCustodian, amount);
+      const b = bucketOf(tr.fromCustodian);
+      if (b) {
+        const r = acc.get(b)!;
+        r.paid += Math.max(0, amount);
+        r.transfersOut += Math.max(0, amount);
+        // ملحوظة: التحويل الصادر مش بيتضاف لـ vodafoneOut — معادلة
+        // vodafoneBalance بتطرح transfersOut لوحدها، فلو اتضافت هنا
+        // كانت هتتخصم مرتين.
+      } else {
+        unassignedPaid += Math.max(0, amount);
+      }
+      // رسوم التحويل (لو اتسجلت) بتخرج من فودافون المُرسل.
+      if (fee > 0) addFee(tr.fromCustodian, fee);
+    } else {
+      // سحب جيب: نفس الأمين بينقل من فودافون كاش بتاعه لجيبه.
+      // المبلغ بيخرج من فودافون ويدخل الجيب (حركة داخلية: مش من paid)،
+      // والرسوم بتخرج من فودافون وبتتحسب في withdrawalFees.
+      // لو fromCustodian مختلف عن toCustodian (بيانات غلط) بنعتمد fromCustodian.
+      const b = bucketOf(tr.fromCustodian);
+      if (b) {
+        const r = acc.get(b)!;
+        r.pocketWdAmount += Math.max(0, amount);
+        r.withdrawalFees += Math.max(0, fee);
+      } else {
+        unassignedPaid += Math.max(0, amount) + Math.max(0, fee);
+      }
+    }
   }
   // رسوم سحب الشيكات — بس لو مش مسجلة كمصروف بنفس الشيك (عشان متتعدش مرتين)
   for (const chk of input.checks) {
@@ -1865,6 +1963,19 @@ export function calculateCustodianBalances(input: {
 
   const balances: CustodianBalance[] = ids.map((id) => {
     const r = acc.get(id)!;
+    // فودافون = الواصل − تحويلات صادرة − سحب الجيب (المبلغ) − مصروفات فودافون
+    //           − كل مصاريف السحب (ومنها رسوم سحب الجيب نفسه).
+    // جيب = سحب الجيب (المبلغ) − مصروفات الجيب.
+    // الهوية: vodafoneBalance + pocketBalance
+    //   = received − transfersOut − pocketWdAmount − vodafoneOut − withdrawalFees
+    //     + pocketWdAmount − pocketOut
+    //   = received − (vodafoneOut + pocketOut + transfersOut) − withdrawalFees
+    //   = received − paid − withdrawalFees = balance
+    //   (vodafoneOut + pocketOut = كل المصروفات ما عدا التحويلات الصادرة،
+    //   وpaid = المصروفات + التحويلات الصادرة؛ وسحب الجيب بيتلغي بين الجيبين).
+    const vodafoneBalance =
+      r.received - r.transfersOut - r.pocketWdAmount - r.vodafoneOut - r.withdrawalFees;
+    const pocketBalance = r.pocketWdAmount - r.pocketOut;
     return {
       custodian: id,
       name: id === 'other' ? 'أخرى' : CUSTODIANS.find((c) => c.id === id)?.name || custodianLabel(id),
@@ -1873,6 +1984,8 @@ export function calculateCustodianBalances(input: {
       advancesPaid: r.advancesPaid,
       withdrawalFees: r.withdrawalFees,
       balance: r.received - r.paid - r.withdrawalFees,
+      vodafoneBalance,
+      pocketBalance,
     };
   });
 
