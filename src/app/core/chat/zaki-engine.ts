@@ -702,6 +702,8 @@ export type ZakiPendingWriteAction =
       amount: number;
       date: string;
       reason: string;
+      fundedBy?: CustodianId;
+      paidFrom?: 'vodafone' | 'pocket';
     }
   | {
       type: 'record_deduction';
@@ -833,6 +835,27 @@ export type ZakiPendingWriteAction =
         | 'extra';
       recordId: number;
       description: string;
+    }
+  | {
+      type: 'record_custodian_transfer';
+      fromCustodian: CustodianId;
+      fromCustodianName?: string;
+      toCustodian: CustodianId;
+      toCustodianName?: string;
+      amount: number;
+      withdrawalFee: number;
+      method: string;
+      date: string;
+      notes: string;
+    }
+  | {
+      type: 'record_pocket_withdrawal';
+      custodian: CustodianId;
+      custodianName?: string;
+      amount: number;
+      withdrawalFee: number;
+      date: string;
+      notes: string;
     };
 
 export interface ZakiResponse {
@@ -884,6 +907,32 @@ export const ZAKI_CAPABILITIES_GUIDE: ZakiCapabilitySection[] = [
       {
         phrase: 'تفاصيل حساب مشروع الكوبري والربح فيه كام؟',
         explanation: 'يحلل مشروع معين: مستحقات الشركة، المقبوض، المنصرف، المتبقي، وصافي المكسب',
+      },
+    ],
+  },
+  {
+    id: 'custodian_control',
+    title: '١-ب. التحكم الكامل في حسابات الأمناء (موافقة قبل أي تغيير)',
+    subtitle: 'سحب للجيب وتحويلات بين الأمناء — يعرضلك التغيير والأرصدة قبل وبعد، ومينفذش غير بعد موافقتك',
+    icon: 'verified_user',
+    badge: 'جديد',
+    colorClass: 'blue',
+    examples: [
+      {
+        phrase: 'سحبت 5000 من فودافون للجيب',
+        explanation: 'يعرض بطاقة تأكيد بالأرصدة قبل وبعد، وبعد موافقتك يسجل السحب فعلياً في حسابك',
+      },
+      {
+        phrase: 'حولت 71000 من حماده لأيمن',
+        explanation: 'تحويل بين أمينين على فودافون كاش — لازم توافق الأول من زر التأكيد',
+      },
+      {
+        phrase: 'تقرير الأسبوع',
+        explanation: 'تقرير أسبوعي أو شهري منظم: المقبوضات والسلف والمصاريف وسحب الجيب وأرصدة الأمناء',
+      },
+      {
+        phrase: 'تنبيهات',
+        explanation: 'شيكات قرب ميعادها أو متأخرة، وأي جيب سالب — قبل ما المشكلة تكبر',
       },
     ],
   },
@@ -1348,6 +1397,206 @@ export function processZakiMessage(
     };
   }
 
+  // 1A-0Z. تحويلات الأمناء وسحب الجيب (فودافون كاش → الجيب / تحويل بين أمينين).
+  // شروط صارمة عشان متخطفش أوامر السلف والشيكات والمستخلصات. كل عملية هنا
+  // بتتعرض على بطاقة تأكيد (هل توافق؟) ومبتتنفذش غير بعد ضغطة «موافق».
+  const custodianNameMatches: { id: CustodianId; names: string[] }[] = [
+    { id: 'mahmoud_ayman', names: ['محمود ايمن'] },
+    { id: 'mahmoud_hamada', names: ['محمود حماده', 'حماده'] },
+    { id: 'ayman_hassan', names: ['ايمن حسان', 'ايمن'] },
+  ];
+  const matchCustodianInText = (t: string): CustodianId | null => {
+    for (const m of custodianNameMatches) {
+      if (m.names.some((n) => t.includes(n))) return m.id;
+    }
+    return null;
+  };
+  const mentionedCustodians = (t: string): CustodianId[] => {
+    const found: { id: CustodianId; at: number; len: number }[] = [];
+    for (const m of custodianNameMatches) {
+      for (const n of m.names) {
+        const at = t.indexOf(n);
+        if (at >= 0) found.push({ id: m.id, at, len: n.length });
+      }
+    }
+    // الاسم الأطول يكسب لو متداخل (مثلاً «ايمن» جوّه «محمود ايمن» مبتتحسبش أمين تاني).
+    const kept = found.filter(
+      (f) =>
+        !found.some(
+          (g) =>
+            g !== f &&
+            g.len > f.len &&
+            f.at >= g.at &&
+            f.at + f.len <= g.at + g.len
+        )
+    );
+    kept.sort((a, b) => a.at - b.at);
+    const ids: CustodianId[] = [];
+    for (const f of kept) if (!ids.includes(f.id)) ids.push(f.id);
+    return ids;
+  };
+  const parseFeeAfterWord = (t: string): number => {
+    const m = t.match(/(رسوم|مصاريف|عموله)[^0-9٠-٩]*([0-9٠-٩]+(?:\.[0-9٠-٩]+)?)/);
+    if (!m) return 0;
+    return parseSpokenArabicNumber(m[2]) || 0;
+  };
+  const isMoneyWriteText =
+    !norm.includes('سلف') && !norm.includes('شيك') && !norm.includes('مستخلص');
+  const custodianBalancesNow = () =>
+    calculateCustodianBalances({
+      advances: ctx.advances,
+      settlements: ctx.settlements || [],
+      expenses: ctx.expenses || [],
+      extraCashes: ctx.extraCashes,
+      incomingPayments: ctx.incomingPayments || [],
+      extractLines: ctx.extractLines,
+      checks: ctx.checks,
+      workers: ctx.workers,
+      custodianTransfers: ctx.custodianTransfers || [],
+    });
+
+  // --- سحب من فودافون كاش للجيب: "سحبت 5000 من فودافون للجيب" / "حطيت 5000 في جيبي" ---
+  const wantsPocketWithdrawal =
+    isMoneyWriteText &&
+    (norm.includes('جيب') ||
+      norm.includes('محفظه') ||
+      norm.includes('فودافون') ||
+      norm.includes('كاش') ||
+      norm.includes('سحب')) &&
+    (norm.includes('سحب') ||
+      norm.includes('حط') ||
+      norm.includes('نزل') ||
+      norm.includes('طلع'));
+  if (wantsPocketWithdrawal) {
+    const amount = parseSpokenArabicNumber(input) || 0;
+    if (!amount || amount <= 0) {
+      return {
+        reply: 'تمام — سحب للجيب بكام؟ اكتب المبلغ (مثلاً: سحبت 5000 من فودافون للجيب).',
+        quickCommands: ['كشف الأمناء', 'تقرير اليوم'],
+      };
+    }
+    const fee = parseFeeAfterWord(norm);
+    const custodian = matchCustodianInText(norm) || 'mahmoud_ayman';
+    const date = resolveRelativeDate(input, ctx.todayIso);
+    const balances = custodianBalancesNow();
+    const b = balances.find((x) => x.custodian === custodian)!;
+    const vodafoneAfter = b.vodafoneBalance - amount - fee;
+    const pocketAfter = b.pocketBalance + amount;
+    const feeLine = fee > 0 ? `\n• مصاريف سحب: ${formatCurrency(fee, numMode)} (من فودافون)` : '';
+    return {
+      reply:
+        `هل توافق على التنفيذ؟ 🤝\n` +
+        `• العملية: سحب ${formatCurrency(amount, numMode)} من فودافون كاش ${custodianLabel(custodian)} إلى جيبه${feeLine}\n` +
+        `• قبل التنفيذ: فودافون ${formatCurrency(b.vodafoneBalance, numMode)} · الجيب ${formatCurrency(b.pocketBalance, numMode)}\n` +
+        `• بعد التنفيذ: فودافون ${formatCurrency(vodafoneAfter, numMode)} · الجيب ${formatCurrency(pocketAfter, numMode)}\n` +
+        `اضغط «تأكيد وتنفيذ فوراً» للتنفيذ، أو «إلغاء» لو العملية غلط.`,
+      requiresConfirmation: true,
+      pendingAction: {
+        type: 'record_pocket_withdrawal',
+        custodian,
+        amount,
+        withdrawalFee: fee,
+        date,
+        notes: 'سحب جيب مسجل عبر المساعد زكي',
+      },
+      actionRoute: '/custodians',
+      actionLabel: 'فتح حسابات الأمناء',
+      quickCommands: ['كشف الأمناء', 'تقرير اليوم'],
+    };
+  }
+
+  // --- تحويل بين أمينين: "حولت 71000 من حماده لأيمن" / "حولت 5000 لأيمن حسان" ---
+  const wantsTransfer =
+    isMoneyWriteText &&
+    !norm.includes('جيب') &&
+    (norm.includes('حول') || norm.includes('بعت') || norm.includes('ابعت') || norm.includes('تحويل'));
+  if (wantsTransfer) {
+    const amount = parseSpokenArabicNumber(input) || 0;
+    if (!amount || amount <= 0) {
+      return {
+        reply: 'تمام — تحويل بكام؟ اكتب المبلغ ومين هيستلم (مثلاً: حولت 5000 لأيمن حسان).',
+        quickCommands: ['كشف الأمناء', 'تقرير اليوم'],
+      };
+    }
+    const mentioned = mentionedCustodians(norm);
+    if (mentioned.length === 0) {
+      return {
+        reply: `حوّلت ${formatCurrency(amount, numMode)} لمين؟ اختار الأمين اللي هيستلم:`,
+        disambiguationOptions: [
+          { label: 'محمود أيمن', command: `حولت ${amount} لمحمود ايمن` },
+          { label: 'محمود حماده', command: `حولت ${amount} لمحمود حماده` },
+          { label: 'ايمن حسان', command: `حولت ${amount} لايمن حسان` },
+        ],
+        quickCommands: ['كشف الأمناء'],
+      };
+    }
+    let fromCustodian: CustodianId = 'mahmoud_ayman';
+    let toCustodian: CustodianId;
+    if (mentioned.length >= 2) {
+      fromCustodian = mentioned[0];
+      toCustodian = mentioned[1];
+    } else {
+      const only = mentioned[0];
+      const nameAt = Math.min(
+        ...custodianNameMatches
+          .find((m) => m.id === only)!
+          .names.map((n) => (norm.indexOf(n) >= 0 ? norm.indexOf(n) : Infinity))
+      );
+      const beforeName = norm.slice(0, nameAt);
+      if (beforeName.includes('من ')) {
+        fromCustodian = only;
+        toCustodian = 'mahmoud_ayman';
+      } else {
+        toCustodian = only;
+      }
+    }
+    if (fromCustodian === toCustodian) {
+      // المرسل والمستلم واحد — غالباً المستخدم هو المرسل بس قال اسمه كمستلم،
+      // أو المرسل مجهول. نسأل مين اللي بعت بدل ما نرفض.
+      const others: CustodianId[] = (['mahmoud_ayman', 'mahmoud_hamada', 'ayman_hassan'] as CustodianId[]).filter(
+        (id) => id !== toCustodian
+      );
+      return {
+        reply: `التحويل لـ ${custodianLabel(toCustodian)} — مين اللي بعت ${formatCurrency(amount, numMode)}؟ اختار:`,
+        disambiguationOptions: others.map((id) => ({
+          label: custodianLabel(id),
+          command: `حولت ${amount} من ${custodianLabel(id)} لـ ${custodianLabel(toCustodian)}`,
+        })),
+        quickCommands: ['كشف الأمناء'],
+      };
+    }
+    const fee = parseFeeAfterWord(norm);
+    const date = resolveRelativeDate(input, ctx.todayIso);
+    const balances = custodianBalancesNow();
+    const fromB = balances.find((x) => x.custodian === fromCustodian)!;
+    const toB = balances.find((x) => x.custodian === toCustodian)!;
+    const fromAfter = fromB.vodafoneBalance - amount - fee;
+    const toAfter = toB.vodafoneBalance + amount;
+    const feeLine = fee > 0 ? `\n• مصاريف سحب: ${formatCurrency(fee, numMode)} (من فودافون ${custodianLabel(fromCustodian)})` : '';
+    return {
+      reply:
+        `هل توافق على التنفيذ؟ 🤝\n` +
+        `• العملية: تحويل ${formatCurrency(amount, numMode)} من ${custodianLabel(fromCustodian)} إلى ${custodianLabel(toCustodian)} (فودافون كاش)${feeLine}\n` +
+        `• قبل التنفيذ: ${custodianLabel(fromCustodian)} فودافون ${formatCurrency(fromB.vodafoneBalance, numMode)} · ${custodianLabel(toCustodian)} فودافون ${formatCurrency(toB.vodafoneBalance, numMode)}\n` +
+        `• بعد التنفيذ: ${custodianLabel(fromCustodian)} فودافون ${formatCurrency(fromAfter, numMode)} · ${custodianLabel(toCustodian)} فودافون ${formatCurrency(toAfter, numMode)}\n` +
+        `اضغط «تأكيد وتنفيذ فوراً» للتنفيذ، أو «إلغاء» لو العملية غلط.`,
+      requiresConfirmation: true,
+      pendingAction: {
+        type: 'record_custodian_transfer',
+        fromCustodian,
+        toCustodian,
+        amount,
+        withdrawalFee: fee,
+        method: 'فودافون كاش',
+        date,
+        notes: 'تحويل مسجل عبر المساعد زكي',
+      },
+      actionRoute: '/custodians',
+      actionLabel: 'فتح حسابات الأمناء',
+      quickCommands: ['كشف الأمناء', 'تقرير اليوم'],
+    };
+  }
+
   // 1A-0. Capabilities & Egyptian Greeting ("بتعمل ايه" / "تقدر تعمل ايه" / "قدراتك" / "ازيك يا ذكي" / "عامل ايه")
   if (
     norm.includes('بتعمل ايه') ||
@@ -1414,8 +1663,8 @@ export function processZakiMessage(
     if (custodianReply) {
       return {
         reply: custodianReply,
-        actionRoute: '/my-ledger',
-        actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
+        actionRoute: '/custodians',
+        actionLabel: 'فتح حسابات الأمناء (كشف الحركات كامل)',
         quickCommands: [
           'أرصدة الأمناء',
           'محمود ايمن معاه كام؟',
@@ -3016,6 +3265,115 @@ export function processZakiMessage(
       ].join('\n'),
       actionRoute: '/my-ledger',
       actionLabel: 'فتح بطاقات الخزنة وحساب البنك',
+    };
+  }
+
+  // 19B. تنبيهات ("تنبيهات" — شيكات قرب ميعادها أو متأخرة، وجيب سالب)
+  if (norm.includes('تنبيه')) {
+    const today = ctx.todayIso;
+    const in3 = new Date(today + 'T12:00:00Z');
+    in3.setUTCDate(in3.getUTCDate() + 3);
+    const in3Iso = in3.toISOString().slice(0, 10);
+    const pendingChecks = ctx.checks.filter(
+      (c) => c.status === 'معلق' && (c.dueDate || '') !== ''
+    );
+    const dueSoon = pendingChecks.filter((c) => c.dueDate >= today && c.dueDate <= in3Iso);
+    const overdue = pendingChecks.filter((c) => c.dueDate < today);
+    const balances = calculateCustodianBalances({
+      advances: ctx.advances,
+      settlements: ctx.settlements || [],
+      expenses: ctx.expenses || [],
+      extraCashes: ctx.extraCashes,
+      incomingPayments: ctx.incomingPayments || [],
+      extractLines: ctx.extractLines,
+      checks: ctx.checks,
+      workers: ctx.workers,
+      custodianTransfers: ctx.custodianTransfers || [],
+    });
+    const negativePockets = balances.filter((b) => b.pocketBalance < 0);
+    const lines: string[] = ['🔔 تنبيهاتك يا هندسة:'];
+    if (overdue.length > 0) {
+      lines.push('• شيكات متأخرة:');
+      for (const c of overdue) {
+        lines.push(`  - شيك ${c.direction} ${formatCurrency(c.amount, numMode)} — ميعاده ${formatArabicDateShort(c.dueDate)} (متأخر!)`);
+      }
+    }
+    if (dueSoon.length > 0) {
+      lines.push('• شيكات ميعادها خلال ٣ أيام:');
+      for (const c of dueSoon) {
+        lines.push(`  - شيك ${c.direction} ${formatCurrency(c.amount, numMode)} — ميعاده ${formatArabicDateShort(c.dueDate)}`);
+      }
+    }
+    if (negativePockets.length > 0) {
+      for (const b of negativePockets) {
+        lines.push(`• جيب ${b.name} سالب (${formatCurrency(b.pocketBalance, numMode)}) — سجل سحب من فودافون للجيب.`);
+      }
+    }
+    if (overdue.length === 0 && dueSoon.length === 0 && negativePockets.length === 0) {
+      lines.push('• مفيش تنبيهات — كل حاجة تمام ✅ (مفيش شيكات معلقة قرب ميعادها، ولا جيب سالب).');
+    }
+    return {
+      reply: lines.join('\n'),
+      quickCommands: ['تقرير اليوم', 'أرصدة الأمناء', 'شيكات تحت التحصيل'],
+    };
+  }
+
+  // 19C. تقارير أسبوعية وشهرية ("تقرير الأسبوع" / "تقرير الشهر")
+  if (norm.includes('تقرير الاسبوع') || norm.includes('تقرير الشهر')) {
+    const isWeek = norm.includes('تقرير الاسبوع');
+    const today = new Date(ctx.todayIso + 'T12:00:00Z');
+    let fromIso: string;
+    if (isWeek) {
+      const from = new Date(today);
+      from.setUTCDate(from.getUTCDate() - 6);
+      fromIso = from.toISOString().slice(0, 10);
+    } else {
+      fromIso = ctx.todayIso.slice(0, 8) + '01';
+    }
+    const inRange = (d: string) => d >= fromIso && d <= ctx.todayIso;
+    const incoming = (ctx.incomingPayments || []).filter((p) => inRange(p.date || ''));
+    const advs = ctx.advances.filter((a) => inRange(a.date || ''));
+    const exps = (ctx.expenses || []).filter((e) => inRange(e.date || ''));
+    const transfers = (ctx.custodianTransfers || []).filter((t) => inRange(t.date || ''));
+    const pocketWd = transfers.filter((t) => t.kind === 'pocket_withdrawal');
+    const incomingTotal = incoming.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const advsTotal = advs.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const expsTotal = exps.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const pocketTotal = pocketWd.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const transferTotal = transfers
+      .filter((t) => t.kind === 'transfer')
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const balances = calculateCustodianBalances({
+      advances: ctx.advances,
+      settlements: ctx.settlements || [],
+      expenses: ctx.expenses || [],
+      extraCashes: ctx.extraCashes,
+      incomingPayments: ctx.incomingPayments || [],
+      extractLines: ctx.extractLines,
+      checks: ctx.checks,
+      workers: ctx.workers,
+      custodianTransfers: ctx.custodianTransfers || [],
+    });
+    const balanceLine = balances
+      .map((b) => `${b.name}: فودافون ${formatCurrency(b.vodafoneBalance, numMode)}، جيب ${formatCurrency(b.pocketBalance, numMode)}`)
+      .join(' | ');
+    const title = isWeek
+      ? `الأسبوع (${formatArabicDateShort(fromIso)} – ${formatArabicDateShort(ctx.todayIso)})`
+      : `الشهر (${formatArabicDateShort(fromIso)} – ${formatArabicDateShort(ctx.todayIso)})`;
+    return {
+      reply: [
+        `📊 تقرير ${title}:`,
+        `• المقبوضات الواردة: ${formatCurrency(incomingTotal, numMode)} (${formatNumber(incoming.length, numMode)} دفعة)`,
+        `• السلف المنصرفة: ${formatCurrency(advsTotal, numMode)} (${formatNumber(advs.length, numMode)} سلفة)`,
+        `• المصاريف: ${formatCurrency(expsTotal, numMode)}`,
+        `• سحب الجيب (فودافون → جيب): ${formatCurrency(pocketTotal, numMode)}`,
+        `• التحويلات بين الأمناء: ${formatCurrency(transferTotal, numMode)}`,
+        `• صافي الحركة في الفترة: ${formatCurrency(incomingTotal - advsTotal - expsTotal, numMode)}`,
+        `• أرصدة الأمناء الآن: ${balanceLine}`,
+      ].join('\n'),
+      actionRoute: '/reports',
+      actionLabel: 'فتح لوحة التقارير والتصدير الشاملة',
+      quickCommands: ['تقرير اليوم', 'أرصدة الأمناء', 'تصدير الإكسل'],
     };
   }
 

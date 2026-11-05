@@ -31,8 +31,52 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 };
 
+// Structured action contract (the Worker tells Gemini about it in the
+// system instruction): when the user asks to record/change money data,
+// Gemini replies with JSON {"reply": "...", "action": {...}} instead of
+// plain text. The frontend turns `action` into the same confirmation card
+// the local engine uses — nothing executes without the owner's tap on
+// «تأكيد وتنفيذ فوراً». If the reply is not valid JSON, or the action
+// type is unknown, the raw text is returned with action null (safe).
+const API_ACTION_TYPES = new Set([
+  'record_pocket_withdrawal',
+  'record_custodian_transfer',
+  'record_advance',
+  'record_expense',
+  'record_incoming_payment',
+  'record_check',
+]);
+
+function parseStructuredReply(
+  text: string,
+): { reply: string; action: unknown } | null {
+  let candidate = text.trim();
+  const fenced = candidate.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) candidate = fenced[1].trim();
+  if (!candidate.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(candidate) as {
+      reply?: unknown;
+      action?: unknown;
+    };
+    if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
+    const action = parsed.action ?? null;
+    if (
+      action !== null &&
+      (typeof action !== 'object' ||
+        typeof (action as { type?: unknown }).type !== 'string' ||
+        !API_ACTION_TYPES.has((action as { type: string }).type))
+    ) {
+      return null;
+    }
+    return { reply: parsed.reply.trim(), action };
+  } catch {
+    return null;
+  }
+}
+
 type GeminiResult =
-  | { ok: true; text: string; model: string; latencyMs: number }
+  | { ok: true; text: string; model: string; latencyMs: number; action?: unknown }
   | { ok: false; geminiStatus: number; geminiError: string; status?: string };
 
 async function callGemini(
@@ -90,7 +134,23 @@ async function callGemini(
     if (!text) {
       return { ok: false, geminiStatus: 200, geminiError: 'empty reply' };
     }
-    return { ok: true, text, model: GEMINI_MODEL, latencyMs: Date.now() - t0 };
+    const structured = parseStructuredReply(text);
+    if (structured) {
+      return {
+        ok: true,
+        text: structured.reply,
+        action: structured.action,
+        model: GEMINI_MODEL,
+        latencyMs: Date.now() - t0,
+      };
+    }
+    return {
+      ok: true,
+      text,
+      action: null,
+      model: GEMINI_MODEL,
+      latencyMs: Date.now() - t0,
+    };
   } catch (e) {
     const timedOut =
       e instanceof Error &&

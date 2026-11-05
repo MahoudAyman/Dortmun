@@ -13,13 +13,14 @@ import { Router, RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { StoreService } from '../../core/db/store';
 import { ExcelService } from '../../shared/excel-export';
+import { formatCurrency } from '../../core/calc/calculations';
 import {
   ZAKI_CAPABILITIES_GUIDE,
   processZakiMessage,
   type ZakiPendingWriteAction,
   type ZakiResponse,
 } from '../../core/chat/zaki-engine';
-import type { ExtraCash, ExtractLine } from '../../core/db/models';
+import { custodianLabel, type ExtraCash, type ExtractLine } from '../../core/db/models';
 
 interface ChatMessage {
   id: number;
@@ -28,6 +29,8 @@ interface ChatMessage {
   timestamp: string;
   responseMeta?: ZakiResponse;
   actionResolved?: 'confirmed' | 'cancelled';
+  executedRef?: { kind: 'transfer' | 'advance' | 'expense' | 'incoming' | 'check'; id: number };
+  actionUndone?: boolean;
   engineSource?: 'api' | 'local_offline' | 'local_fallback';
   isCheckingApi?: boolean;
   latencyMs?: number;
@@ -316,31 +319,49 @@ interface ChatMessage {
                 </div>
               }
 
-              <!-- Confirmation Card for Write Actions -->
+              <!-- Confirmation Card for Write Actions: what will change + before/after -->
               @if (
                 msg.responseMeta?.requiresConfirmation &&
                 msg.responseMeta?.pendingAction &&
                 !msg.actionResolved
               ) {
-                <div
-                  class="mt-3 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2"
-                >
-                  <button
-                    type="button"
-                    (click)="confirmAction(msg)"
-                    class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1 shadow-xs cursor-pointer"
-                  >
-                    <mat-icon class="!w-4 !h-4 !text-[16px]">check_circle</mat-icon>
-                    <span>تأكيد وتنفيذ فوراً</span>
-                  </button>
-                  <button
-                    type="button"
-                    (click)="cancelAction(msg)"
-                    class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <mat-icon class="!w-4 !h-4 !text-[16px]">cancel</mat-icon>
-                    <span>إلغاء</span>
-                  </button>
+                <div class="mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                  <div class="rounded-xl bg-amber-500/10 border border-amber-500/40 p-3 flex flex-col gap-2">
+                    <div class="text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <mat-icon class="!w-4 !h-4 !text-[16px]">help_outline</mat-icon>
+                      <span>هل توافق على التنفيذ؟</span>
+                    </div>
+                    <div class="text-xs font-bold text-[var(--text-heading)]">
+                      {{ actionSummaryLine(msg.responseMeta!.pendingAction!) }}
+                    </div>
+                    @if (actionBalancePreview(msg.responseMeta!.pendingAction!); as preview) {
+                      <div class="flex flex-col gap-1">
+                        @for (row of preview; track row.label) {
+                          <div class="text-[11px] font-bold text-[var(--text-secondary)]">
+                            {{ row.label }}: قبل {{ fmt(row.before) }} · بعد {{ fmt(row.after) }}
+                          </div>
+                        }
+                      </div>
+                    }
+                    <div class="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        (click)="confirmAction(msg)"
+                        class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <mat-icon class="!w-4 !h-4 !text-[16px]">check_circle</mat-icon>
+                        <span>تأكيد وتنفيذ فوراً</span>
+                      </button>
+                      <button
+                        type="button"
+                        (click)="cancelAction(msg)"
+                        class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <mat-icon class="!w-4 !h-4 !text-[16px]">cancel</mat-icon>
+                        <span>إلغاء</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               }
 
@@ -351,6 +372,26 @@ interface ChatMessage {
                   <mat-icon class="!w-4 !h-4 !text-[16px]">verified</mat-icon>
                   <span>تم التنفيذ والحفظ والمزامنة بنجاح ✓</span>
                 </div>
+                @if (msg.executedRef && !msg.actionUndone) {
+                  <div class="mt-2">
+                    <button
+                      type="button"
+                      (click)="undoExecuted(msg)"
+                      class="px-3 py-1.5 rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-400/40 text-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-slate-500/20"
+                    >
+                      <mat-icon class="!w-4 !h-4 !text-[16px]">undo</mat-icon>
+                      <span>تراجع عن العملية</span>
+                    </button>
+                  </div>
+                }
+                @if (msg.actionUndone) {
+                  <div
+                    class="mt-2 text-xs font-bold text-slate-500 flex items-center gap-1"
+                  >
+                    <mat-icon class="!w-4 !h-4 !text-[16px]">history</mat-icon>
+                    <span>تم التراجع عن العملية ورجعت الأرصدة زي ما كانت</span>
+                  </div>
+                }
               }
               @if (msg.actionResolved === 'cancelled') {
                 <div
@@ -550,10 +591,10 @@ export class ZakiPage {
     'قارن ربحية المشاريع',
     'أرصدة الأمناء',
     'محمود أيمن معاه كام؟',
-    'وصلني 50000 من شركة إعمار لمشروع التجمع',
-    'العدد النهارده 10 يومية و 4 سهرة',
-    'سلفة 500 لكريم النهارده',
-    'شيكات تحت التحصيل',
+    'تقرير اليوم',
+    'تنبيهات',
+    'سحبت 5000 من فودافون للجيب',
+    'تصدير الإكسل',
   ];
 
   readonly messages = signal<ChatMessage[]>(this.loadSavedMessages() ?? [
@@ -785,7 +826,77 @@ export class ZakiPage {
       `العدد اليومي الإجباري اليوم: متوقع ${hc.expectedDays} يومية و ${hc.expectedNights} سهرة | المسجل فعلياً: ${hc.actualDays} يومية و ${hc.actualNights} سهرة (${hc.statusLabel})`,
       `إجمالي المقبوضات الواردة بالخزنة: ${ledger.totalReceivedAllSources} ج.م | إجمالي المنصرف: ${ledger.totalSpentAllProjects} ج.م`,
       `مستحقات لي عند الشركات: ${ledger.totalOwedToMe} ج.م | متبقي للعمال عليّ: ${ledger.totalOwedByMe} ج.م | صافي الربح العام: ${ledger.overallNetProfit} ج.م`,
+      `أرصدة الأمناء (فودافون كاش / جيب): ${this.store.custodianBalances().balances.map((b) => `${b.name}: فودافون ${b.vodafoneBalance} ج.م، جيب ${b.pocketBalance} ج.م`).join(' | ') || 'لا يوجد بعد'}`,
     ].join('\n');
+  }
+
+  // يحوّل الـ action اللي رجّعته الـ API (JSON من Gemini) لنفس شكل
+  // ZakiPendingWriteAction بتاع المحرك المحلي، بعد تحقق صارم من كل حقل.
+  // أي حقل مش مفهوم أو مش موجود → null (الرد النصي بس اللي يظهر،
+  // وبطاقة التأكيد المحلية — لو موجودة — تفضل زي ما هي).
+  private mapApiAction(raw: unknown): ZakiPendingWriteAction | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const a = raw as Record<string, unknown>;
+    const type = typeof a['type'] === 'string' ? (a['type'] as string) : '';
+    const amount = typeof a['amount'] === 'number' && (a['amount'] as number) > 0 ? (a['amount'] as number) : 0;
+    const fee =
+      typeof a['withdrawalFee'] === 'number' && (a['withdrawalFee'] as number) > 0
+        ? (a['withdrawalFee'] as number)
+        : 0;
+    const today = this.store.todayIso();
+    const resolveCustodian = (v: unknown): 'mahmoud_ayman' | 'mahmoud_hamada' | 'ayman_hassan' | null => {
+      if (v === 'mahmoud_ayman' || v === 'mahmoud_hamada' || v === 'ayman_hassan') return v;
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t.includes('حماده')) return 'mahmoud_hamada';
+        if (t.includes('حسان')) return 'ayman_hassan';
+        if (t.includes('ايمن')) return 'mahmoud_ayman';
+      }
+      return null;
+    };
+    if (type === 'record_pocket_withdrawal') {
+      const custodian = resolveCustodian(a['custodian']) || 'mahmoud_ayman';
+      if (!amount) return null;
+      return { type: 'record_pocket_withdrawal', custodian, amount, withdrawalFee: fee, date: today, notes: 'سحب جيب مسجل عبر المساعد زكي' };
+    }
+    if (type === 'record_custodian_transfer') {
+      const from = resolveCustodian(a['fromCustodian']);
+      const to = resolveCustodian(a['toCustodian']);
+      if (!amount || !from || !to || from === to) return null;
+      return { type: 'record_custodian_transfer', fromCustodian: from, toCustodian: to, amount, withdrawalFee: fee, method: 'فودافون كاش', date: today, notes: 'تحويل مسجل عبر المساعد زكي' };
+    }
+    if (type === 'record_advance') {
+      if (!amount || typeof a['workerName'] !== 'string') return null;
+      const name = (a['workerName'] as string).trim();
+      const worker = this.store.workers().find((w) => w.name.trim() === name) ||
+        this.store.workers().find((w) => name.includes(w.name.trim()) || w.name.trim().includes(name));
+      if (!worker || worker.id === undefined) return null;
+      const fundedBy = resolveCustodian(a['fundedBy']) || 'mahmoud_ayman';
+      const paidFrom = a['paidFrom'] === 'vodafone' ? 'vodafone' : 'pocket';
+      return { type: 'record_advance', workerId: worker.id, workerName: worker.name, amount, date: today, reason: 'سلفة عبر زكي', fundedBy, paidFrom };
+    }
+    if (type === 'record_expense') {
+      if (!amount) return null;
+      const cats = ['مواصلات', 'أكل', 'أدوات', 'صيانة', 'رسوم سحب شيك', 'أخرى'] as const;
+      const category = cats.includes(a['category'] as never) ? (a['category'] as (typeof cats)[number]) : 'أخرى';
+      return { type: 'record_expense', date: today, category, amount, projectId: null, projectName: '', note: typeof a['note'] === 'string' ? (a['note'] as string) : 'مصروف مسجل عبر زكي' };
+    }
+    if (type === 'record_incoming_payment') {
+      if (!amount || typeof a['sourceName'] !== 'string') return null;
+      const sourceTypes = ['شركة', 'شخص', 'شيك', 'مستخلص', 'أخرى'] as const;
+      const sourceType = sourceTypes.includes(a['sourceType'] as never) ? (a['sourceType'] as (typeof sourceTypes)[number]) : 'شخص';
+      const methods = ['نقدي', 'تحويل بنكي', 'إنستا باي / محفظة', 'محفظة إلكترونية', 'شيك'] as const;
+      const method = methods.includes(a['method'] as never) ? (a['method'] as (typeof methods)[number]) : 'محفظة إلكترونية';
+      return { type: 'record_incoming_payment', date: today, sourceType, sourceName: a['sourceName'] as string, amount, method, projectId: null, projectName: '', notes: 'دفعة واردة مسجلة عبر زكي' };
+    }
+    if (type === 'record_check') {
+      if (!amount) return null;
+      const direction = a['direction'] === 'صادر' ? 'صادر' : 'وارد';
+      const status = a['status'] === 'اتصرف' || a['status'] === 'مرتجع' ? (a['status'] as 'اتصرف' | 'مرتجع') : 'معلق';
+      const due = typeof a['dueDate'] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a['dueDate'] as string) ? (a['dueDate'] as string) : today;
+      return { type: 'record_check', direction, number: typeof a['number'] === 'string' ? (a['number'] as string) : '', bank: typeof a['bank'] === 'string' ? (a['bank'] as string) : '', amount, dueDate: due, status, projectId: null, notes: 'شيك مسجل عبر زكي' };
+    }
+    return null;
   }
 
   async runCommand(commandText: string): Promise<void> {
@@ -878,6 +989,7 @@ export class ZakiPage {
             ok?: boolean;
             mode?: 'api' | 'local_fallback';
             reply?: string;
+            action?: unknown;
             projectPath?: string;
             model?: string;
             latencyMs?: number;
@@ -889,12 +1001,19 @@ export class ZakiPage {
             const ms = data.latencyMs || 550;
             this.lastApiLatencyMs.set(ms);
             this.lastUsedEngine.set('api');
+            // الـ API اقترحت عملية منظمة؟ حوّلها لبطاقة تأكيد زي المحلي تماماً.
+            // لو مفيش action صالح، بطاقة التأكيد المحلية (لو موجودة) تفضل زي ما هي.
+            const apiAction = this.mapApiAction(data.action);
+            const newMeta = apiAction
+              ? { ...response, pendingAction: apiAction, requiresConfirmation: true }
+              : response;
             this.messages.update((list) =>
               list.map((m) =>
                 m.id === zakiMsgId
                   ? {
                       ...m,
                       text: data.reply!.trim(),
+                      responseMeta: newMeta,
                       engineSource: 'api',
                       isCheckingApi: false,
                       latencyMs: ms,
@@ -903,8 +1022,8 @@ export class ZakiPage {
                   : m
               )
             );
-            return;
             this.scrollChatToBottom();
+            return;
           }
         }
       } catch {
@@ -932,10 +1051,79 @@ export class ZakiPage {
   }
 
 
+  fmt(n: number): string {
+    return formatCurrency(n, this.store.settings().numeralMode || 'ar');
+  }
+
+  // سطر واحد يلخّص العملية المقترحة لبطاقة التأكيد (إيه اللي هيتغير بالظبط).
+  actionSummaryLine(action: ZakiPendingWriteAction): string {
+    const f = (n: number) => this.fmt(n);
+    switch (action.type) {
+      case 'record_pocket_withdrawal':
+        return `سحب ${f(action.amount)} من فودافون كاش ${custodianLabel(action.custodian, action.custodianName)} إلى جيبه${action.withdrawalFee ? ` — مصاريف سحب ${f(action.withdrawalFee)}` : ''}`;
+      case 'record_custodian_transfer':
+        return `تحويل ${f(action.amount)} من ${custodianLabel(action.fromCustodian, action.fromCustodianName)} إلى ${custodianLabel(action.toCustodian, action.toCustodianName)} (فودافون كاش)${action.withdrawalFee ? ` — مصاريف سحب ${f(action.withdrawalFee)}` : ''}`;
+      case 'record_advance': {
+        const fundedBy = action.fundedBy || 'mahmoud_ayman';
+        const from = action.paidFrom === 'vodafone' ? 'فودافون كاش' : 'الجيب';
+        return `سلفة ${f(action.amount)} لـ ${action.workerName} — من ${from} ${custodianLabel(fundedBy)}`;
+      }
+      case 'record_expense':
+        return `مصروف ${f(action.amount)} (${action.category})${action.note ? ` — ${action.note}` : ''}`;
+      case 'record_incoming_payment':
+        return `دفعة واردة ${f(action.amount)} من ${action.sourceName}`;
+      case 'record_check':
+        return `شيك ${action.direction} ${f(action.amount)} — الحالة: ${action.status}`;
+      case 'update_check_status':
+        return `تغيير حالة الشيك ${action.checkNumber} إلى «${action.newStatus}»`;
+      case 'delete_record':
+        return `حذف: ${action.description}`;
+      case 'settle_worker':
+        return `تسوية وصرف ${f(action.netPaid)} لـ ${action.workerName}`;
+      case 'create_extract':
+        return `إنشاء مستخلص رقم ${action.number} لمشروع ${action.projectName}`;
+      default:
+        return 'تنفيذ العملية المقترحة';
+    }
+  }
+
+  // أرصدة قبل/بعد للعملية المقترحة (للحركات اللي بتأثر على أرصدة الأمناء).
+  actionBalancePreview(action: ZakiPendingWriteAction): { label: string; before: number; after: number }[] | null {
+    const balances = this.store.custodianBalances().balances;
+    if (action.type === 'record_pocket_withdrawal') {
+      const b = balances.find((x) => x.custodian === action.custodian);
+      if (!b) return null;
+      return [
+        { label: `${b.name} — فودافون كاش`, before: b.vodafoneBalance, after: b.vodafoneBalance - action.amount - (action.withdrawalFee || 0) },
+        { label: `${b.name} — الجيب`, before: b.pocketBalance, after: b.pocketBalance + action.amount },
+      ];
+    }
+    if (action.type === 'record_custodian_transfer') {
+      const from = balances.find((x) => x.custodian === action.fromCustodian);
+      const to = balances.find((x) => x.custodian === action.toCustodian);
+      if (!from || !to) return null;
+      return [
+        { label: `${from.name} — فودافون كاش`, before: from.vodafoneBalance, after: from.vodafoneBalance - action.amount - (action.withdrawalFee || 0) },
+        { label: `${to.name} — فودافون كاش`, before: to.vodafoneBalance, after: to.vodafoneBalance + action.amount },
+      ];
+    }
+    if (action.type === 'record_advance') {
+      const fundedBy = action.fundedBy || 'mahmoud_ayman';
+      const b = balances.find((x) => x.custodian === fundedBy);
+      if (!b) return null;
+      if (action.paidFrom === 'vodafone') {
+        return [{ label: `${b.name} — فودافون كاش`, before: b.vodafoneBalance, after: b.vodafoneBalance - action.amount }];
+      }
+      return [{ label: `${b.name} — الجيب`, before: b.pocketBalance, after: b.pocketBalance - action.amount }];
+    }
+    return null;
+  }
+
   async confirmAction(msg: ChatMessage): Promise<void> {
     const action: ZakiPendingWriteAction | undefined =
       msg.responseMeta?.pendingAction;
     if (!action) return;
+    let executedRef: ChatMessage['executedRef'];
 
     if (action.type === 'record_attendance') {
       for (const wId of action.workerIds) {
@@ -950,14 +1138,19 @@ export class ZakiPage {
         });
       }
     } else if (action.type === 'record_advance') {
-      await this.store.addAdvance({
+      const fundedBy = action.fundedBy || 'mahmoud_ayman';
+      const id = await this.store.addAdvance({
         workerId: action.workerId,
         amount: action.amount,
         date: action.date,
         reason: action.reason,
         settlementId: null,
+        fundedBy,
+        paidFrom: action.paidFrom || 'pocket',
+        withdrawnBy: custodianLabel(fundedBy),
         notes: 'مسجل عبر المساعد زكي',
       });
+      executedRef = { kind: 'advance', id };
     } else if (action.type === 'record_deduction') {
       await this.store.addDeduction({
         workerId: action.workerId,
@@ -1009,7 +1202,7 @@ export class ZakiPage {
         notes: 'تمت الإضافة عبر المساعد زكي',
       });
     } else if (action.type === 'record_incoming_payment') {
-      await this.store.saveIncomingPayment({
+      const id = await this.store.saveIncomingPayment({
         date: action.date,
         sourceType: action.sourceType,
         sourceName: action.sourceName,
@@ -1019,16 +1212,18 @@ export class ZakiPage {
         checkNumber: action.checkNumber || '',
         notes: action.notes,
       });
+      executedRef = { kind: 'incoming', id };
     } else if (action.type === 'record_expense') {
-      await this.store.saveExpense({
+      const id = await this.store.saveExpense({
         date: action.date,
         category: action.category,
         amount: action.amount,
         projectId: action.projectId,
         note: action.note,
       });
+      executedRef = { kind: 'expense', id };
     } else if (action.type === 'record_check') {
-      await this.store.saveCheck({
+      const id = await this.store.saveCheck({
         direction: action.direction,
         number: action.number,
         bank: action.bank,
@@ -1039,6 +1234,7 @@ export class ZakiPage {
         extractId: null,
         notes: action.notes,
       });
+      executedRef = { kind: 'check', id };
     } else if (action.type === 'update_check_status') {
       const chk = this.store.checks().find((c) => c.id === action.checkId);
       if (chk) {
@@ -1178,14 +1374,64 @@ export class ZakiPage {
       if (w) {
         await this.store.saveWorker({ ...w, notes: action.note });
       }
+    } else if (action.type === 'record_custodian_transfer') {
+      const id = await this.store.addCustodianTransfer({
+        date: action.date,
+        kind: 'transfer',
+        fromCustodian: action.fromCustodian,
+        fromCustodianName: action.fromCustodianName,
+        toCustodian: action.toCustodian,
+        toCustodianName: action.toCustodianName,
+        amount: action.amount,
+        withdrawalFee: action.withdrawalFee || 0,
+        method: action.method || 'فودافون كاش',
+        notes: action.notes,
+      });
+      executedRef = { kind: 'transfer', id };
+    } else if (action.type === 'record_pocket_withdrawal') {
+      const id = await this.store.addCustodianTransfer({
+        date: action.date,
+        kind: 'pocket_withdrawal',
+        fromCustodian: action.custodian,
+        fromCustodianName: action.custodianName,
+        toCustodian: action.custodian,
+        toCustodianName: action.custodianName,
+        amount: action.amount,
+        withdrawalFee: action.withdrawalFee || 0,
+        method: 'فودافون كاش',
+        notes: action.notes,
+      });
+      executedRef = { kind: 'transfer', id };
     }
 
     this.messages.update((list) =>
       list.map((m) =>
-        m.id === msg.id ? { ...m, actionResolved: 'confirmed' } : m
+        m.id === msg.id
+          ? { ...m, actionResolved: 'confirmed', executedRef }
+          : m
       )
     );
     this.store.showToast('تم تنفيذ أمر زكي وحفظه ومزامنته بنجاح', 'success');
+  }
+
+  async undoExecuted(msg: ChatMessage): Promise<void> {
+    const ref = msg.executedRef;
+    if (!ref || msg.actionUndone) return;
+    if (ref.kind === 'transfer') {
+      await this.store.deleteCustodianTransfer(ref.id);
+    } else if (ref.kind === 'advance') {
+      await this.store.deleteAdvance(ref.id);
+    } else if (ref.kind === 'expense') {
+      await this.store.deleteExpense(ref.id);
+    } else if (ref.kind === 'incoming') {
+      await this.store.deleteIncomingPayment(ref.id);
+    } else if (ref.kind === 'check') {
+      await this.store.deleteCheck(ref.id);
+    }
+    this.messages.update((list) =>
+      list.map((m) => (m.id === msg.id ? { ...m, actionUndone: true } : m))
+    );
+    this.store.showToast('تم التراجع عن العملية ورجعت الأرصدة زي ما كانت', 'success');
   }
 
   cancelAction(msg: ChatMessage): void {

@@ -151,7 +151,7 @@ const TABLES_FOR_DIAGNOSTICS: Array<{ name: string; label: string }> = [
 const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/zaki-chat`;
 
 type GeminiResult =
-  | { ok: true; text: string; model: string; latencyMs: number }
+  | { ok: true; text: string; model: string; latencyMs: number; action?: unknown }
   | { ok: false; geminiStatus: number; geminiError: string; status?: string };
 
 async function callZakiViaSupabase(
@@ -179,6 +179,7 @@ async function callZakiViaSupabase(
       text?: string;
       model?: string;
       latencyMs?: number;
+      action?: unknown;
       geminiStatus?: number;
       geminiError?: string;
       status?: string;
@@ -190,6 +191,7 @@ async function callZakiViaSupabase(
         text: data.text,
         model: data.model || GEMINI_MODEL,
         latencyMs: data.latencyMs ?? Date.now() - t0,
+        action: data.action ?? null,
       };
     }
     if (data.status === 'no_key') {
@@ -290,6 +292,9 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
       'تحدث باللهجة العامية المصرية المهنية المحترمة والودودة (مثل: يا هندسة، يا باشمهندس، عيوني).',
       'اعتمد بدقة ١٠٠٪ على بيانات الموقع الحية المرفقة ولا تخترع أرقاماً من عندك.',
       'أنت ترد الآن عبر AI API (Gemini) وليس عبر المحرك المحلي، فإن سُئلت عن مصدر ردك أو اتصالك فقل إنك متصل عبر AI API؛ ولا تقل أبداً إنك المحرك المحلي.',
+      'قاعدة ذهبية لا تكسرها أبداً: أنت لا تنفذ أي تغيير بنفسك ولا تسجل أي شيء، ولا تقل أبداً إنك نفذت أو سجلت أو خلصت. أنت تقترح فقط، والمالك هو اللي بيوافق من زر «تأكيد وتنفيذ فوراً».',
+      'لو الرسالة بتطلب تسجيل أو تغيير أي بيانات (سلفة، مصروف، شيك، تحويل بين أمينين، سحب للجيب، دفعة واردة)، رد بـ JSON فقط بهذا الشكل بالظبط: {"reply": "...", "action": {...}}. الـ reply يكون اقتراحاً منظماً يبدأ بـ «هل توافق على التنفيذ؟» ويوضح العملية والمبلغ والأرصدة قبل وبعد من بيانات الموقع، وينتهي بـ «اضغط «تأكيد وتنفيذ فوراً» للتنفيذ، أو «إلغاء» لو العملية غلط». الـ action يكون واحداً من هذه الأنواع فقط: {"type":"record_pocket_withdrawal","custodian":"mahmoud_ayman","amount":5000,"withdrawalFee":0} أو {"type":"record_custodian_transfer","fromCustodian":"mahmoud_hamada","toCustodian":"mahmoud_ayman","amount":71000,"withdrawalFee":0} أو {"type":"record_advance","workerName":"مصطفى إنجاح","amount":150} أو {"type":"record_expense","category":"مواصلات","amount":500,"note":"بنزين"} أو {"type":"record_incoming_payment","sourceType":"شخص","sourceName":"محمود حماده","amount":80000,"method":"محفظة إلكترونية"} أو {"type":"record_check","direction":"وارد","amount":71000,"dueDate":"2026-11-04","status":"اتصرف"}. أكواد الأمناء هي فقط: mahmoud_ayman (محمود أيمن)، mahmoud_hamada (محمود حماده)، ayman_hassan (ايمن حسان). لو أي معلومة ناقصة (المبلغ أو اسم الشخص) لا تخمنها: ضع action بقيمة null واطلب المعلومة الناقصة في الـ reply. لو الرسالة لا تطلب تغيير بيانات، رد نصاً عادياً (ليس JSON).',
+      'ردودك منظمة دائماً: سطر ملخص أولاً، ثم نقاط «•» للتفاصيل، ثم الأرقام كل رقم في سطر لوحده. لا تكتب فقرات طويلة فوضوية أبداً.',
       body.hasPendingAction
         ? 'ملاحظة هامة: النظام المحلي جهّز بالفعل زر تأكيد تنفيذ العملية للمستخدم. حافظ على تفاصيل العملية الدقيقة كما في الرد المحلي وأضف نصيحة سريعة أو توضيح مالي ذكي في سطرين فقط.'
         : 'قدم إجابة مرتبة ومنظمة بالنقاط واضحة الأرقام وقابلة للقراءة السريعة.',
@@ -311,6 +316,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         ok: true,
         mode: 'api',
         reply: aiResult.text,
+        action: aiResult.action ?? null,
         model: aiResult.model,
         latencyMs: aiResult.latencyMs,
         projectId: GCP_PROJECT_ID,
