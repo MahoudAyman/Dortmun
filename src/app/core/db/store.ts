@@ -1337,9 +1337,23 @@ export class StoreService {
       // Ensure version is strictly higher than any remote version
       const { data: currentRemote } = await this.supabase
         .from('dortmun_cloud_state')
-        .select('version')
+        .select('version, payload')
         .eq('id', 'main')
         .maybeSingle();
+      const remoteVersion =
+        currentRemote && typeof currentRemote['version'] === 'number'
+          ? Number(currentRemote['version'])
+          : 0;
+      if (remoteVersion > this.cloudVersion()) {
+        // The cloud advanced since this client last synced (another
+        // device wrote newer data). Merge the remote records into the
+        // local state BEFORE building our snapshot — otherwise this push
+        // would silently wipe the other device's newer records.
+        const remoteSnap = currentRemote?.['payload'] as CloudSyncSnapshot | null;
+        if (remoteSnap && Array.isArray(remoteSnap.workers)) {
+          this.mergeRemoteSnapshotIntoLocal(remoteSnap);
+        }
+      }
       if (currentRemote && typeof currentRemote['version'] === 'number') {
         this.cloudVersion.set(Math.max(this.cloudVersion(), Number(currentRemote['version'])));
       }
@@ -1867,12 +1881,19 @@ export class StoreService {
       }
       return true;
     } catch {
-      this.cloudSyncStatus.set('connected');
+      // A failed pull used to look identical to a successful one (status
+      // 'connected', no warning), so the app would show stale balances as
+      // if they were current. Surface it instead.
+      this.cloudSyncStatus.set('error');
+      this.showToast(
+        '⚠️ تعذّر سحب أحدث البيانات من قاعدة البيانات — الأرصدة المعروضة قد تكون قديمة. أعد تحميل الصفحة وحاول مجدداً.',
+        'error'
+      );
       return false;
     }
   }
 
-  async applyCloudSnapshot(snapshot: CloudSyncSnapshot, notifyUser = false): Promise<void> {
+  async applyCloudSnapshot(snapshot: CloudSyncSnapshot, notifyUser = false, forceReplace = false): Promise<void> {
     if (!snapshot || this.localOnlyMode()) return;
 
     this.isApplyingRemoteState = true;
@@ -1893,25 +1914,36 @@ export class StoreService {
         this.settings.set(mergedSettings);
         this.applyDarkMode(mergedSettings.darkMode);
       }
-      if (Array.isArray(snapshot.projects)) this.projects.set(snapshot.projects);
-      if (Array.isArray(snapshot.workers)) this.workers.set(snapshot.workers);
-      if (Array.isArray(snapshot.attendances)) this.attendances.set(snapshot.attendances);
-      if (Array.isArray(snapshot.advances)) this.advances.set(snapshot.advances);
-      if (Array.isArray(snapshot.deductions)) this.deductions.set(snapshot.deductions);
-      if (Array.isArray(snapshot.dailyHeadcounts))
-        this.dailyHeadcounts.set(snapshot.dailyHeadcounts);
-      if (Array.isArray(snapshot.settlements)) this.settlements.set(snapshot.settlements);
-      if (Array.isArray(snapshot.extracts)) this.extracts.set(snapshot.extracts);
-      if (Array.isArray(snapshot.extractLines)) this.extractLines.set(snapshot.extractLines);
-      if (Array.isArray(snapshot.extras)) this.extras.set(snapshot.extras);
-      if (Array.isArray(snapshot.extraCashes)) this.extraCashes.set(snapshot.extraCashes);
-      if (Array.isArray(snapshot.checks)) this.checks.set(snapshot.checks);
-      if (Array.isArray(snapshot.expenses)) this.expenses.set(snapshot.expenses);
-      if (Array.isArray(snapshot.incomingPayments))
-        this.incomingPayments.set(snapshot.incomingPayments);
-      if (Array.isArray(snapshot.custodianTransfers))
-        this.custodianTransfers.set(snapshot.custodianTransfers);
-      if (Array.isArray(snapshot.auditLogs)) this.auditLogs.set(snapshot.auditLogs);
+      // Guard: never let a remote snapshot wipe a non-empty local list.
+      // A stale snapshot carrying an empty list would erase local records
+      // in-session, and the next push would make the loss permanent (the
+      // wipe also adopts the stale snapshot's version, so the
+      // merge-before-push guard can't catch it). Only replace a
+      // collection when the remote list is non-empty, or the local list
+      // is already empty. Backup restores pass forceReplace=true.
+      const setList = <T>(
+        sig: { (): T[]; set: (items: T[]) => void },
+        remote: T[] | undefined
+      ): void => {
+        if (!Array.isArray(remote)) return;
+        if (forceReplace || remote.length > 0 || sig().length === 0) sig.set(remote);
+      };
+      setList(this.projects, snapshot.projects);
+      setList(this.workers, snapshot.workers);
+      setList(this.attendances, snapshot.attendances);
+      setList(this.advances, snapshot.advances);
+      setList(this.deductions, snapshot.deductions);
+      setList(this.dailyHeadcounts, snapshot.dailyHeadcounts);
+      setList(this.settlements, snapshot.settlements);
+      setList(this.extracts, snapshot.extracts);
+      setList(this.extractLines, snapshot.extractLines);
+      setList(this.extras, snapshot.extras);
+      setList(this.extraCashes, snapshot.extraCashes);
+      setList(this.checks, snapshot.checks);
+      setList(this.expenses, snapshot.expenses);
+      setList(this.incomingPayments, snapshot.incomingPayments);
+      setList(this.custodianTransfers, snapshot.custodianTransfers);
+      setList(this.auditLogs, snapshot.auditLogs);
       if (Array.isArray(snapshot.devices)) this.mergeDeviceList(snapshot.devices);
 
       if (this.db) {
@@ -2003,6 +2035,238 @@ export class StoreService {
     }
   }
 
+  // Smart two-way merge: pull records that exist in a newer remote
+  // snapshot but are missing locally, without touching local records.
+  // This is what stops a stale device from wiping newer cloud data:
+  // before any push, the remote records are merged into the local state,
+  // so the snapshot we push contains BOTH sides. (The old code only
+  // merged 7 collections on the offline-flush path, and the plain push
+  // path merged nothing — a stale client could silently delete the
+  // 5000 pocket withdrawal and the 71000 transfer from the cloud.)
+  mergeRemoteSnapshotIntoLocal(remoteSnap: CloudSyncSnapshot): string[] {
+    const receivedDetails: string[] = [];
+
+    // Merge workers
+    const wMerge = mergeArraysByIdAndSignature(
+      this.workers(),
+      remoteSnap.workers || [],
+      (w) => `${w.name.trim()}|${w.role}`
+    );
+    if (wMerge.addedFromRemote.length > 0) {
+      this.workers.set(wMerge.merged);
+      for (const w of wMerge.addedFromRemote) {
+        receivedDetails.push(`عامل وارد من قاعدة البيانات: ${w.name} (${w.role})`);
+      }
+    }
+
+    // Merge projects
+    const pMerge = mergeArraysByIdAndSignature(
+      this.projects(),
+      remoteSnap.projects || [],
+      (p) => p.name.trim()
+    );
+    if (pMerge.addedFromRemote.length > 0) {
+      this.projects.set(pMerge.merged);
+      for (const p of pMerge.addedFromRemote) {
+        receivedDetails.push(`مشروع وارد من قاعدة البيانات: ${p.name}`);
+      }
+    }
+
+    // Merge advances
+    const advMerge = mergeArraysByIdAndSignature(
+      this.advances(),
+      remoteSnap.advances || [],
+      (a) => `${a.date}|${a.workerId}|${a.amount}|${a.reason || ''}`
+    );
+    if (advMerge.addedFromRemote.length > 0) {
+      this.advances.set(advMerge.merged);
+      for (const a of advMerge.addedFromRemote) {
+        receivedDetails.push(
+          `سلفة واردة من قاعدة البيانات: ${this.money(a.amount)} للعامل ${this.workerName(a.workerId)} (${a.date})`
+        );
+      }
+    }
+
+    // Merge attendances
+    const attMerge = mergeArraysByIdAndSignature(
+      this.attendances(),
+      remoteSnap.attendances || [],
+      (a) => `${a.date}|${a.workerId}|${a.projectId}`
+    );
+    if (attMerge.addedFromRemote.length > 0) {
+      this.attendances.set(attMerge.merged);
+      for (const a of attMerge.addedFromRemote) {
+        receivedDetails.push(
+          `حضور وارد من قاعدة البيانات: ${this.workerName(a.workerId)} يوم ${a.date}`
+        );
+      }
+    }
+
+    // Merge deductions
+    const dedMerge = mergeArraysByIdAndSignature(
+      this.deductions(),
+      remoteSnap.deductions || [],
+      (d) => `${d.date}|${d.workerId}|${d.amount}|${d.reason || ''}`
+    );
+    if (dedMerge.addedFromRemote.length > 0) {
+      this.deductions.set(dedMerge.merged);
+      for (const d of dedMerge.addedFromRemote) {
+        receivedDetails.push(
+          `خصم وارد من قاعدة البيانات: ${this.money(d.amount)} على ${this.workerName(d.workerId)}`
+        );
+      }
+    }
+
+    // Merge expenses
+    const expMerge = mergeArraysByIdAndSignature(
+      this.expenses(),
+      remoteSnap.expenses || [],
+      (e) => `${e.date}|${e.category}|${e.amount}|${e.note || ''}`
+    );
+    if (expMerge.addedFromRemote.length > 0) {
+      this.expenses.set(expMerge.merged);
+      for (const e of expMerge.addedFromRemote) {
+        receivedDetails.push(
+          `مصروف وارد من قاعدة البيانات: ${this.money(e.amount)} (${e.category})`
+        );
+      }
+    }
+
+    // Merge checks
+    const chkMerge = mergeArraysByIdAndSignature(
+      this.checks(),
+      remoteSnap.checks || [],
+      (c) => `${c.number}|${c.bank}|${c.amount}`
+    );
+    if (chkMerge.addedFromRemote.length > 0) {
+      this.checks.set(chkMerge.merged);
+      for (const c of chkMerge.addedFromRemote) {
+        receivedDetails.push(
+          `شيك وارد من قاعدة البيانات: رقم ${c.number} بقيمة ${this.money(c.amount)}`
+        );
+      }
+    }
+
+    // Merge custodian transfers — the money-holder movements. This was
+    // missing entirely: a stale device pushed a snapshot without them
+    // and they vanished from the cloud.
+    const trMerge = mergeArraysByIdAndSignature(
+      this.custodianTransfers(),
+      remoteSnap.custodianTransfers || [],
+      (t) =>
+        `${t.date}|${t.kind}|${t.fromCustodian}|${t.toCustodian}|${t.amount}|${t.method || ''}|${t.notes || ''}`
+    );
+    if (trMerge.addedFromRemote.length > 0) {
+      this.custodianTransfers.set(trMerge.merged);
+      for (const t of trMerge.addedFromRemote) {
+        receivedDetails.push(
+          `تحويل أمين وارد من قاعدة البيانات: ${t.kind === 'pocket_withdrawal' ? 'سحب جيب' : 'تحويل'} ${this.money(t.amount)} (${t.date})`
+        );
+      }
+    }
+
+    // Merge incoming payments
+    const payMerge = mergeArraysByIdAndSignature(
+      this.incomingPayments(),
+      remoteSnap.incomingPayments || [],
+      (p) => `${p.date}|${p.sourceType}|${p.sourceName}|${p.amount}|${p.method}`
+    );
+    if (payMerge.addedFromRemote.length > 0) {
+      this.incomingPayments.set(payMerge.merged);
+      for (const p of payMerge.addedFromRemote) {
+        receivedDetails.push(
+          `دفعة واردة من قاعدة البيانات: ${this.money(p.amount)} من ${p.sourceName} (${p.date})`
+        );
+      }
+    }
+
+    // Merge settlements
+    const stMerge = mergeArraysByIdAndSignature(
+      this.settlements(),
+      remoteSnap.settlements || [],
+      (s) => `${s.workerId}|${s.from}|${s.to}|${s.netPaid}`
+    );
+    if (stMerge.addedFromRemote.length > 0) {
+      this.settlements.set(stMerge.merged);
+      for (const s of stMerge.addedFromRemote) {
+        receivedDetails.push(
+          `تسوية واردة من قاعدة البيانات: ${this.workerName(s.workerId)} (${s.from} → ${s.to})`
+        );
+      }
+    }
+
+    // Merge extracts
+    const exMerge = mergeArraysByIdAndSignature(
+      this.extracts(),
+      remoteSnap.extracts || [],
+      (e) => `${e.projectId}|${e.number}|${e.from}|${e.to}`
+    );
+    if (exMerge.addedFromRemote.length > 0) {
+      this.extracts.set(exMerge.merged);
+      for (const e of exMerge.addedFromRemote) {
+        receivedDetails.push(`مستخلص وارد من قاعدة البيانات: رقم ${e.number} (${e.from} → ${e.to})`);
+      }
+    }
+
+    // Merge extract lines
+    const elMerge = mergeArraysByIdAndSignature(
+      this.extractLines(),
+      remoteSnap.extractLines || [],
+      (l) => `${l.extractId}|${l.workerId}|${l.calculated}|${l.claimed}`
+    );
+    if (elMerge.addedFromRemote.length > 0) {
+      this.extractLines.set(elMerge.merged);
+      for (const l of elMerge.addedFromRemote) {
+        receivedDetails.push(
+          `سطر مستخلص وارد من قاعدة البيانات: ${this.workerName(l.workerId)} (${this.money(l.claimed)})`
+        );
+      }
+    }
+
+    // Merge extras
+    const xtMerge = mergeArraysByIdAndSignature(
+      this.extras(),
+      remoteSnap.extras || [],
+      (x) => `${x.date}|${x.projectId}|${x.type}|${x.amount}|${x.days}`
+    );
+    if (xtMerge.addedFromRemote.length > 0) {
+      this.extras.set(xtMerge.merged);
+      for (const x of xtMerge.addedFromRemote) {
+        receivedDetails.push(`بند إضافي وارد من قاعدة البيانات: ${x.type} (${x.date})`);
+      }
+    }
+
+    // Merge extra cash (nash) payouts
+    const xcMerge = mergeArraysByIdAndSignature(
+      this.extraCashes(),
+      remoteSnap.extraCashes || [],
+      (x) => `${x.extraId}|${x.workerId}|${x.amount}|${x.paidCash}`
+    );
+    if (xcMerge.addedFromRemote.length > 0) {
+      this.extraCashes.set(xcMerge.merged);
+      for (const x of xcMerge.addedFromRemote) {
+        receivedDetails.push(
+          `ناش وارد من قاعدة البيانات: ${this.money(x.amount)} لـ ${this.workerName(x.workerId)}`
+        );
+      }
+    }
+
+    // Merge daily headcounts
+    const hcMerge = mergeArraysByIdAndSignature(
+      this.dailyHeadcounts(),
+      remoteSnap.dailyHeadcounts || [],
+      (h) => `${h.date}|${h.projectId}|${h.expectedDayCount}|${h.expectedNightCount}`
+    );
+    if (hcMerge.addedFromRemote.length > 0) {
+      this.dailyHeadcounts.set(hcMerge.merged);
+      for (const h of hcMerge.addedFromRemote) {
+        receivedDetails.push(`عدد يومي وارد من قاعدة البيانات: ${h.date}`);
+      }
+    }
+
+    return receivedDetails;
+  }
+
   async flushOfflineQueueToDatabase(
     triggerReason = 'فتح الإنترنت ومزامنة قائمة الانتظار'
   ): Promise<{
@@ -2038,106 +2302,7 @@ export class StoreService {
       if (!sbErr && sbRow && sbRow['payload']) {
         const remoteSnap = sbRow['payload'] as CloudSyncSnapshot;
         if (remoteSnap && Array.isArray(remoteSnap.workers)) {
-          // Merge workers
-          const wMerge = mergeArraysByIdAndSignature(
-            this.workers(),
-            remoteSnap.workers || [],
-            (w) => `${w.name.trim()}|${w.role}`
-          );
-          if (wMerge.addedFromRemote.length > 0) {
-            this.workers.set(wMerge.merged);
-            for (const w of wMerge.addedFromRemote) {
-              receivedDetails.push(`عامل وارد من قاعدة البيانات: ${w.name} (${w.role})`);
-            }
-          }
-
-          // Merge projects
-          const pMerge = mergeArraysByIdAndSignature(
-            this.projects(),
-            remoteSnap.projects || [],
-            (p) => p.name.trim()
-          );
-          if (pMerge.addedFromRemote.length > 0) {
-            this.projects.set(pMerge.merged);
-            for (const p of pMerge.addedFromRemote) {
-              receivedDetails.push(`مشروع وارد من قاعدة البيانات: ${p.name}`);
-            }
-          }
-
-          // Merge advances
-          const advMerge = mergeArraysByIdAndSignature(
-            this.advances(),
-            remoteSnap.advances || [],
-            (a) => `${a.date}|${a.workerId}|${a.amount}|${a.reason || ''}`
-          );
-          if (advMerge.addedFromRemote.length > 0) {
-            this.advances.set(advMerge.merged);
-            for (const a of advMerge.addedFromRemote) {
-              receivedDetails.push(
-                `سلفة واردة من قاعدة البيانات: ${this.money(a.amount)} للعامل ${this.workerName(a.workerId)} (${a.date})`
-              );
-            }
-          }
-
-          // Merge attendances
-          const attMerge = mergeArraysByIdAndSignature(
-            this.attendances(),
-            remoteSnap.attendances || [],
-            (a) => `${a.date}|${a.workerId}|${a.projectId}`
-          );
-          if (attMerge.addedFromRemote.length > 0) {
-            this.attendances.set(attMerge.merged);
-            for (const a of attMerge.addedFromRemote) {
-              receivedDetails.push(
-                `حضور وارد من قاعدة البيانات: ${this.workerName(a.workerId)} يوم ${a.date}`
-              );
-            }
-          }
-
-          // Merge deductions
-          const dedMerge = mergeArraysByIdAndSignature(
-            this.deductions(),
-            remoteSnap.deductions || [],
-            (d) => `${d.date}|${d.workerId}|${d.amount}|${d.reason || ''}`
-          );
-          if (dedMerge.addedFromRemote.length > 0) {
-            this.deductions.set(dedMerge.merged);
-            for (const d of dedMerge.addedFromRemote) {
-              receivedDetails.push(
-                `خصم وارد من قاعدة البيانات: ${this.money(d.amount)} على ${this.workerName(d.workerId)}`
-              );
-            }
-          }
-
-          // Merge expenses
-          const expMerge = mergeArraysByIdAndSignature(
-            this.expenses(),
-            remoteSnap.expenses || [],
-            (e) => `${e.date}|${e.category}|${e.amount}|${e.note || ''}`
-          );
-          if (expMerge.addedFromRemote.length > 0) {
-            this.expenses.set(expMerge.merged);
-            for (const e of expMerge.addedFromRemote) {
-              receivedDetails.push(
-                `مصروف وارد من قاعدة البيانات: ${this.money(e.amount)} (${e.category})`
-              );
-            }
-          }
-
-          // Merge checks
-          const chkMerge = mergeArraysByIdAndSignature(
-            this.checks(),
-            remoteSnap.checks || [],
-            (c) => `${c.number}|${c.bank}|${c.amount}`
-          );
-          if (chkMerge.addedFromRemote.length > 0) {
-            this.checks.set(chkMerge.merged);
-            for (const c of chkMerge.addedFromRemote) {
-              receivedDetails.push(
-                `شيك وارد من قاعدة البيانات: رقم ${c.number} بقيمة ${this.money(c.amount)}`
-              );
-            }
-          }
+          receivedDetails.push(...this.mergeRemoteSnapshotIntoLocal(remoteSnap));
         }
       }
 
@@ -2477,7 +2642,7 @@ export class StoreService {
       if (res.ok) {
         const data = await res.json();
         if (data.snapshot) {
-          await this.applyCloudSnapshot(data.snapshot as CloudSyncSnapshot, false);
+          await this.applyCloudSnapshot(data.snapshot as CloudSyncSnapshot, false, true);
 
           this.showToast('تمت استعادة النسخة السحابية ومزامنتها على جميع الأجهزة!', 'success');
           return;
