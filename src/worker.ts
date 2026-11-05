@@ -44,7 +44,7 @@ const OWNER_EMAIL = 'gqikdubrjntorldfieo36@gmail.com';
 const GCP_PROJECT_ID = '110645591699';
 const GCP_PROJECT_PATH = `projects/${GCP_PROJECT_ID}`;
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_TIMEOUT_MS = 6000;
+const GEMINI_TIMEOUT_MS = 15000;
 
 interface DortmunEnv {
   GEMINI_API_KEY?: string;
@@ -140,11 +140,15 @@ const TABLES_FOR_DIAGNOSTICS: Array<{ name: string; label: string }> = [
   { name: 'dortmun_custodian_transfers', label: 'تحويلات الأمناء والسحب للجيب' },
 ];
 
+type GeminiResult =
+  | { ok: true; text: string; model: string; latencyMs: number }
+  | { ok: false; geminiStatus: number; geminiError: string };
+
 async function callGemini(
   apiKey: string,
   promptContent: string,
   systemInstruction: string
-): Promise<{ text: string; model: string; latencyMs: number } | null> {
+): Promise<GeminiResult> {
   const t0 = Date.now();
   try {
     const controller = new AbortController();
@@ -164,7 +168,19 @@ async function callGemini(
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      // Surface the real Gemini failure (status + short message, never the key).
+      let errText = '';
+      try {
+        const errData = (await resp.json()) as {
+          error?: { message?: string; status?: string };
+        };
+        errText = String(errData?.error?.message || errData?.error?.status || '').slice(0, 200);
+      } catch {
+        errText = '';
+      }
+      return { ok: false, geminiStatus: resp.status, geminiError: errText || `HTTP ${resp.status}` };
+    }
     const data = (await resp.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
@@ -173,10 +189,16 @@ async function callGemini(
         ?.map((p) => p.text || '')
         .join('') || ''
     ).trim();
-    if (!text) return null;
-    return { text, model: GEMINI_MODEL, latencyMs: Date.now() - t0 };
-  } catch {
-    return null;
+    if (!text) return { ok: false, geminiStatus: 200, geminiError: 'empty reply' };
+    return { ok: true, text, model: GEMINI_MODEL, latencyMs: Date.now() - t0 };
+  } catch (e) {
+    const timedOut =
+      e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError');
+    return {
+      ok: false,
+      geminiStatus: 0,
+      geminiError: timedOut ? 'timeout' : 'fetch failed',
+    };
   }
 }
 
@@ -213,7 +235,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
       'قل: متصل وجاهز يا باشمهندس في 4 كلمات فقط',
       'أنت المساعد الذكي زكي لشركة دورتمون للمقاولات.'
     );
-    if (result) {
+    if (result.ok) {
       return json(200, {
         ok: true,
         status: 'connected',
@@ -229,6 +251,8 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
       status: 'local_fallback',
       projectId: GCP_PROJECT_ID,
       projectPath: GCP_PROJECT_PATH,
+      geminiStatus: result.geminiStatus,
+      geminiError: result.geminiError,
     });
   }
 
@@ -280,7 +304,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
     ].join('\n');
 
     const aiResult = await callGemini(apiKey, promptContent, systemInstruction);
-    if (aiResult && aiResult.text) {
+    if (aiResult.ok && aiResult.text) {
       return json(200, {
         ok: true,
         mode: 'api',
@@ -298,6 +322,8 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
       projectId: GCP_PROJECT_ID,
       projectPath: GCP_PROJECT_PATH,
       reason: 'API unavailable or key error — local engine active',
+      geminiStatus: aiResult.ok ? 200 : aiResult.geminiStatus,
+      geminiError: aiResult.ok ? 'empty reply' : aiResult.geminiError,
     });
   }
 

@@ -573,8 +573,21 @@ export class ZakiPage {
   async testApiConnectionNow(silent = false): Promise<void> {
     if (this.isTestingApi() || typeof fetch === 'undefined') return;
     this.isTestingApi.set(true);
-    const failNote = (status?: string, reason?: string): string => {
+    const failNote = (
+      status?: string,
+      reason?: string,
+      geminiStatus?: number,
+      geminiError?: string
+    ): string => {
       if (status === 'no_key') return 'المفتاح مش متسجل على المنصة دي';
+      if (geminiStatus === 400) return 'Google رفض المفتاح (خطأ 400) — المفتاح مش صالح أو اتلغى';
+      if (geminiStatus === 401 || geminiStatus === 403)
+        return 'Google رفض المفتاح (خطأ ' + geminiStatus + ') — المفتاح ممنوع أو الـ API مش مفعّل للمشروع ده';
+      if (geminiStatus === 404) return 'الموديل مش موجود على Google (خطأ 404)';
+      if (geminiStatus === 429) return 'تجاوزت حد الاستخدام (خطأ 429) — جرّب بعد شوية';
+      if (geminiStatus === 0) return 'الطلب انتهت مهلته قبل ما Gemini يرد';
+      if (geminiStatus && geminiStatus > 0)
+        return `Google رد بخطأ ${geminiStatus}${geminiError ? ' — ' + geminiError : ''}`;
       if (reason) return reason;
       return 'الـ API مش بيرد دلوقتي';
     };
@@ -603,6 +616,8 @@ export class ZakiPage {
           ok?: boolean;
           status?: string;
           reason?: string;
+          geminiStatus?: number;
+          geminiError?: string;
           projectPath?: string;
           model?: string;
           latencyMs?: number;
@@ -638,7 +653,7 @@ export class ZakiPage {
           );
           return;
         }
-        reportFailure(failNote(data.status, data.reason));
+        reportFailure(failNote(data.status, data.reason, data.geminiStatus, data.geminiError));
         return;
       }
       reportFailure('الخادم رد بخطأ (غير مصرح أو غير متوفر)');

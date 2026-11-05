@@ -31,10 +31,11 @@ import { calculateDashboardSummary, calculateSettlement } from '../../core/calc/
               </span>
               <a
                 routerLink="/zaki"
-                class="polite-btn px-2.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-black inline-flex items-center gap-1.5"
+                class="polite-btn px-2.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-[#2563EB] dark:text-blue-300 text-[11px] font-black inline-flex items-center gap-1.5"
+                title="افتح المساعد زكي لمعرفة حالة الـ AI الحقيقية"
               >
-                <span class="w-2 h-2 rounded-full bg-emerald-500 polite-dot"></span>
-                <span>AI API متصل (projects/110645591699)</span>
+                <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">smart_toy</mat-icon>
+                <span>المساعد زكي — حالة الـ AI من صفحة زكي</span>
               </a>
               <span class="px-2.5 py-0.5 rounded-md bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] text-[11px] font-bold">
                 {{ store.settings().darkMode ? 'مظهر ليلي حديث وسريع' : 'مظهر نهاري حديث وسريع' }}
