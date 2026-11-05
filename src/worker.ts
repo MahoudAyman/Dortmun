@@ -6,28 +6,33 @@
  * wrangler.jsonc: assets = ./dist/app/browser, SPA fallback). A Worker that
  * only serves assets has NO backend, so /api/zaki/chat used to return the
  * SPA page and the chat always fell back to the local rule-based engine.
- * This entry point serves the static assets AND answers /api/zaki/* with
- * the real Gemini API, so the same code serves both.
+ * This entry point serves the static assets AND answers /api/zaki/* by
+ * proxying to the Supabase `zaki-chat` Edge Function, which calls the
+ * real Gemini API, so the same code serves both.
  *
  * ── SETUP ───────────────────────────────────────────────────────────────
- * 1. The secret GEMINI_API_KEY is ALREADY set on the Worker "dortmun"
- *    (Cloudflare Dashboard → Workers & Pages → dortmun → Settings →
- *    Variables → Secrets, or `wrangler secret put GEMINI_API_KEY`).
- *    It is a NEW Gemini API key for project 110645591699. NEVER paste it
- *    in chat, in code, or in git — it lives ONLY as a Worker secret.
- *    Without it, both endpoints answer { ok:false, mode:'local_fallback' }
- *    and the chat keeps working locally.
- * 2. Deploy: `npx wrangler deploy` (or the Cloudflare dashboard GitHub
- *    integration, which rebuilds from main). A secret change does NOT
- *    need a redeploy; a code change does.
- * 3. The old hardcoded fallback key in src/server.ts must be REVOKED in
- *    Google Cloud first — removing it from code alone does not help
- *    because it already exists in git history. This Worker never uses it.
- * 4. The Netlify twin of this file is netlify/functions/api.ts (same
- *    logic, process.env instead of env) for the Netlify-hosted copy.
+ * The Gemini key lives ONLY as a secret on the Supabase project
+ * (`supabase secrets set GEMINI_API_KEY=...`, function
+ * `supabase/functions/zaki-chat`). The Worker never sees the key: it
+ * forwards the owner's JWT + the already-built prompt to that Edge
+ * Function, which verifies the owner and calls Google. This replaced
+ * the old Worker secret (2026-11-05) because the secret value bound
+ * to the Worker kept not matching the working key.
+ * Without the Supabase secret, both endpoints answer
+ * { ok:false, mode:'local_fallback' } and the chat keeps working locally.
+ * Deploy: `npx wrangler deploy` (or the Cloudflare dashboard GitHub
+ * integration, which rebuilds from main). A secret change does NOT
+ * need a redeploy; a code change does.
+ * The old hardcoded fallback key in src/server.ts must be REVOKED in
+ * Google Cloud first — removing it from code alone does not help
+ * because it already exists in git history. This Worker never uses it.
+ * The Netlify twin of this file is netlify/functions/api.ts (same
+ * logic, process.env instead of env) for the Netlify-hosted copy.
  *
  * SECURITY:
- * - Gemini key comes ONLY from env.GEMINI_API_KEY (never hardcoded).
+ * - Gemini key lives ONLY as a Supabase project secret (never in code,
+ *   chat, or git). The Worker forwards the prompt; the Edge Function
+ *   holds the key and verifies the owner JWT a second time.
  * - Every /api/zaki/* request must carry Authorization: Bearer <Supabase
  *   owner JWT>; the token is verified against Supabase Auth and must
  *   belong to the single owner email. No token / bad token / non-owner
@@ -47,7 +52,6 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_TIMEOUT_MS = 15000;
 
 interface DortmunEnv {
-  GEMINI_API_KEY?: string;
   ASSETS: { fetch: (req: Request) => Promise<Response> };
 }
 
@@ -140,12 +144,18 @@ const TABLES_FOR_DIAGNOSTICS: Array<{ name: string; label: string }> = [
   { name: 'dortmun_custodian_transfers', label: 'تحويلات الأمناء والسحب للجيب' },
 ];
 
+// The Gemini key lives ONLY as a secret on the Supabase project
+// (supabase secrets set GEMINI_API_KEY=...). The Worker never sees it:
+// it forwards the owner's JWT + the already-built prompt to the
+// `zaki-chat` Edge Function, which verifies the owner and calls Google.
+const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/zaki-chat`;
+
 type GeminiResult =
   | { ok: true; text: string; model: string; latencyMs: number }
-  | { ok: false; geminiStatus: number; geminiError: string };
+  | { ok: false; geminiStatus: number; geminiError: string; status?: string };
 
-async function callGemini(
-  apiKey: string,
+async function callZakiViaSupabase(
+  ownerJwt: string,
   promptContent: string,
   systemInstruction: string
 ): Promise<GeminiResult> {
@@ -153,44 +163,43 @@ async function callGemini(
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, {
+    const resp = await fetch(EDGE_FN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: 'user', parts: [{ text: promptContent }] }],
-        generationConfig: {
-          temperature: 0.35,
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${ownerJwt}`,
+      },
+      body: JSON.stringify({ systemInstruction, promptContent }),
       signal: controller.signal,
     });
     clearTimeout(timer);
-    if (!resp.ok) {
-      // Surface the real Gemini failure (status + short message, never the key).
-      let errText = '';
-      try {
-        const errData = (await resp.json()) as {
-          error?: { message?: string; status?: string };
-        };
-        errText = String(errData?.error?.message || errData?.error?.status || '').slice(0, 200);
-      } catch {
-        errText = '';
-      }
-      return { ok: false, geminiStatus: resp.status, geminiError: errText || `HTTP ${resp.status}` };
-    }
-    const data = (await resp.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    const data = (await resp.json().catch(() => ({}))) as {
+      ok?: boolean;
+      text?: string;
+      model?: string;
+      latencyMs?: number;
+      geminiStatus?: number;
+      geminiError?: string;
+      status?: string;
+      error?: string;
     };
-    const text = (
-      data?.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text || '')
-        .join('') || ''
-    ).trim();
-    if (!text) return { ok: false, geminiStatus: 200, geminiError: 'empty reply' };
-    return { ok: true, text, model: GEMINI_MODEL, latencyMs: Date.now() - t0 };
+    if (resp.ok && data.ok && data.text) {
+      return {
+        ok: true,
+        text: data.text,
+        model: data.model || GEMINI_MODEL,
+        latencyMs: data.latencyMs ?? Date.now() - t0,
+      };
+    }
+    if (data.status === 'no_key') {
+      return { ok: false, geminiStatus: 0, geminiError: 'no_key', status: 'no_key' };
+    }
+    return {
+      ok: false,
+      geminiStatus: data.geminiStatus ?? resp.status,
+      geminiError: data.geminiError || data.error || `HTTP ${resp.status}`,
+    };
   } catch (e) {
     const timedOut =
       e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError');
@@ -205,7 +214,7 @@ async function callGemini(
 async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
   const url = new URL(req.url);
   const route = url.pathname.replace(/^\/api/, '') || '/';
-  const apiKey = (env.GEMINI_API_KEY || '').trim();
+  const token = ownerToken(req);
 
   if (!(await isOwnerRequest(req))) {
     return json(401, { ok: false, error: 'Missing owner session' });
@@ -213,14 +222,6 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
 
   // ── GET /api/zaki/status ──────────────────────────────────────────────
   if (req.method === 'GET' && route === '/zaki/status') {
-    if (!apiKey) {
-      return json(200, {
-        ok: false,
-        status: 'no_key',
-        projectId: GCP_PROJECT_ID,
-        projectPath: GCP_PROJECT_PATH,
-      });
-    }
     if (url.searchParams.get('ping') !== '1') {
       return json(200, {
         ok: true,
@@ -230,8 +231,8 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         model: GEMINI_MODEL,
       });
     }
-    const result = await callGemini(
-      apiKey,
+    const result = await callZakiViaSupabase(
+      token,
       'قل: متصل وجاهز يا باشمهندس في 4 كلمات فقط',
       'أنت المساعد الذكي زكي لشركة دورتمون للمقاولات.'
     );
@@ -244,6 +245,14 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         model: result.model,
         latencyMs: result.latencyMs,
         sampleReply: result.text,
+      });
+    }
+    if (result.status === 'no_key') {
+      return json(200, {
+        ok: false,
+        status: 'no_key',
+        projectId: GCP_PROJECT_ID,
+        projectPath: GCP_PROJECT_PATH,
       });
     }
     return json(200, {
@@ -274,14 +283,6 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
     if (!userPrompt) {
       return json(200, { ok: false, mode: 'local_fallback', reply: localReply });
     }
-    if (!apiKey) {
-      return json(200, {
-        ok: false,
-        mode: 'local_fallback',
-        reply: localReply,
-        reason: 'No API key configured',
-      });
-    }
 
     // System instruction + prompt built exactly like src/server.ts /api/zaki/chat.
     const systemInstruction = [
@@ -303,7 +304,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         : '',
     ].join('\n');
 
-    const aiResult = await callGemini(apiKey, promptContent, systemInstruction);
+    const aiResult = await callZakiViaSupabase(token, promptContent, systemInstruction);
     if (aiResult.ok && aiResult.text) {
       return json(200, {
         ok: true,

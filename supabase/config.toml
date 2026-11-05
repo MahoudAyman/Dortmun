@@ -1,0 +1,9 @@
+# Supabase project config for the Dortmun app.
+# Edge Functions live in ./functions/ and deploy with:
+#   supabase link --project-ref lmcxonnuzbamfqxbqshu
+#   supabase functions deploy zaki-chat
+#   supabase secrets set GEMINI_API_KEY=<working Gemini key>
+# (The Gemini key lives ONLY as a project secret, never in code or git.)
+
+[functions.zaki-chat]
+verify_jwt = true
