@@ -40,45 +40,53 @@ interface ChatMessage {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto flex flex-col gap-3.5 sm:gap-4 pb-8 polite-enter">
-      <!-- Modern Architectural Header with Live AI Project 110645591699 Status -->
+      <!-- Slim header: avatar + name + one honest verified status pill -->
       <div
-        class="ceramic-card polite-card rounded-2xl p-4 sm:p-5 flex flex-col gap-3.5 border-t-4 border-t-[#2563EB] relative overflow-hidden"
+        class="ceramic-card polite-card rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 relative overflow-hidden"
       >
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-          <div class="flex items-center gap-3.5">
+          <div class="flex items-center gap-3">
             <div
-              class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center shadow-sm shrink-0 border border-blue-400/30 polite-icon-badge"
+              class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center shadow-sm shrink-0 border border-blue-400/30 polite-icon-badge"
             >
-              <mat-icon class="!w-7 !h-7 !text-[28px]">smart_toy</mat-icon>
+              <mat-icon class="!w-6 !h-6 !text-[24px]">smart_toy</mat-icon>
             </div>
             <div>
               <div class="flex flex-wrap items-center gap-2">
                 <h2 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
-                  المساعد الذكي «زكي» بالعامية المصرية (AI API + محرك محلي)
+                  المساعد الذكي «زكي»
                 </h2>
-                @if (isEffectiveOnlineApi()) {
+                @if (apiStatus() === 'connected') {
                   <span
                     class="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
                   >
                     <span class="w-2 h-2 rounded-full bg-emerald-500 polite-dot"></span>
-                    <span>متصل بـ AI API ({{ gcpProjectPath() }})</span>
+                    <span>متصل بـ AI API ✓@if (lastApiLatencyMs() > 0) { · {{ lastApiLatencyMs() }}ms }</span>
                   </span>
-                } @else {
+                } @else if (apiStatus() === 'unavailable') {
                   <span
                     class="px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-400/40 text-[10px] font-black inline-flex items-center gap-1"
                   >
                     <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span>يعمل محلياً ١٠٠٪ بدون نت كما كان</span>
+                    <span>محلي — الـ API غير متوفر</span>
+                  </span>
+                } @else {
+                  <span
+                    class="px-2.5 py-0.5 rounded-lg bg-slate-500/15 text-slate-600 dark:text-slate-300 border border-slate-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
+                  >
+                    <span class="w-2 h-2 rounded-full bg-slate-400 polite-dot"></span>
+                    <span>بيفحص اتصال الـ AI...</span>
                   </span>
                 }
               </div>
-              <p class="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-1">
-                متصل بمشروع Google Cloud رقم <strong dir="ltr" class="text-[#2563EB] dark:text-blue-400 tabular-nums">{{ gcpProjectPath() }}</strong> عبر Gemini 2.5 Flash السريع، مع تحويل فوري للمحرك المحلي عند انقطاع الإنترنت
+              <p class="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5">
+                اسأل بالعامية المصرية — أسجّل الفلوس والعدد والسلف، وأحسبلك حسابك. {{ engineStatusLabel() }}
               </p>
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2 relative">
+          <!-- One visible toolbar: every control in plain sight, no hidden menu -->
+          <div class="flex flex-wrap items-center gap-1.5 relative">
             <!-- Live API Connection Test Button -->
             <button
               type="button"
@@ -104,14 +112,36 @@ interface ChatMessage {
               title="التبديل بين وضع API الهجين ووضع المحرك المحلي المباشر"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">{{ preferApiMode() ? 'cloud_done' : 'offline_bolt' }}</mat-icon>
-              <span>{{ preferApiMode() ? 'وضع API + محلي تلقائي' : 'وضع محلي فقط' }}</span>
+              <span>{{ preferApiMode() ? 'وضع API' : 'محلي فقط' }}</span>
             </button>
 
-            <!-- Button that opens the "ما يمكن للبوت فعله" Capabilities Page/Modal -->
+            <!-- Copy whole chat -->
+            <button
+              type="button"
+              (click)="copyChatHistory()"
+              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)]"
+              title="نسخ سجل المحادثة كاملاً"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">content_copy</mat-icon>
+              <span>نسخ الشات</span>
+            </button>
+
+            <!-- Clear chat -->
+            <button
+              type="button"
+              (click)="clearChat()"
+              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/20"
+              title="مسح المحادثة وبدء صفحة جديدة"
+            >
+              <mat-icon class="!w-4 !h-4 !text-[16px]">refresh</mat-icon>
+              <span>شات جديد</span>
+            </button>
+
+            <!-- Capabilities guide -->
             <button
               type="button"
               (click)="showCapabilitiesPage.set(!showCapabilitiesPage())"
-              class="polite-btn flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs cursor-pointer shadow-xs"
+              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs cursor-pointer shadow-xs"
               [class]="
                 showCapabilitiesPage()
                   ? 'bg-emerald-600 text-white'
@@ -119,104 +149,9 @@ interface ChatMessage {
               "
             >
               <mat-icon class="!w-4 !h-4 !text-[18px]">menu_book</mat-icon>
-              <span>{{ showCapabilitiesPage() ? 'العودة لشات زكي' : 'ماذا يمكن للبوت فعله؟ (دليل قدرات زكي)' }}</span>
+              <span>{{ showCapabilitiesPage() ? 'العودة للشات' : 'ماذا يقدر يعمل؟' }}</span>
             </button>
-
-            <a
-              routerLink="/my-ledger"
-              class="polite-btn hidden sm:inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-[var(--bg-surface-muted)] hover:bg-[var(--color-primary-soft)] text-[var(--text-heading)] font-bold text-xs border border-[var(--border-subtle)]"
-            >
-              <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-600 dark:text-emerald-400">account_balance_wallet</mat-icon>
-              <span>حسابي الشامل</span>
-            </a>
-
-            <!-- Three-Dots (⋮) Zaki Options Menu -->
-            <button
-              type="button"
-              (click)="zakiHeaderMoreOpen.set(!zakiHeaderMoreOpen())"
-              class="polite-btn inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl bg-[var(--bg-surface-muted)] text-[var(--text-heading)] font-extrabold text-xs border border-[var(--border-subtle)] cursor-pointer"
-              title="خيارات زكي الإضافية (⋮)"
-              aria-label="خيارات زكي الإضافية"
-            >
-              <mat-icon class="!w-4 !h-4 !text-[18px]">more_vert</mat-icon>
-              <span class="text-[11px]">المزيد</span>
-            </button>
-
-            @if (zakiHeaderMoreOpen()) {
-              <div
-                class="fixed inset-0 z-40"
-                (click)="zakiHeaderMoreOpen.set(false)"
-              ></div>
-              <div
-                class="absolute left-0 top-full mt-2 w-64 rounded-2xl ceramic-card shadow-xl p-2 z-50 space-y-1 text-[var(--text-heading)] polite-enter"
-                (click)="$event.stopPropagation()"
-              >
-                <div class="px-2.5 py-1 text-[10px] font-extrabold text-[#2563EB] dark:text-blue-400 border-b border-[var(--border-subtle)]">
-                  أدوات واختصارات المساعد زكي
-                </div>
-                <button
-                  type="button"
-                  (click)="runCommand('قارن ربحية المشاريع'); zakiHeaderMoreOpen.set(false)"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-500">leaderboard</mat-icon>
-                  <span>تحليل ومقارنة ربحية المشاريع</span>
-                </button>
-                <button
-                  type="button"
-                  (click)="runCommand('منهجية الحسابات ونصايح المقاولات'); zakiHeaderMoreOpen.set(false)"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-amber-500">auto_stories</mat-icon>
-                  <span>الدليل المنهجي للمقاولات (6 قواعد)</span>
-                </button>
-                <button
-                  type="button"
-                  (click)="copyChatHistory(); zakiHeaderMoreOpen.set(false)"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right cursor-pointer"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-blue-500">content_copy</mat-icon>
-                  <span>نسخ سجل المحادثة للواتساب</span>
-                </button>
-                <a
-                  routerLink="/my-ledger"
-                  (click)="zakiHeaderMoreOpen.set(false)"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--color-primary-soft)] text-xs font-bold text-right"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px] text-emerald-500">account_balance_wallet</mat-icon>
-                  <span>فتح صفحة حسابي الشامل والخزنة</span>
-                </a>
-                <button
-                  type="button"
-                  (click)="clearChat(); zakiHeaderMoreOpen.set(false)"
-                  class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/15 text-rose-500 text-xs font-bold text-right cursor-pointer"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px]">refresh</mat-icon>
-                  <span>مسح المحادثة وبدء صفحة جديدة</span>
-                </button>
-              </div>
-            }
           </div>
-        </div>
-
-        <!-- Smart Engine Diagnostic Strip -->
-        <div class="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="px-2.5 py-0.5 rounded-lg bg-[var(--bg-surface-muted)] border border-[var(--border-subtle)] text-[var(--text-heading)] inline-flex items-center gap-1">
-              <mat-icon class="!w-3.5 !h-3.5 !text-[14px] text-[#2563EB]">memory</mat-icon>
-              <span>المحرك النشط: {{ engineStatusLabel() }}</span>
-            </span>
-            <span class="px-2.5 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1 tabular-nums">
-              <mat-icon class="!w-3.5 !h-3.5 !text-[14px]">bolt</mat-icon>
-              <span dir="ltr">{{ gcpProjectPath() }}</span>
-              @if (lastApiLatencyMs() > 0) {
-                <span>· {{ lastApiLatencyMs() }}ms</span>
-              }
-            </span>
-          </div>
-          <span class="text-[var(--text-secondary)]">
-            المطور: م/ {{ store.developerName }} — <span dir="ltr" class="tabular-nums text-emerald-600 dark:text-emerald-400 font-black">{{ store.developerPhone }}</span>
-          </span>
         </div>
       </div>
 
@@ -304,34 +239,17 @@ interface ChatMessage {
         </div>
       }
 
-      <!-- Quick Command Chips Bar (Egyptian Colloquial Shortcuts) -->
-      <div
-        class="ceramic-card rounded-2xl p-3"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-[11px] font-extrabold text-[var(--text-secondary)] flex items-center gap-1">
-            <mat-icon class="!w-4 !h-4 !text-[15px] text-amber-500">bolt</mat-icon>
-            <span>أوامر سريعة بالعامية المصرية (اضغط للتنفيذ الفوري):</span>
-          </div>
+      <!-- Quick commands: one scrollable row, no big card -->
+      <div class="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        @for (cmd of quickChips; track cmd) {
           <button
             type="button"
-            (click)="showCapabilitiesPage.set(!showCapabilitiesPage())"
-            class="text-[11px] font-extrabold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+            (click)="runCommand(cmd)"
+            class="shrink-0 px-3 py-1.5 rounded-full bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:bg-amber-500 hover:text-slate-950 hover:border-amber-500 text-[var(--text-heading)] text-[11px] font-bold transition-colors cursor-pointer"
           >
-            {{ showCapabilitiesPage() ? 'إخفاء الدليل' : 'عرض كل قدرات زكي ←' }}
+            {{ cmd }}
           </button>
-        </div>
-        <div class="flex flex-wrap gap-1.5">
-          @for (cmd of quickChips; track cmd) {
-            <button
-              type="button"
-              (click)="runCommand(cmd)"
-              class="px-2.5 py-1.5 rounded-xl bg-[var(--bg-app)] border border-[var(--border-subtle)] hover:bg-amber-500 hover:text-slate-950 text-[var(--text-heading)] text-[11px] font-bold transition-colors cursor-pointer"
-            >
-              {{ cmd }}
-            </button>
-          }
-        </div>
+        }
       </div>
 
       <!-- Chat Messages Stream -->
@@ -499,7 +417,7 @@ interface ChatMessage {
           type="text"
           [formControl]="inputCtrl"
           (keydown.enter)="sendCurrentInput()"
-          placeholder="اكتب بالعامية المصرية مثلاً: وصلني 50000 من شركة إعمار لمشروع التجمع، أو حسابي الشامل كام..."
+          placeholder="اكتب لزكي بالعامية... مثلاً: وصلني 50000 من شركة إعمار"
           class="flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-heading)] focus:outline-none focus:border-amber-500"
         />
 
@@ -535,6 +453,22 @@ export class ZakiPage {
     });
     // Scroll to the newest message once the restored history is rendered.
     this.scrollChatToBottom();
+    // One silent verified check on open, so the header pill tells the
+    // truth (connected / unavailable) instead of assuming the API works.
+    setTimeout(() => {
+      if (
+        this.preferApiMode() &&
+        this.store.isNetworkOnline() &&
+        !this.store.localOnlyMode()
+      ) {
+        void this.testApiConnectionNow(true);
+      } else {
+        this.apiStatus.set('unavailable');
+        this.apiStatusNote.set(
+          this.store.localOnlyMode() ? 'الوضع المحلي مفعّل' : 'مفيش إنترنت'
+        );
+      }
+    }, 600);
   }
 
   private loadSavedMessages(): ChatMessage[] | null {
@@ -578,16 +512,17 @@ export class ZakiPage {
 
   readonly capabilitiesGuide = ZAKI_CAPABILITIES_GUIDE;
   readonly showCapabilitiesPage = signal<boolean>(false);
-  readonly zakiHeaderMoreOpen = signal<boolean>(false);
   readonly preferApiMode = signal<boolean>(true);
   readonly lastUsedEngine = signal<'api' | 'local_offline' | 'local_fallback'>('api');
   readonly gcpProjectPath = signal<string>('projects/110645591699');
-  readonly lastApiLatencyMs = signal<number>(580);
+  // No fake default: 0 means "no verified check yet". The header only
+  // claims an API connection after a real /api/zaki/status ping succeeds.
+  readonly lastApiLatencyMs = signal<number>(0);
+  // Verified API state: 'unknown' until the first real check runs,
+  // then 'connected' or 'unavailable' (with a plain-language reason).
+  readonly apiStatus = signal<'unknown' | 'connected' | 'unavailable'>('unknown');
+  readonly apiStatusNote = signal<string>('');
   readonly isTestingApi = signal<boolean>(false);
-
-  readonly isEffectiveOnlineApi = computed(
-    () => this.preferApiMode() && this.store.isNetworkOnline() && !this.store.localOnlyMode()
-  );
 
   readonly engineStatusLabel = computed(() => {
     if (!this.store.isNetworkOnline() || this.store.localOnlyMode()) {
@@ -596,9 +531,13 @@ export class ZakiPage {
     if (!this.preferApiMode()) {
       return 'محرك زكي المحلي المباشر (تم اختياره يدوياً)';
     }
-    return this.lastUsedEngine() === 'local_fallback'
-      ? 'الوضع الهجين الذكي (محلي تلقائي + API)'
-      : 'متصل بـ Gemini 2.5 Flash API (projects/110645591699)';
+    if (this.apiStatus() === 'connected') {
+      return 'متصل بـ Gemini 2.5 Flash API (projects/110645591699)';
+    }
+    if (this.apiStatus() === 'unavailable') {
+      return `محلي — الـ API غير متوفر (${this.apiStatusNote() || 'غير معروف'})`;
+    }
+    return 'بيفحص اتصال الـ AI...';
   });
 
   readonly inputCtrl = new FormControl('', { nonNullable: true });
@@ -609,22 +548,12 @@ export class ZakiPage {
   readonly quickChips = [
     'حسابي الشامل كام؟ وصلني كام وليا كام وعليا كام؟',
     'قارن ربحية المشاريع',
-    'منهجية الحسابات ونصايح المقاولات',
-    'كشف حساب عامل كريم بالتفصيل',
+    'أرصدة الأمناء',
+    'محمود أيمن معاه كام؟',
     'وصلني 50000 من شركة إعمار لمشروع التجمع',
-    'قبضت 15000 من المهندس طارق نقدي',
     'العدد النهارده 10 يومية و 4 سهرة',
-    'هل العدد النهارده مطابق ولا لا؟',
-    'سجل يومية لمحمد وعلي النهارده',
-    'احسب قبض يوم 15 لكل العمال',
-    'اعمل مستخلص جديد للمشروع',
-    'اخصم نص يوم من كريم بسبب تأخير',
     'سلفة 500 لكريم النهارده',
-    'صرفت 300 مواصلات النهارده',
     'شيكات تحت التحصيل',
-    'صرف شيك رقم 105',
-    'ضيف نحات جديد اسمه حسام بيومية 550 وسهرة 275',
-    'احذف اخر سلفة',
   ];
 
   readonly messages = signal<ChatMessage[]>(this.loadSavedMessages() ?? [
@@ -633,30 +562,47 @@ export class ZakiPage {
       sender: 'zaki',
       text:
         'أهلاً بيك يا باشمهندس! أنا «زكي» دراعك اليمين بالعامية المصرية 👷‍♂️\n' +
-        '• تم ربط وتفعيل الذكاء الاصطناعي (Gemini 2.5 Flash API) بنجاح على مشروعك (projects/110645591699) بسرعة استجابة فائقة، مع استمرار المحرك المحلي التلقائي عند انقطاع الإنترنت!\n' +
         '• أسجل الفلوس اللي وصلتك (شيكات أو من شركة أو من شخص) وأقولك راحت لحساب مشروع إيه، واتصرف كام سلف وقبض، وليك كام وعليك كام وصافي ربحك.\n' +
         '• أسجل العدد اليومي الإجباري، أحضر العمال والنحاتية، أصرف سلف، أوقع خصومات، أعمل مستخلصات، وأصرف شيكات.\n' +
-        'اضغط على زر «فحص اتصال الـ AI» فوق أو جرب أي أمر من الاختصارات بالأسفل فوراً!',
+        '• هفحص اتصال الـ AI دلوقتي، ولو مش متوفر هرد عليك من المحرك المحلي فوراً من غير ما تقف.\n' +
+        'جرّب أي أمر من الاختصارات تحت، أو اكتبلي بالعامية زي ما بتتكلم!',
       timestamp: 'الآن',
-      engineSource: 'api',
-      latencyMs: 580,
-      modelName: 'gemini-2.5-flash',
-      responseMeta: {
-        reply: '',
-        actionRoute: '/my-ledger',
-        actionLabel: 'فتح صفحة حسابي الشامل والخزنة',
-      },
     },
   ]);
 
-  async testApiConnectionNow(): Promise<void> {
+  async testApiConnectionNow(silent = false): Promise<void> {
     if (this.isTestingApi() || typeof fetch === 'undefined') return;
     this.isTestingApi.set(true);
+    const failNote = (status?: string, reason?: string): string => {
+      if (status === 'no_key') return 'المفتاح مش متسجل على المنصة دي';
+      if (reason) return reason;
+      return 'الـ API مش بيرد دلوقتي';
+    };
+    const reportFailure = (note: string): void => {
+      this.apiStatus.set('unavailable');
+      this.apiStatusNote.set(note);
+      this.lastUsedEngine.set('local_fallback');
+      if (silent) return;
+      this.messages.update((list) => [
+        ...list,
+        {
+          id: this.nextMsgId++,
+          sender: 'zaki',
+          text: `⚠️ فحص اتصال الـ AI: غير متوفر دلوقتي.\n• السبب: ${note}.\n• هكمل معاك من المحرك المحلي عادي، وجرّب «فحص اتصال الـ AI» تاني بعد ما تتأكد من المفتاح والمنصة.`,
+          timestamp: 'الآن',
+          engineSource: 'local_fallback',
+        },
+      ]);
+      this.scrollChatToBottom();
+      this.store.showToast(`الـ AI غير متوفر: ${note}`, 'warning');
+    };
     try {
       const res = await this.store.authFetch('/api/zaki/status?ping=1');
       if (res.ok) {
         const data = (await res.json()) as {
           ok?: boolean;
+          status?: string;
+          reason?: string;
           projectPath?: string;
           model?: string;
           latencyMs?: number;
@@ -666,10 +612,13 @@ export class ZakiPage {
           this.gcpProjectPath.set(data.projectPath);
         }
         if (data.ok) {
-          const ms = data.latencyMs || 550;
+          const ms = data.latencyMs || 0;
           this.lastApiLatencyMs.set(ms);
+          this.apiStatus.set('connected');
+          this.apiStatusNote.set('');
           this.lastUsedEngine.set('api');
           this.preferApiMode.set(true);
+          if (silent) return;
           this.messages.update((list) => [
             ...list,
             {
@@ -689,10 +638,12 @@ export class ZakiPage {
           );
           return;
         }
+        reportFailure(failNote(data.status, data.reason));
+        return;
       }
-      this.store.showToast('يعمل حالياً عبر محرك زكي المحلي الفوري', 'info');
+      reportFailure('الخادم رد بخطأ (غير مصرح أو غير متوفر)');
     } catch {
-      this.store.showToast('يعمل حالياً عبر محرك زكي المحلي الفوري', 'info');
+      reportFailure('مفيش اتصال بالخادم');
     } finally {
       this.isTestingApi.set(false);
     }
@@ -728,7 +679,7 @@ export class ZakiPage {
         sender: 'zaki',
         text: 'تم فتح صفحة محادثة جديدة يا هندسة. أؤمرني أسجلك أو أحسبلك إيه دلوقتي؟',
         timestamp: 'الآن',
-        engineSource: this.isEffectiveOnlineApi() ? 'api' : 'local_offline',
+        engineSource: this.apiStatus() === 'connected' ? 'api' : 'local_offline',
       },
     ]);
   }
