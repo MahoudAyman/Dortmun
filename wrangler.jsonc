@@ -1,9 +1,1 @@
-{
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "dortmun",
-  "compatibility_date": "2025-11-01",
-  "assets": {
-    "directory": "./dist/app/browser",
-    "not_found_handling": "single-page-application"
-  }
-}
+{"$schema":"./node_modules/wrangler/config-schema.json","assets":{"directory":"./dist/app/browser","not_found_handling":"single-page-application"},"compatibility_date":"2025-11-01","main":"src/worker.ts","name":"dortmun"}
