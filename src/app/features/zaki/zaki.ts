@@ -1004,6 +1004,27 @@ export class ZakiPage {
             // الـ API اقترحت عملية منظمة؟ حوّلها لبطاقة تأكيد زي المحلي تماماً.
             // لو مفيش action صالح، بطاقة التأكيد المحلية (لو موجودة) تفضل زي ما هي.
             const apiAction = this.mapApiAction(data.action);
+            let replyText = data.reply!.trim();
+            // لو الـ API اقترحت سلفة لعامل مش مسجل، وضّح للمستخدم ليه متنفذتش
+            // بدل ما يفضل مستني زر تأكيد مش هيظهر.
+            if (!apiAction && data.action && typeof data.action === 'object') {
+              const rawAction = data.action as Record<string, unknown>;
+              if (
+                rawAction['type'] === 'record_advance' &&
+                typeof rawAction['workerName'] === 'string'
+              ) {
+                const wName = (rawAction['workerName'] as string).trim();
+                const exists = this.store.workers().some(
+                  (w) =>
+                    w.name.trim() === wName ||
+                    wName.includes(w.name.trim()) ||
+                    w.name.trim().includes(wName)
+                );
+                if (!exists) {
+                  replyText += `\n\n—\n⚠️ ملاحظة: العامل «${wName}» مش مسجل في قائمة العمال، فالسلفة دي متنفذتش. قولي: هو عامل جديد؟ تخصصه إيه؟ والمشروع اللي اشتغل فيه إيه؟ وأنا أضيفه وأسجل السلفة.`;
+                }
+              }
+            }
             const newMeta = apiAction
               ? { ...response, pendingAction: apiAction, requiresConfirmation: true }
               : response;
@@ -1012,7 +1033,7 @@ export class ZakiPage {
                 m.id === zakiMsgId
                   ? {
                       ...m,
-                      text: data.reply!.trim(),
+                      text: replyText,
                       responseMeta: newMeta,
                       engineSource: 'api',
                       isCheckingApi: false,
