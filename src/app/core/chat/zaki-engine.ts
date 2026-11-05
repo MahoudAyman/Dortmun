@@ -704,6 +704,9 @@ export type ZakiPendingWriteAction =
       reason: string;
       fundedBy?: CustodianId;
       paidFrom?: 'vodafone' | 'pocket';
+      // New worker chosen from the role buttons (workerId is 0 until the
+      // worker is created at confirmation time).
+      newWorkerRole?: string;
     }
   | {
       type: 'record_deduction';
@@ -2948,6 +2951,62 @@ export function processZakiMessage(
     }
   }
 
+  // 12B. Write Intent: Advance for a NEW worker with a chosen role.
+  // (From the role buttons Zaki shows when the worker is not registered:
+  // "سلفة 150 محمد أحمد نحات جديد" — pick the role, confirm, execute.
+  // The worker is created first at confirmation time, then the advance.)
+  const newWorkerRoleMatch = norm.match(
+    /(عامل|نحات|مشرف|نقاش|نجار|حداد)\s+جديد/
+  );
+  if (
+    (norm.includes('سلفه') || norm.includes('اخد سلفه')) &&
+    newWorkerRoleMatch
+  ) {
+    const roleWord = newWorkerRoleMatch[1];
+    const role =
+      roleWord === 'نحات'
+        ? 'نحات'
+        : roleWord === 'مشرف'
+          ? 'مشرف'
+          : roleWord === 'نقاش'
+            ? 'نقاش'
+            : roleWord === 'نجار'
+              ? 'نجار'
+              : roleWord === 'حداد'
+                ? 'حداد'
+                : 'عامل';
+    // The name is the text right before "<role> جديد" (digits excluded,
+    // so the amount can't leak into it). Strip a leading "لـ"/"لم" if the
+    // user typed it.
+    const nameFromText = input.match(
+      /(?:^|\s)([^\d]+?)\s+(?:عامل|نحات|مشرف|نقاش|نجار|حداد)\s+جديد/
+    );
+    const wmNew = matchWorkersFromText(input, ctx.workers);
+    let newName = nameFromText
+      ? nameFromText[1].replace(/^[للمـ]+\s*/, '').trim()
+      : '';
+    if (!newName) newName = wmNew.missingName || '';
+    if (newName) {
+      const amount = parseSpokenArabicNumber(input) || 150;
+      const date = resolveRelativeDate(input, ctx.todayIso);
+      return {
+        reply: `هضيف «${newName}» كـ ${role} جديد في قائمة العمال، وأسجل له سلفة ${formatCurrency(amount, numMode)} جنيه. تمام؟`,
+        requiresConfirmation: true,
+        pendingAction: {
+          type: 'record_advance',
+          workerId: 0,
+          workerName: newName,
+          newWorkerRole: role,
+          amount,
+          date,
+          reason: 'سلفة مسجلة عبر زكي',
+        },
+        actionRoute: '/advances',
+        actionLabel: 'تحويل لصفحة السلف',
+      };
+    }
+  }
+
   // 13. Write Intent: Record Advance ("كريم أخد سلفة 300 النهارده")
   if (norm.includes('سلفه') || norm.includes('اخد سلفه')) {
     const wm = matchWorkersFromText(input, ctx.workers);
@@ -2970,6 +3029,22 @@ export function processZakiMessage(
             label: `نعم، ${wm.suggestion.name}`,
             command: `${wm.suggestion.name} أخد سلفة ${amt} النهارده`,
           },
+        ],
+      };
+    }
+    // Worker not registered at all: show a role picker (عامل / نحات /
+    // مشرف / نقاش) as buttons — the user picks, then confirms, then it
+    // executes (the worker is created first, then the advance).
+    if (wm.matched.length === 0 && wm.missingName) {
+      const amt = parseSpokenArabicNumber(input) || 150;
+      const nm = wm.missingName;
+      return {
+        reply: `«${nm}» مش مسجل عندي كعامل — هو عامل ولا نحات ولا مشرف ولا نقاش؟ اختار من الأزرار:`,
+        disambiguationOptions: [
+          { label: '👷 عامل', command: `سلفة ${amt} ${nm} عامل جديد` },
+          { label: '🗿 نحات', command: `سلفة ${amt} ${nm} نحات جديد` },
+          { label: '👨‍💼 مشرف', command: `سلفة ${amt} ${nm} مشرف جديد` },
+          { label: '🎨 نقاش', command: `سلفة ${amt} ${nm} نقاش جديد` },
         ],
       };
     }

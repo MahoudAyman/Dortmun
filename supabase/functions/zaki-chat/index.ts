@@ -47,32 +47,136 @@ const API_ACTION_TYPES = new Set([
   'record_check',
 ]);
 
+// Extract a balanced {...} object starting at `start`, tracking strings
+// and escapes, so prose around the JSON can't break the extraction.
+function extractBalancedObject(s: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Gemini often emits real line breaks inside the reply string value,
+// which makes JSON.parse fail. Escape control characters that appear
+// inside strings (structural whitespace outside strings is untouched).
+function repairJsonStrings(s: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const ch of s) {
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        out += ch;
+        inString = false;
+        continue;
+      }
+      if (ch === '\n') {
+        out += '\\n';
+        continue;
+      }
+      if (ch === '\r') {
+        out += '\\r';
+        continue;
+      }
+      if (ch === '\t') {
+        out += '\\t';
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    out += ch;
+  }
+  return out;
+}
+
+// Safety net: the user must never see a raw JSON block. If Gemini wrapped
+// its answer in prose + JSON and parsing failed, drop the JSON part and
+// show the prose only.
+function stripJsonBlock(text: string): string {
+  const idx = text.indexOf('{"reply"');
+  if (idx < 0) return text;
+  const before = text.slice(0, idx).trim();
+  if (!before) {
+    return 'وصلني طلبك، بس الرد جه بصيغة مش مقروءة — ممكن تعيد الطلب تاني؟';
+  }
+  return before;
+}
+
 function parseStructuredReply(
   text: string,
 ): { reply: string; action: unknown } | null {
   let candidate = text.trim();
   const fenced = candidate.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced) candidate = fenced[1].trim();
-  if (!candidate.startsWith('{')) return null;
-  try {
-    const parsed = JSON.parse(candidate) as {
-      reply?: unknown;
-      action?: unknown;
-    };
-    if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) return null;
-    const action = parsed.action ?? null;
-    if (
-      action !== null &&
-      (typeof action !== 'object' ||
-        typeof (action as { type?: unknown }).type !== 'string' ||
-        !API_ACTION_TYPES.has((action as { type: string }).type))
-    ) {
-      return null;
-    }
-    return { reply: parsed.reply.trim(), action };
-  } catch {
-    return null;
+  // Gemini often wraps the JSON in prose ("إليك الرد: {...}"). Find the
+  // JSON object (it always starts with {"reply") wherever it sits.
+  let jsonText: string | null = null;
+  if (candidate.startsWith('{')) {
+    jsonText = extractBalancedObject(candidate, 0);
+  } else {
+    const idx = candidate.indexOf('{"reply"');
+    if (idx >= 0) jsonText = extractBalancedObject(candidate, idx);
   }
+  if (!jsonText) return null;
+  for (const attempt of [jsonText, repairJsonStrings(jsonText)]) {
+    try {
+      const parsed = JSON.parse(attempt) as {
+        reply?: unknown;
+        action?: unknown;
+      };
+      if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) continue;
+      // A bad action is dropped, not a reason to lose the whole reply.
+      const rawAction = parsed.action ?? null;
+      const actionValid =
+        rawAction === null ||
+        (typeof rawAction === 'object' &&
+          typeof (rawAction as { type?: unknown }).type === 'string' &&
+          API_ACTION_TYPES.has((rawAction as { type: string }).type));
+      return {
+        reply: parsed.reply.trim(),
+        action: actionValid ? rawAction : null,
+      };
+    } catch {
+      // Try the repaired form next.
+    }
+  }
+  return null;
 }
 
 type GeminiResult =
@@ -144,9 +248,10 @@ async function callGemini(
         latencyMs: Date.now() - t0,
       };
     }
+    // No structured action: show the reply, never a raw JSON block.
     return {
       ok: true,
-      text,
+      text: stripJsonBlock(text),
       action: null,
       model: GEMINI_MODEL,
       latencyMs: Date.now() - t0,

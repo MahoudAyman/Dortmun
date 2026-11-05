@@ -970,7 +970,7 @@ export class ZakiPage {
     if (shouldTryOnlineApi && typeof fetch !== 'undefined') {
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 6000);
+        const timer = setTimeout(() => controller.abort(), 15000);
         const apiRes = await this.store.authFetch('/api/zaki/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1087,7 +1087,10 @@ export class ZakiPage {
       case 'record_advance': {
         const fundedBy = action.fundedBy || 'mahmoud_ayman';
         const from = action.paidFrom === 'vodafone' ? 'فودافون كاش' : 'الجيب';
-        return `سلفة ${f(action.amount)} لـ ${action.workerName} — من ${from} ${custodianLabel(fundedBy)}`;
+        const newWorkerNote = action.newWorkerRole
+          ? ` (عامل جديد — ${action.newWorkerRole}، هيتضاف لقائمة العمال)`
+          : '';
+        return `سلفة ${f(action.amount)} لـ ${action.workerName}${newWorkerNote} — من ${from} ${custodianLabel(fundedBy)}`;
       }
       case 'record_expense':
         return `مصروف ${f(action.amount)} (${action.category})${action.note ? ` — ${action.note}` : ''}`;
@@ -1160,8 +1163,34 @@ export class ZakiPage {
       }
     } else if (action.type === 'record_advance') {
       const fundedBy = action.fundedBy || 'mahmoud_ayman';
+      // New worker chosen from the role buttons: create the worker first
+      // (reusing the existing record if one appeared meanwhile), then the
+      // advance points at the real id.
+      let targetWorkerId = action.workerId;
+      if ((!targetWorkerId || targetWorkerId === 0) && action.newWorkerRole) {
+        const existing = this.store
+          .workers()
+          .find((w) => w.name.trim() === action.workerName.trim());
+        if (existing?.id) {
+          targetWorkerId = existing.id;
+        } else {
+          const dayRate = this.store.settings().defaultWorkerDayRate || 400;
+          const nightRate =
+            this.store.settings().defaultWorkerNightRate ||
+            Math.round(dayRate / 2);
+          targetWorkerId = await this.store.saveWorker({
+            name: action.workerName,
+            role: action.newWorkerRole,
+            workerDayRate: dayRate,
+            workerNightRate: nightRate,
+            phone: '',
+            active: true,
+            notes: 'أُضيف عبر المساعد زكي',
+          });
+        }
+      }
       const id = await this.store.addAdvance({
-        workerId: action.workerId,
+        workerId: targetWorkerId,
         amount: action.amount,
         date: action.date,
         reason: action.reason,
