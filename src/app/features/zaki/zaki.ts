@@ -281,7 +281,7 @@ interface ChatMessage {
                 @if (msg.isCheckingApi) {
                   <span class="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#2563EB] dark:text-blue-300 border border-blue-500/30 text-[9px] font-black inline-flex items-center gap-1">
                     <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB] polite-dot"></span>
-                    <span>يتصل بـ AI API ({{ gcpProjectPath() }})...</span>
+                    <span>يتصل بـ AI API...</span>
                   </span>
                 } @else if (msg.engineSource === 'api') {
                   <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[9px] font-black">
@@ -1104,7 +1104,7 @@ export class ZakiPage {
             // الـ API اقترحت عملية منظمة؟ حوّلها لبطاقة تأكيد زي المحلي تماماً.
             // لو مفيش action صالح، بطاقة التأكيد المحلية (لو موجودة) تفضل زي ما هي.
             const apiAction = this.mapApiAction(data.action);
-            let replyText = data.reply!.trim();
+            let replyText = this.sanitizeApiReply(data.reply!.trim());
             // لو الـ API اقترحت سلفة لعامل مش مسجل، وضّح للمستخدم ليه متنفذتش
             // بدل ما يفضل مستني زر تأكيد مش هيظهر.
             if (!apiAction && data.action && typeof data.action === 'object') {
@@ -1221,6 +1221,21 @@ export class ZakiPage {
     parts.restBefore = buckets['restBefore'].join('\n').trim();
     parts.restAfter = buckets['restAfter'].join('\n').trim();
     return parts;
+  }
+
+  // شبكة أمان أخيرة ضد تسرب أي معرّف برمجي داخلي لنص الرد (مثل
+  // "(targetEntity: advance)") — تحذف أي قوسين فيهم حقل إنجليزي
+  // وأي ذكر لحقل داخلي معروف، وتسيب النص العربي زي ما هو.
+  sanitizeApiReply(text: string): string {
+    return text
+      .replace(/\s*\([a-zA-Z][a-zA-Z0-9_]*\s*:[^)]*\)/g, '')
+      .replace(
+        /\b(targetEntity|recordId|checkId|workerId|fromCustodian|toCustodian|custodian|paidFrom|fundedBy|withdrawalFee|newStatus|workerDayRate|workerNightRate)\s*:\s*[^\s,)\]]+/g,
+        ''
+      )
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   fmt(n: number): string {
