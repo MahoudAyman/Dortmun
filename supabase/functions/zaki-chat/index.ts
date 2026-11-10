@@ -67,6 +67,9 @@ const API_ACTION_TYPES = new Set([
   'delete_record',
   'update_worker_rate',
   'update_check_status',
+  // Bulk: several workers in one message, each with their own advance +
+  // night + worked flags. The frontend validates every entry's workerId.
+  'record_bulk',
 ]);
 
 // Extract a balanced {...} object starting at `start`, tracking strings

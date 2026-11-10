@@ -46,114 +46,114 @@ interface ChatMessage {
   imports: [ReactiveFormsModule, RouterLink, MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-5xl mx-auto flex flex-col gap-3.5 sm:gap-4 pb-8 polite-enter">
-      <!-- Slim header: avatar + name + one honest verified status pill -->
-      <div
-        class="ceramic-card polite-card rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 relative overflow-hidden"
-      >
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+    <div class="max-w-3xl mx-auto flex flex-col gap-3 pb-6 polite-enter">
+      <!-- Hero header: gradient banner with live stats + toolbar -->
+      <div class="rounded-3xl overflow-hidden shadow-lg">
+        <div class="bg-gradient-to-l from-[#1D4ED8] via-[#2563EB] to-[#0EA5E9] p-4 sm:p-5 text-white">
           <div class="flex items-center gap-3">
             <div
-              class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#2563EB] text-white flex items-center justify-center shadow-sm shrink-0 border border-blue-400/30 polite-icon-badge"
+              class="w-12 h-12 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0"
             >
-              <mat-icon class="!w-6 !h-6 !text-[24px]">smart_toy</mat-icon>
+              <mat-icon class="!w-7 !h-7 !text-[28px]">smart_toy</mat-icon>
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="text-base sm:text-lg font-black text-[var(--text-heading)]">
-                  المساعد الذكي «زكي»
-                </h2>
+                <h2 class="text-lg font-black">المساعد الذكي «زكي»</h2>
                 @if (apiStatus() === 'connected') {
                   <span
-                    class="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
+                    class="px-2.5 py-0.5 rounded-full bg-white/15 text-white border border-white/25 text-[10px] font-black inline-flex items-center gap-1.5"
                   >
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 polite-dot"></span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 polite-dot"></span>
                     <span>متصل بـ {{ lastProvider() === 'apinex' ? 'Apinex' : 'Gemini' }} ✓@if (lastApiLatencyMs() > 0) { · {{ lastApiLatencyMs() }}ms }</span>
                   </span>
                 } @else if (apiStatus() === 'unavailable') {
                   <span
-                    class="px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-400/40 text-[10px] font-black inline-flex items-center gap-1"
+                    class="px-2.5 py-0.5 rounded-full bg-white/15 text-white border border-white/25 text-[10px] font-black inline-flex items-center gap-1"
                   >
-                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-amber-300"></span>
                     <span>محلي — الـ API غير متوفر</span>
                   </span>
                 } @else {
                   <span
-                    class="px-2.5 py-0.5 rounded-lg bg-slate-500/15 text-slate-600 dark:text-slate-300 border border-slate-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
+                    class="px-2.5 py-0.5 rounded-full bg-white/15 text-white border border-white/25 text-[10px] font-black inline-flex items-center gap-1.5"
                   >
-                    <span class="w-2 h-2 rounded-full bg-slate-400 polite-dot"></span>
+                    <span class="w-2 h-2 rounded-full bg-white/70 polite-dot"></span>
                     <span>بيفحص اتصال الـ AI...</span>
                   </span>
                 }
               </div>
-              <p class="text-[11px] sm:text-xs text-[var(--text-secondary)] mt-0.5">
-                اسأل بالعامية المصرية — أسجّل الفلوس والعدد والسلف، وأحسبلك حسابك. {{ engineStatusLabel() }}
+              <p class="text-[11px] sm:text-xs text-blue-100 mt-0.5">
+                اسأل بالعامية — أسجّل الفلوس والعدد والسلف، وأحسبلك حسابك. {{ engineStatusLabel() }}
               </p>
             </div>
           </div>
 
-          <!-- One visible toolbar: every control in plain sight, no hidden menu -->
-          <div class="flex flex-wrap items-center gap-1.5 relative">
-            <!-- Live API Connection Test Button -->
+          <!-- Live stats strip: today's headcount, open advances, cash on hand -->
+          <div class="grid grid-cols-3 gap-2 mt-3.5">
+            <div class="rounded-2xl bg-white/10 border border-white/15 px-3 py-2">
+              <div class="text-[10px] font-bold text-blue-100">عدد اليوم</div>
+              <div class="text-[13px] font-black leading-tight mt-0.5">
+                {{ todayStats().hc.actualDays }} يومية · {{ todayStats().hc.actualNights }} سهرة
+              </div>
+            </div>
+            <div class="rounded-2xl bg-white/10 border border-white/15 px-3 py-2">
+              <div class="text-[10px] font-bold text-blue-100">سلف مفتوحة</div>
+              <div class="text-[13px] font-black leading-tight mt-0.5">
+                {{ todayStats().openAdvs }} سلفة · {{ fmt(todayStats().openAdvTotal) }}
+              </div>
+            </div>
+            <div class="rounded-2xl bg-white/10 border border-white/15 px-3 py-2">
+              <div class="text-[10px] font-bold text-blue-100">الخزنة</div>
+              <div class="text-[13px] font-black leading-tight mt-0.5">
+                {{ fmt(todayStats().vodTotal) }} فودافون · {{ fmt(todayStats().pocketTotal) }} جيب
+              </div>
+            </div>
+          </div>
+
+          <!-- Toolbar: every control in plain sight, no hidden menu -->
+          <div class="flex flex-wrap items-center gap-1.5 mt-3.5">
             <button
               type="button"
               (click)="testApiConnectionNow()"
               [disabled]="isTestingApi()"
-              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+              class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border bg-white/10 text-white border-white/25 hover:bg-white/20"
               title="اختبار اتصال الذكاء الاصطناعي مباشر الآن"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">{{ isTestingApi() ? 'sync' : 'verified' }}</mat-icon>
               <span>{{ isTestingApi() ? 'جاري الفحص...' : 'فحص اتصال الـ AI' }}</span>
             </button>
-
-            <!-- Toggle Online API vs Local Direct Mode -->
             <button
               type="button"
               (click)="togglePreferApiMode()"
-              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border"
-              [class]="
-                preferApiMode()
-                  ? 'bg-blue-500/10 text-[#2563EB] dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20'
-                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
-              "
+              class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs cursor-pointer border bg-white/10 text-white border-white/25 hover:bg-white/20"
               title="التبديل بين وضع API الهجين ووضع المحرك المحلي المباشر"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">{{ preferApiMode() ? 'cloud_done' : 'offline_bolt' }}</mat-icon>
               <span>{{ preferApiMode() ? 'وضع API' : 'محلي فقط' }}</span>
             </button>
-
-            <!-- Copy whole chat -->
             <button
               type="button"
               (click)="copyChatHistory()"
-              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border-[var(--border-subtle)] hover:bg-[var(--color-primary-soft)]"
+              class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-white/10 text-white border-white/25 hover:bg-white/20"
               title="نسخ سجل المحادثة كاملاً"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">content_copy</mat-icon>
               <span>نسخ الشات</span>
             </button>
-
-            <!-- Clear chat -->
             <button
               type="button"
               (click)="clearChat()"
-              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/20"
+              class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs cursor-pointer border bg-white/10 text-white border-white/25 hover:bg-white/20"
               title="مسح المحادثة وبدء صفحة جديدة"
             >
               <mat-icon class="!w-4 !h-4 !text-[16px]">refresh</mat-icon>
               <span>شات جديد</span>
             </button>
-
-            <!-- Capabilities guide -->
             <button
               type="button"
               (click)="showCapabilitiesPage.set(!showCapabilitiesPage())"
-              class="polite-btn inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs cursor-pointer shadow-xs"
-              [class]="
-                showCapabilitiesPage()
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-[#2563EB] hover:bg-blue-700 text-white'
-              "
+              class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs cursor-pointer shadow-xs"
+              [class]="showCapabilitiesPage() ? 'bg-emerald-600 text-white' : 'bg-white text-[#1D4ED8] hover:bg-blue-50'"
             >
               <mat-icon class="!w-4 !h-4 !text-[18px]">menu_book</mat-icon>
               <span>{{ showCapabilitiesPage() ? 'العودة للشات' : 'ماذا يقدر يعمل؟' }}</span>
@@ -162,8 +162,7 @@ interface ChatMessage {
         </div>
       </div>
 
-
-      <!-- INTERACTIVE CAPABILITIES PAGE ("صفحة بزر عندما تظهر تعرفني ما يمكن للبوت فعله") -->
+<!-- INTERACTIVE CAPABILITIES PAGE ("صفحة بزر عندما تظهر تعرفني ما يمكن للبوت فعله") -->
       @if (showCapabilitiesPage()) {
         <div
           class="ceramic-card rounded-3xl border-2 border-amber-500/40 shadow-md p-4 sm:p-6 space-y-5 animate-fade-in"
@@ -246,7 +245,7 @@ interface ChatMessage {
         </div>
       }
 
-      <!-- Quick commands: one scrollable row, no big card -->
+            <!-- Quick commands: one scrollable row of pills -->
       <div class="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
         @for (cmd of quickChips; track cmd) {
           <button
@@ -262,221 +261,251 @@ interface ChatMessage {
       <!-- Chat Messages Stream -->
       <div
         #chatScroll
-        class="min-h-[360px] max-h-[62vh] ceramic-card rounded-3xl p-3.5 sm:p-5 overflow-y-auto space-y-4 flex flex-col"
+        class="min-h-[380px] max-h-[66vh] overflow-y-auto space-y-3 flex flex-col"
       >
         @for (msg of messages(); track msg.id) {
-          <div
-            class="flex flex-col max-w-[92%] sm:max-w-[82%]"
-            [class]="
-              msg.sender === 'user'
-                ? 'self-start items-start'
-                : 'self-end items-end'
-            "
-          >
-            <div class="flex flex-wrap items-center gap-1.5 mb-1 px-1">
-              <span class="text-[10px] font-extrabold text-[var(--text-secondary)]">
-                {{ msg.sender === 'user' ? 'أنت (يا هندسة)' : 'المساعد زكي 🤖' }} · {{ msg.timestamp }}
-              </span>
-              @if (msg.sender === 'zaki') {
-                @if (msg.isCheckingApi) {
-                  <span class="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#2563EB] dark:text-blue-300 border border-blue-500/30 text-[9px] font-black inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB] polite-dot"></span>
-                    <span>يتصل بـ AI API...</span>
-                  </span>
-                } @else if (msg.engineSource === 'api') {
-                  <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[9px] font-black">
-                    🌐 عبر {{ msg.provider === 'apinex' ? 'Apinex · GPT-6 Luna' : 'Gemini · 2.5 Flash' }}{{ msg.provider === 'gemini' ? ' (' + gcpProjectPath() + ')' : '' }}{{ msg.latencyMs ? ' · ' + msg.latencyMs + 'ms' : '' }}
-                  </span>
-                } @else if (msg.engineSource === 'local_fallback') {
-                  <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black" title="تم التحويل تلقائياً للمحرك المحلي لضمان استمرار العمل بدون توقف">
-                    ⚡ محرك زكي المحلي الفوري (تلقائي)
-                  </span>
-                } @else if (msg.engineSource === 'local_offline') {
-                  <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black">
-                    ⚡ يعمل محلياً (بدون نت)
-                  </span>
-                }
-              }
-            </div>
-
-            <div
-              class="rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-bold leading-relaxed shadow-xs whitespace-pre-line polite-enter"
-              [class]="
-                msg.sender === 'user'
-                  ? 'bg-[#2563EB] text-white rounded-tr-xs'
-                  : 'bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border border-[var(--border-subtle)] rounded-tl-xs'
-              "
-            >
-              <!-- الرد المنظم: أقسام «المطلوب / اللي هيتم / اللي تم» في بلوكات
-                   ملوّنة، وأي نص بلا عناوين يظهر عادي زي ما كان. -->
-              @if (sectionsOf(msg.text); as secs) {
-                @if (secs.restBefore) {
-                  <div>{{ secs.restBefore }}</div>
-                }
-                @if (secs.requested) {
-                  <div class="mt-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 px-3 py-2">
-                    <div class="text-[11px] font-black text-[#2563EB] dark:text-blue-300 mb-0.5">🎯 المطلوب</div>
-                    <div class="whitespace-pre-line">{{ secs.requested }}</div>
-                  </div>
-                }
-                @if (secs.willHappen) {
-                  <div class="mt-1.5 rounded-xl bg-amber-500/10 border border-amber-500/40 px-3 py-2">
-                    <div class="text-[11px] font-black text-amber-700 dark:text-amber-300 mb-0.5">📋 اللي هيتم</div>
-                    <div class="whitespace-pre-line">{{ secs.willHappen }}</div>
-                  </div>
-                }
-                @if (secs.done) {
-                  <div class="mt-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2">
-                    <div class="text-[11px] font-black text-emerald-700 dark:text-emerald-300 mb-0.5">✅ اللي تم</div>
-                    <div class="whitespace-pre-line">{{ secs.done }}</div>
-                  </div>
-                }
-                @if (secs.restAfter) {
-                  <div class="mt-1.5">{{ secs.restAfter }}</div>
-                }
-              } @else {
+          @if (msg.sender === 'user') {
+            <div class="self-start max-w-[85%]">
+              <div
+                class="rounded-2xl rounded-tr-sm bg-gradient-to-l from-[#2563EB] to-[#1D4ED8] text-white px-4 py-2.5 text-sm font-bold leading-relaxed shadow-sm whitespace-pre-line"
+              >
                 {{ msg.text }}
-              }
-
-
-              <!-- Direct Navigation Button ("زر التحويل المباشر") -->
-              @if (msg.responseMeta?.actionRoute && msg.responseMeta?.actionLabel) {
-                <div class="mt-2.5 pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2">
-                  <a
-                    [routerLink]="msg.responseMeta!.actionRoute!"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold hover:opacity-90 transition-opacity shadow-xs"
-                  >
-                    <mat-icon class="!w-4 !h-4 !text-[16px]">open_in_new</mat-icon>
-                    <span>{{ msg.responseMeta!.actionLabel }}</span>
-                  </a>
+              </div>
+              <div class="text-[10px] font-bold text-[var(--text-secondary)] mt-1 px-1">
+                أنت · {{ msg.timestamp }}
+              </div>
+            </div>
+          } @else {
+            <div class="self-end w-full max-w-[96%]">
+              <div
+                class="rounded-2xl rounded-tl-sm bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-sm overflow-hidden"
+              >
+                <!-- AI card header: avatar + name + provider chip + time -->
+                <div class="flex flex-wrap items-center gap-2 px-3.5 pt-3 pb-1">
+                  <div class="w-7 h-7 rounded-lg bg-[#2563EB] text-white flex items-center justify-center shrink-0">
+                    <mat-icon class="!w-4 !h-4 !text-[16px]">smart_toy</mat-icon>
+                  </div>
+                  <span class="text-xs font-black text-[var(--text-heading)]">زكي</span>
+                  @if (msg.isCheckingApi) {
+                    <span class="px-2 py-0.5 rounded-md bg-blue-500/15 text-[#2563EB] dark:text-blue-300 border border-blue-500/30 text-[9px] font-black inline-flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-[#2563EB] polite-dot"></span>
+                      <span>يتصل بـ AI API...</span>
+                    </span>
+                  } @else if (msg.engineSource === 'api') {
+                    <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[9px] font-black">
+                      🌐 عبر {{ msg.provider === 'apinex' ? 'Apinex · GPT-6 Luna' : 'Gemini · 2.5 Flash' }}{{ msg.provider === 'gemini' ? ' (' + gcpProjectPath() + ')' : '' }}{{ msg.latencyMs ? ' · ' + msg.latencyMs + 'ms' : '' }}
+                    </span>
+                  } @else if (msg.engineSource === 'local_fallback') {
+                    <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black" title="تم التحويل تلقائياً للمحرك المحلي لضمان استمرار العمل بدون توقف">
+                      ⚡ محرك زكي المحلي الفوري (تلقائي)
+                    </span>
+                  } @else if (msg.engineSource === 'local_offline') {
+                    <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black">
+                      ⚡ يعمل محلياً (بدون نت)
+                    </span>
+                  }
+                  <span class="ms-auto text-[10px] font-bold text-[var(--text-secondary)]">{{ msg.timestamp }}</span>
                 </div>
-              }
 
-              <!-- Confirmation Card for Write Actions: what will change + before/after -->
-              @if (
-                msg.responseMeta?.requiresConfirmation &&
-                msg.responseMeta?.pendingAction &&
-                !msg.actionResolved
-              ) {
-                <div class="mt-3 pt-3 border-t border-[var(--border-subtle)]">
-                  <div class="rounded-xl bg-amber-500/10 border border-amber-500/40 p-3 flex flex-col gap-2">
-                    <div class="text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                      <mat-icon class="!w-4 !h-4 !text-[16px]">help_outline</mat-icon>
-                      <span>هل توافق على التنفيذ؟</span>
+                <div class="px-3.5 pb-3 pt-1 text-sm font-bold leading-relaxed text-[var(--text-heading)]">
+                  <!-- الرد المنظم: أقسام «المطلوب / اللي هيتم / اللي تم» في سطور
+                       نظيفة مفصولة بخطوط خفيفة (بدل 3 بلوكات ملونة)، وأي نص بلا
+                       عناوين يظهر عادي زي ما كان. -->
+                  @if (sectionsOf(msg.text); as secs) {
+                    <div class="divide-y divide-[var(--border-subtle)]">
+                      @if (secs.restBefore) {
+                        <div class="py-1 whitespace-pre-line">{{ secs.restBefore }}</div>
+                      }
+                      @if (secs.requested) {
+                        <div class="py-1.5">
+                          <span class="text-[#2563EB] dark:text-blue-300 font-black">🎯 المطلوب: </span>
+                          <span class="whitespace-pre-line">{{ secs.requested }}</span>
+                        </div>
+                      }
+                      @if (secs.willHappen) {
+                        <div class="py-1.5">
+                          <span class="text-amber-600 dark:text-amber-400 font-black">📋 اللي هيتم: </span>
+                          <span class="whitespace-pre-line">{{ secs.willHappen }}</span>
+                        </div>
+                      }
+                      @if (secs.done) {
+                        <div class="py-1.5">
+                          <span class="text-emerald-600 dark:text-emerald-400 font-black">✅ اللي تم: </span>
+                          <span class="whitespace-pre-line">{{ secs.done }}</span>
+                        </div>
+                      }
+                      @if (secs.restAfter) {
+                        <div class="py-1 whitespace-pre-line">{{ secs.restAfter }}</div>
+                      }
                     </div>
-                    <div class="text-xs font-bold text-[var(--text-heading)]">
-                      {{ actionSummaryLine(msg.responseMeta!.pendingAction!) }}
+                  } @else {
+                    <div class="whitespace-pre-line">{{ msg.text }}</div>
+                  }
+
+                  <!-- Direct Navigation Button ("زر التحويل المباشر") -->
+                  @if (msg.responseMeta?.actionRoute && msg.responseMeta?.actionLabel) {
+                    <div class="mt-2.5 pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center gap-2">
+                      <a
+                        [routerLink]="msg.responseMeta!.actionRoute!"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-extrabold hover:opacity-90 transition-opacity shadow-xs"
+                      >
+                        <mat-icon class="!w-4 !h-4 !text-[16px]">open_in_new</mat-icon>
+                        <span>{{ msg.responseMeta!.actionLabel }}</span>
+                      </a>
                     </div>
-                    @if (actionBalancePreview(msg.responseMeta!.pendingAction!); as preview) {
-                      <div class="flex flex-col gap-1">
-                        @for (row of preview; track row.label) {
-                          <div class="text-[11px] font-bold text-[var(--text-secondary)]">
-                            {{ row.label }}: قبل {{ fmt(row.before) }} · بعد {{ fmt(row.after) }}
+                  }
+
+                  <!-- Confirmation Card: what will change + before/after -->
+                  @if (
+                    msg.responseMeta?.requiresConfirmation &&
+                    msg.responseMeta?.pendingAction &&
+                    !msg.actionResolved
+                  ) {
+                    <div class="mt-3 pt-3 border-t border-[var(--border-subtle)]">
+                      <div class="rounded-2xl border-2 border-amber-500/50 bg-amber-500/5 overflow-hidden">
+                        <div class="px-3.5 py-2.5 bg-amber-500/15 text-sm font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                          <mat-icon class="!w-4 !h-4 !text-[16px]">help_outline</mat-icon>
+                          <span>هل توافق على التنفيذ؟</span>
+                        </div>
+                        <div class="p-3.5 space-y-2.5">
+                          @if (msg.responseMeta!.pendingAction!; as action) {
+                            @if (action.type === 'record_bulk') {
+                              <table class="w-full text-xs font-bold border-collapse">
+                                <thead>
+                                  <tr class="text-[var(--text-secondary)] border-b border-[var(--border-subtle)]">
+                                    <th class="text-start py-1.5 pe-2">العامل</th>
+                                    <th class="text-start py-1.5 pe-2">الحالة</th>
+                                    <th class="text-start py-1.5">السلفة</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  @for (e of action.entries; track e.workerId) {
+                                    <tr class="border-b border-[var(--border-subtle)] last:border-0">
+                                      <td class="py-1.5 pe-2">{{ e.workerName }}</td>
+                                      <td class="py-1.5 pe-2">{{ bulkStatusLabel(e) }}</td>
+                                      <td class="py-1.5">{{ e.advanceAmount > 0 ? fmt(e.advanceAmount) : '—' }}</td>
+                                    </tr>
+                                  }
+                                </tbody>
+                              </table>
+                            }
+                            <div class="text-xs font-bold text-[var(--text-heading)]">
+                              {{ actionSummaryLine(action) }}
+                            </div>
+                            @if (actionBalancePreview(action); as preview) {
+                              <div class="flex flex-col gap-1">
+                                @for (row of preview; track row.label) {
+                                  <div class="text-[11px] font-bold text-[var(--text-secondary)]">
+                                    {{ row.label }}: قبل {{ fmt(row.before) }} · بعد {{ fmt(row.after) }}
+                                  </div>
+                                }
+                              </div>
+                            }
+                          }
+                          <div class="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              (click)="confirmAction(msg)"
+                              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1 shadow-xs cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px]">check_circle</mat-icon>
+                              <span>تأكيد وتنفيذ فوراً</span>
+                            </button>
+                            <button
+                              type="button"
+                              (click)="cancelAction(msg)"
+                              class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <mat-icon class="!w-4 !h-4 !text-[16px]">cancel</mat-icon>
+                              <span>إلغاء</span>
+                            </button>
                           </div>
-                        }
+                        </div>
+                      </div>
+                    </div>
+                  }
+
+                  @if (msg.actionResolved === 'confirmed') {
+                    <div
+                      class="mt-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1"
+                    >
+                      <mat-icon class="!w-4 !h-4 !text-[16px]">verified</mat-icon>
+                      <span>تم التنفيذ والحفظ والمزامنة بنجاح ✓</span>
+                    </div>
+                    @if (msg.executedSummary) {
+                      <div class="mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs font-bold text-[var(--text-heading)]">
+                        <span class="font-black text-emerald-700 dark:text-emerald-300">✅ اللي تم: </span>{{ msg.executedSummary }}
                       </div>
                     }
-                    <div class="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        (click)="confirmAction(msg)"
-                        class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1 shadow-xs cursor-pointer"
+                    @if (msg.executedRef && !msg.actionUndone) {
+                      <div class="mt-2">
+                        <button
+                          type="button"
+                          (click)="undoExecuted(msg)"
+                          class="px-3 py-1.5 rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-400/40 text-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-slate-500/20"
+                        >
+                          <mat-icon class="!w-4 !h-4 !text-[16px]">undo</mat-icon>
+                          <span>تراجع عن العملية</span>
+                        </button>
+                      </div>
+                    }
+                    @if (msg.actionUndone) {
+                      <div
+                        class="mt-2 text-xs font-bold text-slate-500 flex items-center gap-1"
                       >
-                        <mat-icon class="!w-4 !h-4 !text-[16px]">check_circle</mat-icon>
-                        <span>تأكيد وتنفيذ فوراً</span>
-                      </button>
-                      <button
-                        type="button"
-                        (click)="cancelAction(msg)"
-                        class="px-3 py-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-300 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <mat-icon class="!w-4 !h-4 !text-[16px]">cancel</mat-icon>
-                        <span>إلغاء</span>
-                      </button>
+                        <mat-icon class="!w-4 !h-4 !text-[16px]">history</mat-icon>
+                        <span>تم التراجع عن العملية ورجعت الأرصدة زي ما كانت</span>
+                      </div>
+                    }
+                  }
+                  @if (msg.actionResolved === 'cancelled') {
+                    <div
+                      class="mt-2 text-xs font-bold text-rose-500 flex items-center gap-1"
+                    >
+                      <mat-icon class="!w-4 !h-4 !text-[16px]">block</mat-icon>
+                      <span>تم إلغاء العملية</span>
                     </div>
-                  </div>
-                </div>
-              }
+                  }
 
-              @if (msg.actionResolved === 'confirmed') {
-                <div
-                  class="mt-2 text-xs font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px]">verified</mat-icon>
-                  <span>تم التنفيذ والحفظ والمزامنة بنجاح ✓</span>
-                </div>
-                @if (msg.executedSummary) {
-                  <div class="mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs font-bold text-[var(--text-heading)]">
-                    <span class="font-black text-emerald-700 dark:text-emerald-300">✅ اللي تم: </span>{{ msg.executedSummary }}
-                  </div>
-                }
-                @if (msg.executedRef && !msg.actionUndone) {
-                  <div class="mt-2">
-                    <button
-                      type="button"
-                      (click)="undoExecuted(msg)"
-                      class="px-3 py-1.5 rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-400/40 text-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-slate-500/20"
-                    >
-                      <mat-icon class="!w-4 !h-4 !text-[16px]">undo</mat-icon>
-                      <span>تراجع عن العملية</span>
-                    </button>
-                  </div>
-                }
-                @if (msg.actionUndone) {
-                  <div
-                    class="mt-2 text-xs font-bold text-slate-500 flex items-center gap-1"
-                  >
-                    <mat-icon class="!w-4 !h-4 !text-[16px]">history</mat-icon>
-                    <span>تم التراجع عن العملية ورجعت الأرصدة زي ما كانت</span>
-                  </div>
-                }
-              }
-              @if (msg.actionResolved === 'cancelled') {
-                <div
-                  class="mt-2 text-xs font-bold text-rose-500 flex items-center gap-1"
-                >
-                  <mat-icon class="!w-4 !h-4 !text-[16px]">block</mat-icon>
-                  <span>تم إلغاء العملية</span>
-                </div>
-              }
+                  <!-- Disambiguation Options (role picker: عامل / نحات / مشرف / نقاش) -->
+                  @if (msg.responseMeta?.disambiguationOptions?.length) {
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                      @for (opt of msg.responseMeta!.disambiguationOptions!; track opt.command) {
+                        <button
+                          type="button"
+                          (click)="runCommand(opt.command)"
+                          class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-amber-400 text-[var(--text-heading)] text-xs font-extrabold hover:bg-amber-500 hover:text-slate-950 transition-colors cursor-pointer"
+                        >
+                          {{ opt.label }}
+                        </button>
+                      }
+                    </div>
+                  }
 
-              <!-- Disambiguation Options -->
-              @if (msg.responseMeta?.disambiguationOptions?.length) {
-                <div class="mt-3 flex flex-wrap gap-1.5">
-                  @for (opt of msg.responseMeta!.disambiguationOptions!; track opt.command) {
-                    <button
-                      type="button"
-                      (click)="runCommand(opt.command)"
-                      class="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-amber-400 text-[var(--text-heading)] text-xs font-extrabold hover:bg-amber-500 hover:text-slate-950 transition-colors cursor-pointer"
-                    >
-                      {{ opt.label }}
-                    </button>
+                  <!-- Follow-up suggestions: at most 2, kept subtle -->
+                  @if (msg.responseMeta?.quickCommands?.length) {
+                    <div class="mt-3 flex flex-wrap gap-1.5">
+                      @for (q of msg.responseMeta!.quickCommands!; track q) {
+                        <button
+                          type="button"
+                          (click)="runCommand(q)"
+                          class="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold hover:border-amber-500 cursor-pointer"
+                        >
+                          {{ q }}
+                        </button>
+                      }
+                    </div>
                   }
                 </div>
-              }
-
-              <!-- Fallback Quick Suggestions -->
-              @if (msg.responseMeta?.quickCommands?.length) {
-                <div class="mt-3 flex flex-wrap gap-1.5">
-                  @for (q of msg.responseMeta!.quickCommands!; track q) {
-                    <button
-                      type="button"
-                      (click)="runCommand(q)"
-                      class="px-2.5 py-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs font-bold hover:border-amber-500 cursor-pointer"
-                    >
-                      {{ q }}
-                    </button>
-                  }
-                </div>
-              }
+              </div>
             </div>
-          </div>
+          }
         }
       </div>
 
       <!-- Input & Voice Bar (sticky: stays visible at the bottom while the chat scrolls) -->
       <div
-        class="ceramic-card rounded-2xl p-2.5 sm:p-3 flex items-center gap-2 sticky bottom-0 z-20 bg-[var(--bg-card)] shadow-lg"
+        class="rounded-2xl p-2.5 sm:p-3 flex items-center gap-2 sticky bottom-0 z-20 bg-[var(--bg-card)] border border-[var(--border-subtle)] shadow-lg"
       >
         <button
           type="button"
@@ -496,14 +525,14 @@ interface ChatMessage {
           type="text"
           [formControl]="inputCtrl"
           (keydown.enter)="sendCurrentInput()"
-          placeholder="اكتب لزكي بالعامية... مثلاً: وصلني 50000 من شركة إعمار"
+          placeholder="اكتب لزكي بالعامية... مثلاً: محمد 150 سهرة، مصطفى 200 يومية"
           class="flex-1 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-[var(--text-heading)] focus:outline-none focus:border-amber-500"
         />
 
         <button
           type="button"
           (click)="sendCurrentInput()"
-          class="px-4 sm:px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
+          class="px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-l from-[#2563EB] to-[#1D4ED8] hover:opacity-90 text-white font-extrabold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-opacity cursor-pointer shrink-0"
         >
           <mat-icon class="!w-4 !h-4 !text-[18px]">send</mat-icon>
           <span>إرسال</span>
@@ -590,6 +619,25 @@ export class ZakiPage {
   }
 
   readonly capabilitiesGuide = ZAKI_CAPABILITIES_GUIDE;
+  // Live header stats: today's headcount, open advances, and the cash
+  // on hand — so the page always shows the live state at a glance.
+  readonly todayStats = computed(() => {
+    const hc = this.store.todayHeadcountMatch();
+    const openAdvs = this.store.advances().filter((a) => a.settlementId === null);
+    const openAdvTotal = openAdvs.reduce((s, a) => s + a.amount, 0);
+    const bals = this.store.custodianBalances().balances;
+    const vodTotal = bals.reduce((s, b) => s + b.vodafoneBalance, 0);
+    const pocketTotal = bals.reduce((s, b) => s + b.pocketBalance, 0);
+    return { hc, openAdvs: openAdvs.length, openAdvTotal, vodTotal, pocketTotal };
+  });
+
+  // One-line status for a bulk entry in the confirmation table.
+  bulkStatusLabel(e: { dayWorked: 0 | 1; nightWorked: 0 | 1 }): string {
+    if (e.dayWorked === 0 && e.nightWorked === 0) return 'غايب';
+    if (e.nightWorked === 1) return 'يومية + سهرة';
+    return 'يومية';
+  }
+
   readonly showCapabilitiesPage = signal<boolean>(false);
   readonly preferApiMode = signal<boolean>(true);
   readonly lastUsedEngine = signal<'api' | 'local_offline' | 'local_fallback'>('api');
@@ -859,7 +907,7 @@ export class ZakiPage {
     const workersList = this.store
       .activeWorkers()
       .slice(0, 12)
-      .map((w) => `${w.name} (${w.role} - يومية ${w.workerDayRate})`)
+      .map((w) => `${w.name} (#${w.id}، ${w.role} — يومية ${w.workerDayRate})`)
       .join('، ');
     const projectsList = this.store
       .projects()
@@ -992,6 +1040,36 @@ export class ZakiPage {
       if (!chk) return null;
       return { type: 'update_check_status', checkId, checkNumber: chk.number || `#${checkId}`, newStatus, amount: chk.amount };
     }
+    // Bulk: the API proposes the same per-worker list the local engine
+    // builds. Every entry must point at a real worker; unknown workers
+    // or bad flags drop the whole action (the reply text still shows).
+    if (type === 'record_bulk') {
+      const rawEntries = a['entries'];
+      if (!Array.isArray(rawEntries) || rawEntries.length < 2 || rawEntries.length > 20) return null;
+      const entries: NonNullable<Extract<ZakiPendingWriteAction, { type: 'record_bulk' }>['entries']> = [];
+      for (const raw of rawEntries) {
+        if (!raw || typeof raw !== 'object') return null;
+        const e = raw as Record<string, unknown>;
+        const workerId = typeof e['workerId'] === 'number' ? (e['workerId'] as number) : 0;
+        const dayWorked = e['dayWorked'] === 1 ? 1 : e['dayWorked'] === 0 ? 0 : -1;
+        const nightWorked = e['nightWorked'] === 1 ? 1 : e['nightWorked'] === 0 ? 0 : -1;
+        const advanceAmount = typeof e['advanceAmount'] === 'number' && (e['advanceAmount'] as number) >= 0 ? (e['advanceAmount'] as number) : -1;
+        if (!workerId || workerId <= 0 || dayWorked < 0 || nightWorked < 0 || advanceAmount < 0) return null;
+        const worker = this.store.workers().find((w) => w.id === workerId);
+        if (!worker) return null;
+        entries.push({
+          workerId,
+          workerName: worker.name,
+          dayWorked: dayWorked as 0 | 1,
+          nightWorked: nightWorked as 0 | 1,
+          advanceAmount,
+          fundedBy: 'mahmoud_ayman',
+          paidFrom: 'pocket',
+        });
+      }
+      if (entries.length < 2) return null;
+      return { type: 'record_bulk', date: today, entries };
+    }
     return null;
   }
 
@@ -1024,6 +1102,13 @@ export class ZakiPage {
       settings: this.store.settings(),
       pendingAdvanceWorkerId: this.awaitingAdvanceWorkerId(),
     });
+
+    // Keep replies simple: at most 2 follow-up buttons under a reply.
+    // The confirmation card (confirm/cancel) and the role picker are
+    // the only primary buttons; everything else stays in the chips row.
+    if (response.quickCommands && response.quickCommands.length > 2) {
+      response.quickCommands = response.quickCommands.slice(0, 2);
+    }
 
     this.awaitingAdvanceWorkerId.set(
       response.awaitingAdvanceAmountForWorkerId ?? null
@@ -1270,6 +1355,10 @@ export class ZakiPage {
         return `تعديل يومية ${action.workerName} إلى ${f(action.workerDayRate)} (وسهرة ${f(action.workerNightRate)})`;
       case 'delete_record':
         return `حذف: ${action.description}`;
+      case 'record_bulk': {
+        const totalAdv = action.entries.reduce((s, e) => s + e.advanceAmount, 0);
+        return `تسجيل جماعي لـ ${action.entries.length} عمال — سلف إجمالي ${f(totalAdv)}`;
+      }
       case 'settle_worker':
         return `تسوية وصرف ${f(action.netPaid)} لـ ${action.workerName}`;
       case 'create_extract':
@@ -1307,6 +1396,13 @@ export class ZakiPage {
         return [{ label: `${b.name} — فودافون كاش`, before: b.vodafoneBalance, after: b.vodafoneBalance - action.amount }];
       }
       return [{ label: `${b.name} — الجيب`, before: b.pocketBalance, after: b.pocketBalance - action.amount }];
+    }
+    if (action.type === 'record_bulk') {
+      const totalAdv = action.entries.reduce((s, e) => s + e.advanceAmount, 0);
+      if (totalAdv <= 0) return null;
+      const b = balances.find((x) => x.custodian === 'mahmoud_ayman');
+      if (!b) return null;
+      return [{ label: `${b.name} — الجيب (إجمالي السلف)`, before: b.pocketBalance, after: b.pocketBalance - totalAdv }];
     }
     return null;
   }
@@ -1620,6 +1716,36 @@ export class ZakiPage {
         notes: action.notes,
       });
       executedRef = { kind: 'transfer', id };
+    } else if (action.type === 'record_bulk') {
+      // Bulk: one tap records attendance + advances for every worker in
+      // the list. Absent workers (day 0, night 0) get no attendance row.
+      for (const e of action.entries) {
+        if (e.dayWorked === 1 || e.nightWorked === 1) {
+          await this.store.recordAttendance({
+            date: action.date,
+            workerId: e.workerId,
+            projectId:
+              this.store.selectedProjectId() ?? this.store.projects()[0]?.id ?? 0,
+            dayWorked: e.dayWorked,
+            nightWorked: e.nightWorked,
+            note: 'مسجل عبر المساعد زكي (جماعي)',
+            mode: 'merge',
+          });
+        }
+        if (e.advanceAmount > 0) {
+          await this.store.addAdvance({
+            workerId: e.workerId,
+            amount: e.advanceAmount,
+            date: action.date,
+            reason: 'سلفة عبر زكي (جماعي)',
+            settlementId: null,
+            fundedBy: e.fundedBy || 'mahmoud_ayman',
+            paidFrom: e.paidFrom || 'pocket',
+            withdrawnBy: custodianLabel(e.fundedBy || 'mahmoud_ayman'),
+            notes: 'مسجل عبر المساعد زكي (جماعي)',
+          });
+        }
+      }
     }
 
     // ملخص «اللي تم» بعد التنفيذ: جملة واحدة بالأرقام الجديدة (رصيد بعد
@@ -1658,6 +1784,12 @@ export class ZakiPage {
       executedSummary = `عدّلت يومية ${action.workerName} إلى ${this.fmt(action.workerDayRate)} (وسهرة ${this.fmt(action.workerNightRate)}).`;
     } else if (action.type === 'update_check_status') {
       executedSummary = `غيّرت حالة الشيك ${action.checkNumber} إلى «${action.newStatus}».`;
+    } else if (action.type === 'record_bulk') {
+      const totalAdv = action.entries.reduce((s, e) => s + e.advanceAmount, 0);
+      const b = balOf('mahmoud_ayman');
+      const days = action.entries.filter((e) => e.dayWorked === 1).length;
+      const nights = action.entries.filter((e) => e.nightWorked === 1).length;
+      executedSummary = `سجّلت ${action.entries.length} عمال دفعة واحدة — ${days} يومية، ${nights} سهرة، سلف إجمالي ${this.fmt(totalAdv)}${b ? ` — الجيب بقى ${this.fmt(b.pocketBalance)}.` : '.'}`;
     }
 
     this.messages.update((list) =>

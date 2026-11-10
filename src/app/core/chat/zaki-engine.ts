@@ -859,6 +859,22 @@ export type ZakiPendingWriteAction =
       withdrawalFee: number;
       date: string;
       notes: string;
+    }
+  | {
+      // Bulk: several workers in ONE message ("محمد 150 سهرة، مصطفى
+      // 200 يومية، أحمد مشتغلش") — one confirmation card, one tap,
+      // and the frontend records attendance + advances for all of them.
+      type: 'record_bulk';
+      date: string;
+      entries: Array<{
+        workerId: number;
+        workerName: string;
+        dayWorked: 0 | 1;
+        nightWorked: 0 | 1;
+        advanceAmount: number;
+        fundedBy?: CustodianId;
+        paidFrom?: 'pocket' | 'vodafone';
+      }>;
     };
 
 export interface ZakiResponse {
@@ -976,6 +992,10 @@ export const ZAKI_CAPABILITIES_GUIDE: ZakiCapabilitySection[] = [
       {
         phrase: 'سلفة 500 لكريم النهارده',
         explanation: 'يسجل سلفة نقدية على العامل ويخصمها تلقائياً في كشف القبض',
+      },
+      {
+        phrase: 'محمد 150 سهرة، مصطفى 200 يومية، أحمد مشتغلش',
+        explanation: 'يسجل كذا عامل دفعة واحدة — كل واحد بسلفته وسهرته وحالته — بضغطة تأكيد واحدة',
       },
       {
         phrase: 'اخصم نص يوم من كريم بسبب تأخير',
@@ -1304,6 +1324,157 @@ export function matchWorkersFromText(
   }
 
   return { matched: [], ambiguous: [], suggestion: null };
+}
+
+export interface BulkWorkerEntry {
+  workerId: number;
+  workerName: string;
+  dayWorked: 0 | 1;
+  nightWorked: 0 | 1;
+  advanceAmount: number;
+}
+
+export interface BulkParseResult {
+  entries: BulkWorkerEntry[];
+  unknownNames: string[];
+}
+
+// Bulk input: one message listing several workers, each with their own
+// advance + night + worked status ("محمد 150 سهرة، مصطفى 200 يومية،
+// أحمد مشتغلش"). Finds every KNOWN worker mentioned, slices the text
+// into one span per worker (from their name to the next worker's name),
+// and reads each span alone: the advance amount (the number in the
+// span, preferably right after "سلفه"), whether they did a night shift
+// ("سهر") and whether they worked at all ("مشتغلش" / "غايب" = no).
+// Returns null unless at least 2 known workers are mentioned AND the
+// message looks like a recording (has سلفه / سهره / يوميه / اشتغل /
+// سجل / جماعي) — a bare list of names is a question, not a bulk record.
+export function parseBulkWorkers(
+  rawText: string,
+  workers: Worker[]
+): BulkParseResult | null {
+  const norm = normalizeArabic(rawText);
+  const active = workers.filter((w) => w.active && w.id !== undefined);
+  if (active.length < 2) return null;
+  const hasRecordHint =
+    norm.includes('سلف') ||
+    norm.includes('سهر') ||
+    norm.includes('يوميه') ||
+    norm.includes('اشتغل') ||
+    norm.includes('سجل') ||
+    norm.includes('جماعي');
+  if (!hasRecordHint) return null;
+
+  // Locate every mentioned worker (full name first, then a unique first
+  // name). Longest match wins when names overlap.
+  type Hit = { worker: Worker; at: number; len: number };
+  const hits: Hit[] = [];
+  for (const w of active) {
+    const wNorm = normalizeArabic(w.name);
+    const atFull = norm.indexOf(wNorm);
+    if (atFull >= 0) {
+      hits.push({ worker: w, at: atFull, len: wNorm.length });
+      continue;
+    }
+    const first = wNorm.split(' ')[0];
+    if (first.length >= 3) {
+      const othersShareFirst = active.some(
+        (o) => o.id !== w.id && normalizeArabic(o.name).split(' ')[0] === first
+      );
+      if (!othersShareFirst) {
+        const atFirst = norm.indexOf(first);
+        if (atFirst >= 0) hits.push({ worker: w, at: atFirst, len: first.length });
+      }
+    }
+  }
+  const kept = hits.filter(
+    (h) =>
+      !hits.some(
+        (g) =>
+          g !== h && g.len > h.len && h.at >= g.at && h.at + h.len <= g.at + g.len
+      )
+  );
+  // Same worker mentioned twice: keep the first occurrence.
+  const byWorker = new Map<number, Hit>();
+  for (const h of kept.sort((a, b) => a.at - b.at)) {
+    if (!byWorker.has(h.worker.id!)) byWorker.set(h.worker.id!, h);
+  }
+  const ordered = [...byWorker.values()].sort((a, b) => a.at - b.at);
+  if (ordered.length < 2) return null;
+
+  const SPOKEN_HUNDREDS: Record<string, number> = {
+    ميه: 100, مائه: 100, مئه: 100,
+    ميتين: 200, تلتميه: 300, ربعمبه: 400, خمسميه: 500,
+    ستميه: 600, سبعميه: 700, تمنميه: 800, تسعميه: 900,
+    الف: 1000, الفين: 2000,
+  };
+  const amountInSpan = (span: string): number => {
+    const digits = span.match(/\d+(?:\.\d+)?/g);
+    if (digits && digits.length > 0) {
+      const salfAt = span.indexOf('سلف');
+      if (salfAt >= 0) {
+        const after = span.slice(salfAt);
+        const m = after.match(/\d+(?:\.\d+)?/);
+        if (m) return Number(m[0]);
+      }
+      return Number(digits[0]);
+    }
+    for (const [word, val] of Object.entries(SPOKEN_HUNDREDS)) {
+      if (span.includes(word)) return val;
+    }
+    return 0;
+  };
+  const absentIn = (span: string): boolean =>
+    span.includes('مشتغلش') ||
+    span.includes('مش اشتغل') ||
+    span.includes('غايب') ||
+    span.includes('غائب') ||
+    span.includes('ماجاش') ||
+    span.includes('ما جاش') ||
+    span.includes('اجازه') ||
+    span.includes('معتذر');
+  const nightNegated = (span: string): boolean =>
+    span.includes('مش سهر') ||
+    span.includes('من غير سهر') ||
+    span.includes('بدون سهر') ||
+    span.includes('مفيش سهر');
+
+  const entries: BulkWorkerEntry[] = ordered.map((h, i) => {
+    const spanStart = i === 0 ? 0 : h.at;
+    const spanEnd = i + 1 < ordered.length ? ordered[i + 1].at : norm.length;
+    const span = norm.slice(spanStart, spanEnd);
+    const absent = absentIn(span);
+    const night: 0 | 1 = span.includes('سهر') && !nightNegated(span) ? 1 : 0;
+    // Absent + night = came only for the night (day 0, night 1).
+    const day: 0 | 1 = absent ? 0 : 1;
+    return {
+      workerId: h.worker.id!,
+      workerName: h.worker.name,
+      dayWorked: day,
+      nightWorked: night,
+      advanceAmount: amountInSpan(span),
+    };
+  });
+
+  // Unknown names: leftover text that is not a keyword, a number, or a
+  // matched worker name — a 2-word phrase is very likely a new worker.
+  const unknownNames: string[] = [];
+  const BULK_STOP = new Set([
+    'سلفه', 'سلف', 'سهره', 'سهر', 'سهرات', 'يوميه', 'يوميات', 'يوم',
+    'اشتغل', 'شغال', 'مشتغلش', 'غايب', 'غائب', 'ماجاش', 'اجازه',
+    'جنيه', 'النهارده', 'امبارح', 'سجل', 'جماعي', 'و', 'مع', 'من',
+    'ل', 'لم', 'في', 'علي', 'الي', 'ده', 'دي', 'كمان', 'بس', 'لا',
+    'يا', 'زكي', 'عايز', 'عاوز', 'ممكن', 'لو', 'سمحت',
+  ]);
+  let leftover = norm;
+  for (const h of ordered) {
+    leftover = leftover.replace(normalizeArabic(h.worker.name), ' ');
+  }
+  leftover = leftover.replace(/\d+(?:\.\d+)?/g, ' ').replace(/[.,:؛،]/g, ' ');
+  const words = leftover.split(/\s+/).filter((w) => w && !BULK_STOP.has(w));
+  if (words.length >= 2) unknownNames.push(words.slice(0, 2).join(' '));
+
+  return { entries, unknownNames };
 }
 
 export function processZakiMessage(
@@ -2949,6 +3120,51 @@ export function processZakiMessage(
         actionLabel: 'تحويل لصفحة الإضافي والناش',
       };
     }
+  }
+
+  // 12A. Bulk: several workers in ONE message ("محمد 150 سهرة، مصطفى
+  // 200 يومية، أحمد مشتغلش") — one card, one tap. Runs before the
+  // single-worker advance/attendance intents so a multi-worker message
+  // is never mistaken for a single advance.
+  const bulk = parseBulkWorkers(input, ctx.workers);
+  if (bulk && bulk.entries.length >= 2) {
+    const date = resolveRelativeDate(input, ctx.todayIso);
+    const totalAdv = bulk.entries.reduce((s, e) => s + e.advanceAmount, 0);
+    const dayCount = bulk.entries.filter((e) => e.dayWorked === 1).length;
+    const nightCount = bulk.entries.filter((e) => e.nightWorked === 1).length;
+    const statusOf = (e: BulkWorkerEntry): string =>
+      e.dayWorked === 0 && e.nightWorked === 0
+        ? 'غايب'
+        : e.nightWorked === 1
+          ? 'يومية + سهرة'
+          : 'يومية';
+    const lines = bulk.entries.map(
+      (e) =>
+        `• ${e.workerName}: ${statusOf(e)}${e.advanceAmount > 0 ? ` — سلفة ${formatCurrency(e.advanceAmount, numMode)}` : ''}`
+    );
+    const unknownNote = bulk.unknownNames.length
+      ? `\n⚠️ وفي اسم مش مسجل عندي: «${bulk.unknownNames[0]}» — لو عامل جديد قولي تخصصه وأنا أضيفه.`
+      : '';
+    return {
+      reply:
+        `تمام يا هندسة، فهمت — هسجل ${bulk.entries.length} عمال دفعة واحدة:\n${lines.join('\n')}\nإجمالي السلف: ${formatCurrency(totalAdv, numMode)} · يوميات: ${dayCount} · سهرات: ${nightCount}${unknownNote}`,
+      requiresConfirmation: true,
+      pendingAction: {
+        type: 'record_bulk',
+        date,
+        entries: bulk.entries.map((e) => ({
+          workerId: e.workerId,
+          workerName: e.workerName,
+          dayWorked: e.dayWorked,
+          nightWorked: e.nightWorked,
+          advanceAmount: e.advanceAmount,
+          fundedBy: 'mahmoud_ayman',
+          paidFrom: 'pocket',
+        })),
+      },
+      actionRoute: '/advances',
+      actionLabel: 'تحويل لصفحة السلف',
+    };
   }
 
   // 12B. Write Intent: Advance for a NEW worker with a chosen role.
