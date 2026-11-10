@@ -30,11 +30,15 @@ interface ChatMessage {
   responseMeta?: ZakiResponse;
   actionResolved?: 'confirmed' | 'cancelled';
   executedRef?: { kind: 'transfer' | 'advance' | 'expense' | 'incoming' | 'check'; id: number };
+  // ملخص «اللي تم» بعد التنفيذ: جملة واحدة بالأرقام الجديدة (رصيد بعد العملية).
+  executedSummary?: string;
   actionUndone?: boolean;
   engineSource?: 'api' | 'local_offline' | 'local_fallback';
   isCheckingApi?: boolean;
   latencyMs?: number;
   modelName?: string;
+  // مزود الـ AI اللي رد فعلاً (Apinex أولاً، Gemini احتياطي) — يظهر في الشارة.
+  provider?: 'apinex' | 'gemini';
 }
 
 @Component({
@@ -64,7 +68,7 @@ interface ChatMessage {
                     class="px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black inline-flex items-center gap-1.5"
                   >
                     <span class="w-2 h-2 rounded-full bg-emerald-500 polite-dot"></span>
-                    <span>متصل بـ AI API ✓@if (lastApiLatencyMs() > 0) { · {{ lastApiLatencyMs() }}ms }</span>
+                    <span>متصل بـ {{ lastProvider() === 'apinex' ? 'Apinex' : 'Gemini' }} ✓@if (lastApiLatencyMs() > 0) { · {{ lastApiLatencyMs() }}ms }</span>
                   </span>
                 } @else if (apiStatus() === 'unavailable') {
                   <span
@@ -281,7 +285,7 @@ interface ChatMessage {
                   </span>
                 } @else if (msg.engineSource === 'api') {
                   <span class="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[9px] font-black">
-                    🌐 عبر AI API ({{ gcpProjectPath() }}{{ msg.latencyMs ? ' · ' + msg.latencyMs + 'ms' : '' }})
+                    🌐 عبر {{ msg.provider === 'apinex' ? 'Apinex · GPT-6 Luna' : 'Gemini · 2.5 Flash' }}{{ msg.provider === 'gemini' ? ' (' + gcpProjectPath() + ')' : '' }}{{ msg.latencyMs ? ' · ' + msg.latencyMs + 'ms' : '' }}
                   </span>
                 } @else if (msg.engineSource === 'local_fallback') {
                   <span class="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[9px] font-black" title="تم التحويل تلقائياً للمحرك المحلي لضمان استمرار العمل بدون توقف">
@@ -303,7 +307,36 @@ interface ChatMessage {
                   : 'bg-[var(--bg-surface-muted)] text-[var(--text-heading)] border border-[var(--border-subtle)] rounded-tl-xs'
               "
             >
-              {{ msg.text }}
+              <!-- الرد المنظم: أقسام «المطلوب / اللي هيتم / اللي تم» في بلوكات
+                   ملوّنة، وأي نص بلا عناوين يظهر عادي زي ما كان. -->
+              @if (sectionsOf(msg.text); as secs) {
+                @if (secs.restBefore) {
+                  <div>{{ secs.restBefore }}</div>
+                }
+                @if (secs.requested) {
+                  <div class="mt-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 px-3 py-2">
+                    <div class="text-[11px] font-black text-[#2563EB] dark:text-blue-300 mb-0.5">🎯 المطلوب</div>
+                    <div class="whitespace-pre-line">{{ secs.requested }}</div>
+                  </div>
+                }
+                @if (secs.willHappen) {
+                  <div class="mt-1.5 rounded-xl bg-amber-500/10 border border-amber-500/40 px-3 py-2">
+                    <div class="text-[11px] font-black text-amber-700 dark:text-amber-300 mb-0.5">📋 اللي هيتم</div>
+                    <div class="whitespace-pre-line">{{ secs.willHappen }}</div>
+                  </div>
+                }
+                @if (secs.done) {
+                  <div class="mt-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2">
+                    <div class="text-[11px] font-black text-emerald-700 dark:text-emerald-300 mb-0.5">✅ اللي تم</div>
+                    <div class="whitespace-pre-line">{{ secs.done }}</div>
+                  </div>
+                }
+                @if (secs.restAfter) {
+                  <div class="mt-1.5">{{ secs.restAfter }}</div>
+                }
+              } @else {
+                {{ msg.text }}
+              }
 
 
               <!-- Direct Navigation Button ("زر التحويل المباشر") -->
@@ -372,6 +405,11 @@ interface ChatMessage {
                   <mat-icon class="!w-4 !h-4 !text-[16px]">verified</mat-icon>
                   <span>تم التنفيذ والحفظ والمزامنة بنجاح ✓</span>
                 </div>
+                @if (msg.executedSummary) {
+                  <div class="mt-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 text-xs font-bold text-[var(--text-heading)]">
+                    <span class="font-black text-emerald-700 dark:text-emerald-300">✅ اللي تم: </span>{{ msg.executedSummary }}
+                  </div>
+                }
                 @if (msg.executedRef && !msg.actionUndone) {
                   <div class="mt-2">
                     <button
@@ -555,6 +593,9 @@ export class ZakiPage {
   readonly showCapabilitiesPage = signal<boolean>(false);
   readonly preferApiMode = signal<boolean>(true);
   readonly lastUsedEngine = signal<'api' | 'local_offline' | 'local_fallback'>('api');
+  // آخر مزود AI رد فعلاً (Apinex أولاً، Gemini احتياطي) — يظهر في الشارة
+  // والترويسة بدل اسم ثابت، عشان المستخدم يعرف مين اللي بيرد عليه.
+  readonly lastProvider = signal<'apinex' | 'gemini'>('gemini');
   readonly gcpProjectPath = signal<string>('projects/110645591699');
   // No fake default: 0 means "no verified check yet". The header only
   // claims an API connection after a real /api/zaki/status ping succeeds.
@@ -573,7 +614,9 @@ export class ZakiPage {
       return 'محرك زكي المحلي المباشر (تم اختياره يدوياً)';
     }
     if (this.apiStatus() === 'connected') {
-      return 'متصل بـ Gemini 2.5 Flash API (projects/110645591699)';
+      return this.lastProvider() === 'apinex'
+        ? 'متصل بـ Apinex (GPT-6 Luna) — و Gemini احتياطي تلقائي'
+        : 'متصل بـ Gemini 2.5 Flash API (projects/110645591699) — و Apinex أولاً';
     }
     if (this.apiStatus() === 'unavailable') {
       return `محلي — الـ API غير متوفر (${this.apiStatusNote() || 'غير معروف'})`;
@@ -604,8 +647,9 @@ export class ZakiPage {
       text:
         'أهلاً بيك يا باشمهندس! أنا «زكي» دراعك اليمين بالعامية المصرية 👷‍♂️\n' +
         '• أسجل الفلوس اللي وصلتك (شيكات أو من شركة أو من شخص) وأقولك راحت لحساب مشروع إيه، واتصرف كام سلف وقبض، وليك كام وعليك كام وصافي ربحك.\n' +
-        '• أسجل العدد اليومي الإجباري، أحضر العمال والنحاتية، أصرف سلف، أوقع خصومات، أعمل مستخلصات، وأصرف شيكات.\n' +
-        '• هفحص اتصال الـ AI دلوقتي، ولو مش متوفر هرد عليك من المحرك المحلي فوراً من غير ما تقف.\n' +
+        '• أسجل العدد اليومي الإجباري، أحضر العمال والنحاتية، أصرف سلف، أوقع خصومات، أعمل مستخلصات، وأصرف شيكات — وأقدر كمان أمسح سجل أو أعدّل يومية عامل وحالة شيك، وبعد موافقتك أقولك بالظبط اللي تم.\n' +
+        '• كل رد مني منظم في 3 أقسام: 🎯 المطلوب، 📋 اللي هيتم، ✅ اللي تم — وكل عملية ليها أزرار تأكيد وإلغاء وتراجع.\n' +
+        '• هفحص اتصال الـ AI دلوقتي (Apinex أولاً، و Gemini احتياطي تلقائي)، ولو الاتنين مش متوفرين هرد عليك من المحرك المحلي فوراً من غير ما تقف.\n' +
         'جرّب أي أمر من الاختصارات تحت، أو اكتبلي بالعامية زي ما بتتكلم!',
       timestamp: 'الآن',
     },
@@ -661,6 +705,7 @@ export class ZakiPage {
           geminiError?: string;
           projectPath?: string;
           model?: string;
+          provider?: 'apinex' | 'gemini';
           latencyMs?: number;
           sampleReply?: string;
         };
@@ -670,6 +715,7 @@ export class ZakiPage {
         if (data.ok) {
           const ms = data.latencyMs || 0;
           this.lastApiLatencyMs.set(ms);
+          this.lastProvider.set(data.provider === 'apinex' ? 'apinex' : 'gemini');
           this.apiStatus.set('connected');
           this.apiStatusNote.set('');
           this.lastUsedEngine.set('api');
@@ -680,11 +726,12 @@ export class ZakiPage {
             {
               id: this.nextMsgId++,
               sender: 'zaki',
-              text: `✅ فحص اتصال الـ AI API ناجح ١٠٠٪!\n• المشروع المتصل: ${data.projectPath || 'projects/110645591699'}\n• النموذج النشط: ${data.model || 'gemini-2.5-flash'}\n• زمن الاستجابة الفعلي: ${ms} مللي ثانية\n• رسالة الاختبار من الخادم: «${data.sampleReply || 'متصل وجاهز يا باشمهندس'}»`,
+              text: `✅ فحص اتصال الـ AI API ناجح ١٠٠٪!\n• المزود النشط: ${data.provider === 'apinex' ? 'Apinex (GPT-6 Luna)' : 'Gemini 2.5 Flash'}${data.provider === 'apinex' ? ' — و Gemini احتياطي تلقائي' : ''}\n• المشروع المتصل: ${data.projectPath || 'projects/110645591699'}\n• النموذج النشط: ${data.model || 'gemini-2.5-flash'}\n• زمن الاستجابة الفعلي: ${ms} مللي ثانية\n• رسالة الاختبار من الخادم: «${data.sampleReply || 'متصل وجاهز يا باشمهندس'}»`,
               timestamp: 'الآن',
               engineSource: 'api',
               latencyMs: ms,
               modelName: data.model || 'gemini-2.5-flash',
+              provider: data.provider === 'apinex' ? 'apinex' : 'gemini',
             },
           ]);
           this.scrollChatToBottom();
@@ -827,6 +874,12 @@ export class ZakiPage {
       `إجمالي المقبوضات الواردة بالخزنة: ${ledger.totalReceivedAllSources} ج.م | إجمالي المنصرف: ${ledger.totalSpentAllProjects} ج.م`,
       `مستحقات لي عند الشركات: ${ledger.totalOwedToMe} ج.م | متبقي للعمال عليّ: ${ledger.totalOwedByMe} ج.م | صافي الربح العام: ${ledger.overallNetProfit} ج.م`,
       `أرصدة الأمناء (فودافون كاش / جيب): ${this.store.custodianBalances().balances.map((b) => `${b.name}: فودافون ${b.vodafoneBalance} ج.م، جيب ${b.pocketBalance} ج.م`).join(' | ') || 'لا يوجد بعد'}`,
+      // أحدث السجلات بأرقامها — عشان الـ AI يقدر يقترح حذف أو تعديل سجل
+      // محدد بالرقم (delete_record / update_check_status) بدل ما يخمن.
+      `أحدث السلف (رقم: عامل — مبلغ — تاريخ): ${this.store.advances().slice(-5).map((a) => `#${a.id}: ${this.store.workers().find((w) => w.id === a.workerId)?.name || 'عامل'} — ${a.amount} ج.م — ${a.date}`).join(' | ') || 'لا يوجد'}`,
+      `أحدث المصاريف (رقم: تصنيف — مبلغ — تاريخ): ${this.store.expenses().slice(-5).map((e) => `#${e.id}: ${e.category} — ${e.amount} ج.م — ${e.date}`).join(' | ') || 'لا يوجد'}`,
+      `أحدث الشيكات (رقم: اتجاه — مبلغ — حالة — استحقاق): ${this.store.checks().slice(-5).map((c) => `#${c.id}: ${c.direction} — ${c.amount} ج.م — ${c.status} — ${c.dueDate}`).join(' | ') || 'لا يوجد'}`,
+      `أحدث الدفعات الواردة (رقم: مصدر — مبلغ — تاريخ): ${this.store.incomingPayments().slice(-5).map((p) => `#${p.id}: ${p.sourceName} — ${p.amount} ج.م — ${p.date}`).join(' | ') || 'لا يوجد'}`,
     ].join('\n');
   }
 
@@ -895,6 +948,49 @@ export class ZakiPage {
       const status = a['status'] === 'اتصرف' || a['status'] === 'مرتجع' ? (a['status'] as 'اتصرف' | 'مرتجع') : 'معلق';
       const due = typeof a['dueDate'] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a['dueDate'] as string) ? (a['dueDate'] as string) : today;
       return { type: 'record_check', direction, number: typeof a['number'] === 'string' ? (a['number'] as string) : '', bank: typeof a['bank'] === 'string' ? (a['bank'] as string) : '', amount, dueDate: due, status, projectId: null, notes: 'شيك مسجل عبر زكي' };
+    }
+    // الحذف والتعديل: الـ AI بيقترح بس، والتحقق هنا صارم — السجل لازم
+    // يكون موجود فعلاً بالرقم اللي في قائمة «أحدث السجلات»، وإلا مفيش
+    // بطاقة تأكيد أصلاً (الرد النصي بس اللي يظهر).
+    if (type === 'delete_record') {
+      const entities = ['worker', 'project', 'attendance', 'advance', 'deduction', 'check', 'expense', 'incomingPayment', 'extract', 'extra'] as const;
+      const target = a['targetEntity'];
+      const recordId = typeof a['recordId'] === 'number' ? (a['recordId'] as number) : 0;
+      if (!entities.includes(target as never) || !recordId || recordId <= 0) return null;
+      const exists =
+        (target === 'advance' && this.store.advances().some((x) => x.id === recordId)) ||
+        (target === 'deduction' && this.store.deductions().some((x) => x.id === recordId)) ||
+        (target === 'expense' && this.store.expenses().some((x) => x.id === recordId)) ||
+        (target === 'incomingPayment' && this.store.incomingPayments().some((x) => x.id === recordId)) ||
+        (target === 'check' && this.store.checks().some((x) => x.id === recordId)) ||
+        (target === 'worker' && this.store.workers().some((x) => x.id === recordId)) ||
+        (target === 'project' && this.store.projects().some((x) => x.id === recordId)) ||
+        (target === 'extract' && this.store.extracts().some((x) => x.id === recordId)) ||
+        (target === 'attendance' && this.store.attendances().some((x) => x.id === recordId));
+      if (!exists) return null;
+      const description = typeof a['description'] === 'string' && (a['description'] as string).trim()
+        ? (a['description'] as string).trim()
+        : `سجل رقم ${recordId}`;
+      return { type: 'delete_record', targetEntity: target as (typeof entities)[number], recordId, description };
+    }
+    if (type === 'update_worker_rate') {
+      const name = typeof a['workerName'] === 'string' ? (a['workerName'] as string).trim() : '';
+      const dayRate = typeof a['workerDayRate'] === 'number' ? (a['workerDayRate'] as number) : 0;
+      const nightRate = typeof a['workerNightRate'] === 'number' ? (a['workerNightRate'] as number) : 0;
+      if (!name || !dayRate || dayRate <= 0 || !nightRate || nightRate <= 0) return null;
+      const worker = this.store.workers().find((w) => w.name.trim() === name) ||
+        this.store.workers().find((w) => name.includes(w.name.trim()) || w.name.trim().includes(name));
+      if (!worker || worker.id === undefined) return null;
+      return { type: 'update_worker_rate', workerId: worker.id, workerName: worker.name, workerDayRate: dayRate, workerNightRate: nightRate };
+    }
+    if (type === 'update_check_status') {
+      const checkId = typeof a['checkId'] === 'number' ? (a['checkId'] as number) : 0;
+      const newStatus = a['newStatus'];
+      if (!checkId || checkId <= 0) return null;
+      if (newStatus !== 'معلق' && newStatus !== 'اتصرف' && newStatus !== 'مرتجع') return null;
+      const chk = this.store.checks().find((c) => c.id === checkId);
+      if (!chk) return null;
+      return { type: 'update_check_status', checkId, checkNumber: chk.number || `#${checkId}`, newStatus, amount: chk.amount };
     }
     return null;
   }
@@ -970,7 +1066,8 @@ export class ZakiPage {
     if (shouldTryOnlineApi && typeof fetch !== 'undefined') {
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 15000);
+        // مهلة 30 ثانية: سلسلة المزودين Apinex (10ث) + Gemini (15ث) + هوامش.
+        const timer = setTimeout(() => controller.abort(), 30000);
         const apiRes = await this.store.authFetch('/api/zaki/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -992,6 +1089,7 @@ export class ZakiPage {
             action?: unknown;
             projectPath?: string;
             model?: string;
+            provider?: 'apinex' | 'gemini';
             latencyMs?: number;
           };
           if (data.projectPath) {
@@ -1001,6 +1099,8 @@ export class ZakiPage {
             const ms = data.latencyMs || 550;
             this.lastApiLatencyMs.set(ms);
             this.lastUsedEngine.set('api');
+            const provider = data.provider === 'apinex' ? 'apinex' : 'gemini';
+            this.lastProvider.set(provider);
             // الـ API اقترحت عملية منظمة؟ حوّلها لبطاقة تأكيد زي المحلي تماماً.
             // لو مفيش action صالح، بطاقة التأكيد المحلية (لو موجودة) تفضل زي ما هي.
             const apiAction = this.mapApiAction(data.action);
@@ -1038,7 +1138,8 @@ export class ZakiPage {
                       engineSource: 'api',
                       isCheckingApi: false,
                       latencyMs: ms,
-                      modelName: data.model || 'gemini-2.5-flash',
+                      modelName: data.model || (provider === 'apinex' ? 'free/gpt-6-luna' : 'gemini-2.5-flash'),
+                      provider,
                     }
                   : m
               )
@@ -1072,6 +1173,56 @@ export class ZakiPage {
   }
 
 
+  // يقسّم رد الـ AI لأقسام «المطلوب / اللي هيتم / اللي تم» (عناوين
+  // الأقسام يبدأ بها سطر). لو مفيش عناوين، يرجّع null والرسالة تظهر
+  // نصاً عادياً زي ما كانت (ردود المحرك المحلي بالنقاط).
+  sectionsOf(text: string): {
+    requested: string;
+    willHappen: string;
+    done: string;
+    restBefore: string;
+    restAfter: string;
+  } | null {
+    const headerOf = (line: string): 'requested' | 'willHappen' | 'done' | null => {
+      const t = line.trim().replace(/^[🎯📋✅📌🔹•\s]+/, '');
+      if (/^المطلوب\s*[:：\-–]?\s*/.test(t)) return 'requested';
+      if (/^الل[يى]\s*ه[يى]تم\s*[:：\-–]?\s*/.test(t)) return 'willHappen';
+      if (/^الل[يى]\s*تم\s*[:：\-–]?\s*/.test(t)) return 'done';
+      return null;
+    };
+    const stripHeader = (line: string): string =>
+      line.trim().replace(/^[🎯📋✅📌🔹•\s]+/, '').replace(/^(المطلوب|الل[يى]\s*ه[يى]تم|الل[يى]\s*تم)\s*[:：\-–]?\s*/, '');
+    const lines = text.split('\n');
+    let current: 'requested' | 'willHappen' | 'done' | null = null;
+    let seenHeader = false;
+    const parts = { requested: '', willHappen: '', done: '', restBefore: '', restAfter: '' };
+    const buckets: Record<string, string[]> = { requested: [], willHappen: [], done: [], restBefore: [], restAfter: [] };
+    for (const line of lines) {
+      const h = headerOf(line);
+      if (h) {
+        seenHeader = true;
+        current = h;
+        const rest = stripHeader(line);
+        if (rest) buckets[h].push(rest);
+        continue;
+      }
+      if (!seenHeader) {
+        buckets['restBefore'].push(line);
+      } else if (current) {
+        buckets[current].push(line);
+      } else {
+        buckets['restAfter'].push(line);
+      }
+    }
+    if (!seenHeader) return null;
+    parts.requested = buckets['requested'].join('\n').trim();
+    parts.willHappen = buckets['willHappen'].join('\n').trim();
+    parts.done = buckets['done'].join('\n').trim();
+    parts.restBefore = buckets['restBefore'].join('\n').trim();
+    parts.restAfter = buckets['restAfter'].join('\n').trim();
+    return parts;
+  }
+
   fmt(n: number): string {
     return formatCurrency(n, this.store.settings().numeralMode || 'ar');
   }
@@ -1100,6 +1251,8 @@ export class ZakiPage {
         return `شيك ${action.direction} ${f(action.amount)} — الحالة: ${action.status}`;
       case 'update_check_status':
         return `تغيير حالة الشيك ${action.checkNumber} إلى «${action.newStatus}»`;
+      case 'update_worker_rate':
+        return `تعديل يومية ${action.workerName} إلى ${f(action.workerDayRate)} (وسهرة ${f(action.workerNightRate)})`;
       case 'delete_record':
         return `حذف: ${action.description}`;
       case 'settle_worker':
@@ -1454,10 +1607,48 @@ export class ZakiPage {
       executedRef = { kind: 'transfer', id };
     }
 
+    // ملخص «اللي تم» بعد التنفيذ: جملة واحدة بالأرقام الجديدة (رصيد بعد
+    // العملية) عشان المستخدم يشوف النتيجة من غير ما يدور عليها.
+    let executedSummary: string | undefined;
+    const balancesNow = this.store.custodianBalances().balances;
+    const balOf = (c: string) => balancesNow.find((x) => x.custodian === c);
+    if (action.type === 'record_pocket_withdrawal') {
+      const b = balOf(action.custodian);
+      executedSummary = b
+        ? `سحبت ${this.fmt(action.amount)} من فودافون ${custodianLabel(action.custodian)} للجيب — فودافون بقى ${this.fmt(b.vodafoneBalance)}، والجيب بقى ${this.fmt(b.pocketBalance)}.`
+        : `سحبت ${this.fmt(action.amount)} من فودافون للجيب.`;
+    } else if (action.type === 'record_custodian_transfer') {
+      const from = balOf(action.fromCustodian);
+      const to = balOf(action.toCustodian);
+      executedSummary = from && to
+        ? `حوّلت ${this.fmt(action.amount)} من ${custodianLabel(action.fromCustodian)} إلى ${custodianLabel(action.toCustodian)} — فودافون ${custodianLabel(action.fromCustodian)} بقى ${this.fmt(from.vodafoneBalance)}، وفودافون ${custodianLabel(action.toCustodian)} بقى ${this.fmt(to.vodafoneBalance)}.`
+        : `حوّلت ${this.fmt(action.amount)} من ${custodianLabel(action.fromCustodian)} إلى ${custodianLabel(action.toCustodian)}.`;
+    } else if (action.type === 'record_advance') {
+      const b = balOf(action.fundedBy || 'mahmoud_ayman');
+      const after = b
+        ? action.paidFrom === 'vodafone'
+          ? `فودافون بقى ${this.fmt(b.vodafoneBalance)}`
+          : `الجيب بقى ${this.fmt(b.pocketBalance)}`
+        : '';
+      executedSummary = `سجّلت سلفة ${this.fmt(action.amount)} لـ ${action.workerName}${after ? ` — ${after}.` : '.'}`;
+    } else if (action.type === 'record_expense') {
+      executedSummary = `سجّلت مصروف ${this.fmt(action.amount)} (${action.category}).`;
+    } else if (action.type === 'record_incoming_payment') {
+      executedSummary = `سجّلت دفعة واردة ${this.fmt(action.amount)} من ${action.sourceName}.`;
+    } else if (action.type === 'record_check') {
+      executedSummary = `سجّلت شيك ${action.direction} ${this.fmt(action.amount)} — الحالة: ${action.status}.`;
+    } else if (action.type === 'delete_record') {
+      executedSummary = `حذفت: ${action.description}.`;
+    } else if (action.type === 'update_worker_rate') {
+      executedSummary = `عدّلت يومية ${action.workerName} إلى ${this.fmt(action.workerDayRate)} (وسهرة ${this.fmt(action.workerNightRate)}).`;
+    } else if (action.type === 'update_check_status') {
+      executedSummary = `غيّرت حالة الشيك ${action.checkNumber} إلى «${action.newStatus}».`;
+    }
+
     this.messages.update((list) =>
       list.map((m) =>
         m.id === msg.id
-          ? { ...m, actionResolved: 'confirmed', executedRef }
+          ? { ...m, actionResolved: 'confirmed', executedRef, executedSummary }
           : m
       )
     );

@@ -11,14 +11,15 @@
  * real Gemini API, so the same code serves both.
  *
  * ── SETUP ───────────────────────────────────────────────────────────────
- * The Gemini key lives ONLY as a secret on the Supabase project
- * (`supabase secrets set GEMINI_API_KEY=...`, function
- * `supabase/functions/zaki-chat`). The Worker never sees the key: it
- * forwards the owner's JWT + the already-built prompt to that Edge
- * Function, which verifies the owner and calls Google. This replaced
- * the old Worker secret (2026-11-05) because the secret value bound
- * to the Worker kept not matching the working key.
- * Without the Supabase secret, both endpoints answer
+ * The AI keys live ONLY as secrets on the Supabase project
+ * (`supabase secrets set GEMINI_API_KEY=...` and `APINEX_API_KEY=...`,
+ * function `supabase/functions/zaki-chat`). The Worker never sees them:
+ * it forwards the owner's JWT + the already-built prompt to that Edge
+ * Function, which tries Apinex first (free/gpt-6-luna) and falls back
+ * to Gemini on any failure. This replaced the old Worker secret
+ * (2026-11-05) because the secret value bound to the Worker kept not
+ * matching the working key.
+ * Without any secret, both endpoints answer
  * { ok:false, mode:'local_fallback' } and the chat keeps working locally.
  * Deploy: `npx wrangler deploy` (or the Cloudflare dashboard GitHub
  * integration, which rebuilds from main). A secret change does NOT
@@ -30,9 +31,9 @@
  * logic, process.env instead of env) for the Netlify-hosted copy.
  *
  * SECURITY:
- * - Gemini key lives ONLY as a Supabase project secret (never in code,
+ * - AI keys live ONLY as Supabase project secrets (never in code,
  *   chat, or git). The Worker forwards the prompt; the Edge Function
- *   holds the key and verifies the owner JWT a second time.
+ *   holds the keys and verifies the owner JWT a second time.
  * - Every /api/zaki/* request must carry Authorization: Bearer <Supabase
  *   owner JWT>; the token is verified against Supabase Auth and must
  *   belong to the single owner email. No token / bad token / non-owner
@@ -49,7 +50,6 @@ const OWNER_EMAIL = 'gqikdubrjntorldfieo36@gmail.com';
 const GCP_PROJECT_ID = '110645591699';
 const GCP_PROJECT_PATH = `projects/${GCP_PROJECT_ID}`;
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_TIMEOUT_MS = 15000;
 
 interface DortmunEnv {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
@@ -144,14 +144,22 @@ const TABLES_FOR_DIAGNOSTICS: Array<{ name: string; label: string }> = [
   { name: 'dortmun_custodian_transfers', label: 'تحويلات الأمناء والسحب للجيب' },
 ];
 
-// The Gemini key lives ONLY as a secret on the Supabase project
-// (supabase secrets set GEMINI_API_KEY=...). The Worker never sees it:
-// it forwards the owner's JWT + the already-built prompt to the
-// `zaki-chat` Edge Function, which verifies the owner and calls Google.
+// The keys live ONLY as secrets on the Supabase project
+// (supabase secrets set GEMINI_API_KEY=... / APINEX_API_KEY=...). The
+// Worker never sees them: it forwards the owner's JWT + the already-built
+// prompt to the `zaki-chat` Edge Function, which tries Apinex first
+// (free/gpt-6-luna) and falls back to Gemini on any failure.
 const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/zaki-chat`;
 
 type GeminiResult =
-  | { ok: true; text: string; model: string; latencyMs: number; action?: unknown }
+  | {
+      ok: true;
+      text: string;
+      model: string;
+      provider?: 'apinex' | 'gemini';
+      latencyMs: number;
+      action?: unknown;
+    }
   | { ok: false; geminiStatus: number; geminiError: string; status?: string };
 
 async function callZakiViaSupabase(
@@ -162,7 +170,9 @@ async function callZakiViaSupabase(
   const t0 = Date.now();
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    // Apinex (10s) + Gemini fallback (15s) + overhead must fit inside
+    // the frontend's 30s chat timeout.
+    const timer = setTimeout(() => controller.abort(), 30000);
     const resp = await fetch(EDGE_FN_URL, {
       method: 'POST',
       headers: {
@@ -178,10 +188,13 @@ async function callZakiViaSupabase(
       ok?: boolean;
       text?: string;
       model?: string;
+      provider?: 'apinex' | 'gemini';
       latencyMs?: number;
       action?: unknown;
       geminiStatus?: number;
       geminiError?: string;
+      apinexStatus?: number;
+      apinexError?: string;
       status?: string;
       error?: string;
     };
@@ -190,6 +203,7 @@ async function callZakiViaSupabase(
         ok: true,
         text: data.text,
         model: data.model || GEMINI_MODEL,
+        provider: data.provider,
         latencyMs: data.latencyMs ?? Date.now() - t0,
         action: data.action ?? null,
       };
@@ -197,10 +211,19 @@ async function callZakiViaSupabase(
     if (data.status === 'no_key') {
       return { ok: false, geminiStatus: 0, geminiError: 'no_key', status: 'no_key' };
     }
+    // Both providers failed: report the Gemini failure if there is one
+    // (it is the last attempt), otherwise the Apinex failure.
+    const lastStatus =
+      data.geminiStatus && data.geminiStatus !== 0
+        ? data.geminiStatus
+        : data.apinexStatus ?? resp.status;
+    const lastError =
+      data.geminiError || data.apinexError || data.error || `HTTP ${resp.status}`;
     return {
       ok: false,
-      geminiStatus: data.geminiStatus ?? resp.status,
-      geminiError: data.geminiError || data.error || `HTTP ${resp.status}`,
+      geminiStatus: lastStatus,
+      geminiError: lastError,
+      status: data.status,
     };
   } catch (e) {
     const timedOut =
@@ -245,6 +268,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         projectId: GCP_PROJECT_ID,
         projectPath: GCP_PROJECT_PATH,
         model: result.model,
+        provider: result.provider || 'gemini',
         latencyMs: result.latencyMs,
         sampleReply: result.text,
       });
@@ -291,11 +315,11 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
       'أنت «زكي» المساعد الذكي الهندسي والمالي لشركة دورتمون للمقاولات (إدارة المهندس، وتطوير م/ محمود أيمن 01029046651).',
       'تحدث باللهجة العامية المصرية المهنية المحترمة والودودة (مثل: يا هندسة، يا باشمهندس، عيوني).',
       'اعتمد بدقة ١٠٠٪ على بيانات الموقع الحية المرفقة ولا تخترع أرقاماً من عندك.',
-      'أنت ترد الآن عبر AI API (Gemini) وليس عبر المحرك المحلي، فإن سُئلت عن مصدر ردك أو اتصالك فقل إنك متصل عبر AI API؛ ولا تقل أبداً إنك المحرك المحلي.',
+      'أنت ترد الآن عبر AI API (Apinex أولاً، ثم Gemini كاحتياطي) وليس عبر المحرك المحلي، فإن سُئلت عن مصدر ردك أو اتصالك فقل إنك متصل عبر AI API؛ ولا تقل أبداً إنك المحرك المحلي.',
       'قاعدة ذهبية لا تكسرها أبداً: أنت لا تنفذ أي تغيير بنفسك ولا تسجل أي شيء، ولا تقل أبداً إنك نفذت أو سجلت أو خلصت. أنت تقترح فقط، والمالك هو اللي بيوافق من زر «تأكيد وتنفيذ فوراً».',
-      'لو الرسالة بتطلب تسجيل أو تغيير أي بيانات (سلفة، مصروف، شيك، تحويل بين أمينين، سحب للجيب، دفعة واردة)، رد بـ JSON فقط بهذا الشكل بالظبط: {"reply": "...", "action": {...}}. الـ reply يكون اقتراحاً منظماً يبدأ بـ «هل توافق على التنفيذ؟» ويوضح العملية والمبلغ والأرصدة قبل وبعد من بيانات الموقع، وينتهي بـ «اضغط «تأكيد وتنفيذ فوراً» للتنفيذ، أو «إلغاء» لو العملية غلط». الـ action يكون واحداً من هذه الأنواع فقط: {"type":"record_pocket_withdrawal","custodian":"mahmoud_ayman","amount":5000,"withdrawalFee":0} أو {"type":"record_custodian_transfer","fromCustodian":"mahmoud_hamada","toCustodian":"mahmoud_ayman","amount":71000,"withdrawalFee":0} أو {"type":"record_advance","workerName":"مصطفى إنجاح","amount":150} أو {"type":"record_expense","category":"مواصلات","amount":500,"note":"بنزين"} أو {"type":"record_incoming_payment","sourceType":"شخص","sourceName":"محمود حماده","amount":80000,"method":"محفظة إلكترونية"} أو {"type":"record_check","direction":"وارد","amount":71000,"dueDate":"2026-11-04","status":"اتصرف"}. أكواد الأمناء هي فقط: mahmoud_ayman (محمود أيمن)، mahmoud_hamada (محمود حماده)، ayman_hassan (ايمن حسان). لو أي معلومة ناقصة (المبلغ أو اسم الشخص) لا تخمنها: ضع action بقيمة null واطلب المعلومة الناقصة في الـ reply. لو الرسالة لا تطلب تغيير بيانات، رد نصاً عادياً (ليس JSON).',
+      'شكل كل رد منك ثابت ومنظم — ثلاث أقسام بالظبط، كل قسم في سطر مستقل يبدأ بعنوانه، وبدون أي نص خارج الأقسام:\nالمطلوب: سطر واحد يلخص طلب المهندس.\nاللي هيتم: النقاط «•» — لو الطلب إجابة أو عرض بيانات، اكتب هنا النتيجة والأرقام كل رقم في سطر لوحده؛ ولو الطلب تغيير بيانات، اكتب هنا العملية بالظبط والمبلغ والأرصدة قبل وبعد من بيانات الموقع.\nاللي تم: لو الطلب إجابة أو عرض، اكتب هنا الخلاصة النهائية؛ ولو الطلب تغيير بيانات، اكتب هنا «لسه مفيش حاجة اتنفذت — مستني تأكيدك من زر «تأكيد وتنفيذ فوراً»» ولا تكتب أبداً أن العملية تمت. لا تكتب فقرات طويلة فوضوية أبداً.',
+      'لو الرسالة بتطلب تسجيل أو تغيير أو حذف أي بيانات (سلفة، مصروف، شيك، تحويل بين أمينين، سحب للجيب، دفعة واردة، حذف سجل، تعديل يومية عامل أو حالة شيك)، رد بـ JSON فقط بهذا الشكل بالظبط: {"reply": "...", "action": {...}}. الـ reply يكون بالأقسام الثلاثة اللي فوق، ويبدأ بـ «هل توافق على التنفيذ؟» في قسم «اللي هيتم»، وينتهي بـ «اضغط «تأكيد وتنفيذ فوراً» للتنفيذ، أو «إلغاء» لو العملية غلط». الـ action يكون واحداً من هذه الأنواع فقط: {"type":"record_pocket_withdrawal","custodian":"mahmoud_ayman","amount":5000,"withdrawalFee":0} أو {"type":"record_custodian_transfer","fromCustodian":"mahmoud_hamada","toCustodian":"mahmoud_ayman","amount":71000,"withdrawalFee":0} أو {"type":"record_advance","workerName":"مصطفى إنجاح","amount":150} أو {"type":"record_expense","category":"مواصلات","amount":500,"note":"بنزين"} أو {"type":"record_incoming_payment","sourceType":"شخص","sourceName":"محمود حماده","amount":80000,"method":"محفظة إلكترونية"} أو {"type":"record_check","direction":"وارد","amount":71000,"dueDate":"2026-11-04","status":"اتصرف"} أو {"type":"delete_record","targetEntity":"advance","recordId":12,"description":"سلفة 150 لمصطفى إنجاح بتاريخ 2026-11-04"} أو {"type":"update_worker_rate","workerName":"مصطفى إنجاح","workerDayRate":450,"workerNightRate":225} أو {"type":"update_check_status","checkId":3,"newStatus":"اتصرف"}. أكواد الأمناء هي فقط: mahmoud_ayman (محمود أيمن)، mahmoud_hamada (محمود حماده)، ayman_hassan (ايمن حسان). targetEntity للحذف تكون واحدة من: advance أو expense أو check أو incomingPayment أو deduction أو attendance. رقم السجل recordId و checkId خدهم من قائمة «أحدث السجلات» المرفقة في بيانات الموقع — لو مش موجود فيها، لا تخمن رقماً: ضع action بقيمة null واسأل عن التفاصيل اللي تحدد السجل. لو أي معلومة ناقصة (المبلغ أو اسم الشخص) لا تخمنها: ضع action بقيمة null واطلب المعلومة الناقصة في الـ reply. لو الرسالة لا تطلب تغيير بيانات، رد نصاً عادياً بالأقسام الثلاثة (ليس JSON).',
       'لو العامل المطلوب سلفة ليه مش موجود في قائمة العمال المرفقة، لا تقترح سلفة أبداً ولا تضع action — اسأل الأول: هل هو عامل جديد؟ تخصصه إيه؟ والمشروع اللي اشتغل فيه إيه؟ (وضع action بقيمة null). نفس القاعدة لأي عملية ناقصها معلومة أساسية: لا تخمن اسماً أو مشروعاً أو مبلغاً أبداً.',
-      'ردودك منظمة دائماً: سطر ملخص أولاً، ثم نقاط «•» للتفاصيل، ثم الأرقام كل رقم في سطر لوحده. لا تكتب فقرات طويلة فوضوية أبداً.',
       body.hasPendingAction
         ? 'ملاحظة هامة: النظام المحلي جهّز بالفعل زر تأكيد تنفيذ العملية للمستخدم. حافظ على تفاصيل العملية الدقيقة كما في الرد المحلي وأضف نصيحة سريعة أو توضيح مالي ذكي في سطرين فقط.'
         : 'قدم إجابة مرتبة ومنظمة بالنقاط واضحة الأرقام وقابلة للقراءة السريعة.',
@@ -319,6 +343,7 @@ async function handleZaki(req: Request, env: DortmunEnv): Promise<Response> {
         reply: aiResult.text,
         action: aiResult.action ?? null,
         model: aiResult.model,
+        provider: aiResult.provider || 'gemini',
         latencyMs: aiResult.latencyMs,
         projectId: GCP_PROJECT_ID,
         projectPath: GCP_PROJECT_PATH,

@@ -1,21 +1,30 @@
 // supabase/functions/zaki-chat/index.ts
 //
-// Zaki AI — Supabase Edge Function (thin owner-only Gemini proxy).
+// Zaki AI — Supabase Edge Function (thin owner-only LLM proxy).
 //
-// WHY: the Gemini key used to live as a secret on the Cloudflare Worker,
-// but the value bound there kept not matching the working key (the Worker
-// kept getting HTTP 401 "API key not valid" from Google even after the
-// secret was rotated twice). The key now lives ONLY as a secret on this
-// Supabase project (`supabase secrets set GEMINI_API_KEY=...`), and the
-// Worker (src/worker.ts) forwards the owner's JWT + the already-built
-// prompt here. This function verifies the owner a second time, calls
-// Google, and returns the result. It never logs the key.
+// PROVIDER CHAIN (2026-11-10): the function tries Apinex first
+// (OpenAI-compatible, model free/gpt-6-luna, key APINEX_API_KEY), and
+// falls back to Gemini (gemini-2.5-flash, key GEMINI_API_KEY) on ANY
+// Apinex failure (no key, non-200, timeout, empty reply). The frontend
+// falls back to the local engine if BOTH fail, so the chain is
+// Apinex -> Gemini -> local, fully automatic. The response carries
+// `provider` ('apinex' | 'gemini') + `model` so the chat can show
+// honestly which engine answered.
+//
+// WHY the keys live here: the Gemini key used to live as a secret on
+// the Cloudflare Worker, but the value bound there kept not matching
+// the working key. The keys now live ONLY as secrets on this Supabase
+// project (`supabase secrets set GEMINI_API_KEY=...` / `APINEX_API_KEY=...`),
+// and the Worker (src/worker.ts) forwards the owner's JWT + the
+// already-built prompt here. This function verifies the owner a second
+// time, calls the LLM, and returns the result. It never logs a key.
 //
 // CONTRACT (called only by the Cloudflare Worker, never by the browser):
 //   POST { systemInstruction, promptContent }
-//     -> { ok:true, text, model, latencyMs }
-//     -> { ok:false, geminiStatus, geminiError }   (Google rejected the call)
-//     -> { ok:false, status:'no_key' }             (secret not set)
+//     -> { ok:true, text, model, provider, latencyMs, action? }
+//     -> { ok:false, status:'no_key' }                 (neither secret set)
+//     -> { ok:false, status:'both_failed',
+//          apinexStatus, apinexError, geminiStatus, geminiError }
 //   Any non-owner caller -> 401 { ok:false, error:'Missing owner session' }.
 //   The Worker maps these onto the exact /api/zaki/* shapes the Zaki chat
 //   frontend already expects, so the frontend needs no change.
@@ -24,6 +33,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.44.4';
 const OWNER_EMAIL = 'gqikdubrjntorldfieo36@gmail.com';
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_TIMEOUT_MS = 15000;
+// Apinex is tried FIRST and gets a shorter budget so the Gemini fallback
+// still fits inside the frontend's 30s chat timeout (10s + 15s + overhead).
+const APINEX_MODEL = 'free/gpt-6-luna';
+const APINEX_URL = 'https://api.apinex.bond/v1/chat/completions';
+const APINEX_TIMEOUT_MS = 10000;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +59,14 @@ const API_ACTION_TYPES = new Set([
   'record_expense',
   'record_incoming_payment',
   'record_check',
+  // Display / edit / delete: the AI can now propose deleting a record
+  // (by id, resolved from the context summary the frontend attaches)
+  // and editing a worker rate or a check status. The frontend validates
+  // the record exists before showing the confirmation card, and nothing
+  // executes without the owner's tap — same golden rule as the adds.
+  'delete_record',
+  'update_worker_rate',
+  'update_check_status',
 ]);
 
 // Extract a balanced {...} object starting at `start`, tracking strings
@@ -179,15 +201,27 @@ function parseStructuredReply(
   return null;
 }
 
-type GeminiResult =
-  | { ok: true; text: string; model: string; latencyMs: number; action?: unknown }
-  | { ok: false; geminiStatus: number; geminiError: string; status?: string };
+type LlmResult =
+  | {
+      ok: true;
+      text: string;
+      model: string;
+      provider: 'apinex' | 'gemini';
+      latencyMs: number;
+      action?: unknown;
+    }
+  | {
+      ok: false;
+      provider: 'apinex' | 'gemini';
+      status: number;
+      error: string;
+    };
 
 async function callGemini(
   apiKey: string,
   promptContent: string,
   systemInstruction: string,
-): Promise<GeminiResult> {
+): Promise<LlmResult> {
   const t0 = Date.now();
   try {
     const controller = new AbortController();
@@ -223,8 +257,9 @@ async function callGemini(
       }
       return {
         ok: false,
-        geminiStatus: resp.status,
-        geminiError: errText || `HTTP ${resp.status}`,
+        provider: 'gemini',
+        status: resp.status,
+        error: errText || `HTTP ${resp.status}`,
       };
     }
     const data = (await resp.json()) as {
@@ -236,7 +271,7 @@ async function callGemini(
         .join('') || ''
     ).trim();
     if (!text) {
-      return { ok: false, geminiStatus: 200, geminiError: 'empty reply' };
+      return { ok: false, provider: 'gemini', status: 200, error: 'empty reply' };
     }
     const structured = parseStructuredReply(text);
     if (structured) {
@@ -245,6 +280,7 @@ async function callGemini(
         text: structured.reply,
         action: structured.action,
         model: GEMINI_MODEL,
+        provider: 'gemini',
         latencyMs: Date.now() - t0,
       };
     }
@@ -254,6 +290,7 @@ async function callGemini(
       text: stripJsonBlock(text),
       action: null,
       model: GEMINI_MODEL,
+      provider: 'gemini',
       latencyMs: Date.now() - t0,
     };
   } catch (e) {
@@ -262,8 +299,101 @@ async function callGemini(
       (e.name === 'AbortError' || e.name === 'TimeoutError');
     return {
       ok: false,
-      geminiStatus: 0,
-      geminiError: timedOut ? 'timeout' : 'fetch failed',
+      provider: 'gemini',
+      status: 0,
+      error: timedOut ? 'timeout' : 'fetch failed',
+    };
+  }
+}
+
+// Apinex (OpenAI-compatible gateway). Same prompt contract as Gemini:
+// the system instruction + user prompt go in as chat messages, and the
+// reply text goes through the same structured-action parser. Any failure
+// (non-200, timeout, empty reply) returns ok:false so the caller can
+// fall back to Gemini — the key is never logged or returned.
+async function callApinex(
+  apiKey: string,
+  promptContent: string,
+  systemInstruction: string,
+): Promise<LlmResult> {
+  const t0 = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), APINEX_TIMEOUT_MS);
+    const resp = await fetch(APINEX_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: APINEX_MODEL,
+        messages: [
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: promptContent },
+        ],
+        temperature: 0.35,
+        max_tokens: 2048,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) {
+      let errText = '';
+      try {
+        const errData = (await resp.json()) as {
+          error?: { message?: string; code?: string };
+        };
+        errText = String(
+          errData?.error?.message || errData?.error?.code || '',
+        ).slice(0, 200);
+      } catch {
+        errText = '';
+      }
+      return {
+        ok: false,
+        provider: 'apinex',
+        status: resp.status,
+        error: errText || `HTTP ${resp.status}`,
+      };
+    }
+    const data = (await resp.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const text = String(
+      data?.choices?.[0]?.message?.content || '',
+    ).trim();
+    if (!text) {
+      return { ok: false, provider: 'apinex', status: 200, error: 'empty reply' };
+    }
+    const structured = parseStructuredReply(text);
+    if (structured) {
+      return {
+        ok: true,
+        text: structured.reply,
+        action: structured.action,
+        model: APINEX_MODEL,
+        provider: 'apinex',
+        latencyMs: Date.now() - t0,
+      };
+    }
+    return {
+      ok: true,
+      text: stripJsonBlock(text),
+      action: null,
+      model: APINEX_MODEL,
+      provider: 'apinex',
+      latencyMs: Date.now() - t0,
+    };
+  } catch (e) {
+    const timedOut =
+      e instanceof Error &&
+      (e.name === 'AbortError' || e.name === 'TimeoutError');
+    return {
+      ok: false,
+      provider: 'apinex',
+      status: 0,
+      error: timedOut ? 'timeout' : 'fetch failed',
     };
   }
 }
@@ -296,11 +426,6 @@ Deno.serve(async (req) => {
     return json(401, { ok: false, error: 'Missing owner session' });
   }
 
-  const apiKey = (Deno.env.get('GEMINI_API_KEY') || '').trim();
-  if (!apiKey) {
-    return json(200, { ok: false, status: 'no_key' });
-  }
-
   let body: { systemInstruction?: string; promptContent?: string } = {};
   try {
     body = (await req.json()) as typeof body;
@@ -312,9 +437,66 @@ Deno.serve(async (req) => {
   if (!promptContent) {
     return json(200, {
       ok: false,
+      status: 'both_failed',
+      apinexStatus: 400,
+      apinexError: 'empty prompt',
       geminiStatus: 400,
       geminiError: 'empty prompt',
     });
   }
-  return json(200, await callGemini(apiKey, promptContent, systemInstruction));
+
+  // Provider chain: Apinex first, Gemini on ANY Apinex failure. The
+  // frontend falls back to the local engine if both fail, so the user
+  // always gets an answer. `no_key` only when NEITHER secret is set.
+  const apinexKey = (Deno.env.get('APINEX_API_KEY') || '').trim();
+  const geminiKey = (Deno.env.get('GEMINI_API_KEY') || '').trim();
+  if (!apinexKey && !geminiKey) {
+    return json(200, { ok: false, status: 'no_key' });
+  }
+
+  let apinexFailure: { status: number; error: string } | null = null;
+  if (apinexKey) {
+    const apinex = await callApinex(apinexKey, promptContent, systemInstruction);
+    if (apinex.ok) {
+      return json(200, {
+        ok: true,
+        text: apinex.text,
+        action: apinex.action ?? null,
+        model: apinex.model,
+        provider: apinex.provider,
+        latencyMs: apinex.latencyMs,
+      });
+    }
+    apinexFailure = { status: apinex.status, error: apinex.error };
+  }
+  if (geminiKey) {
+    const gemini = await callGemini(geminiKey, promptContent, systemInstruction);
+    if (gemini.ok) {
+      return json(200, {
+        ok: true,
+        text: gemini.text,
+        action: gemini.action ?? null,
+        model: gemini.model,
+        provider: gemini.provider,
+        latencyMs: gemini.latencyMs,
+      });
+    }
+    return json(200, {
+      ok: false,
+      status: 'both_failed',
+      apinexStatus: apinexFailure?.status ?? 0,
+      apinexError: apinexFailure?.error ?? (apinexKey ? '' : 'no_key'),
+      geminiStatus: gemini.status,
+      geminiError: gemini.error,
+    });
+  }
+  // Apinex was the only key and it failed.
+  return json(200, {
+    ok: false,
+    status: 'both_failed',
+    apinexStatus: apinexFailure?.status ?? 0,
+    apinexError: apinexFailure?.error ?? '',
+    geminiStatus: 0,
+    geminiError: 'no_key',
+  });
 });
